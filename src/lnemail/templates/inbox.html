@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LNemail Inbox - Bitcoin Lightning Email Service</title>
+    <link rel="stylesheet" href="/static/css/normalize.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/fonts/inter.css">
+    <!-- Favicon and App Icons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <meta name="description" content="Access your anonymous LNemail inbox. Bitcoin Lightning Network powered disposable email service with instant delivery and maximum privacy.">
+    <meta name="keywords" content="bitcoin lightning email inbox, anonymous email access, lightning network email, bitcoin email service, private disposable email, fast anonymous email">
+    <meta property="og:title" content="LNemail Inbox - Bitcoin Lightning Email Service">
+    <meta property="og:description" content="Access your anonymous email inbox powered by Bitcoin Lightning Network payments. Fast, private, disposable email accounts.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://lnemail.net/inbox">
+    <meta property="og:image" content="/static/img/logo.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="LNemail Inbox - Bitcoin Lightning Email Service">
+    <meta name="twitter:description" content="Access your anonymous email inbox powered by Bitcoin Lightning Network payments.">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <h1><a href="/">LN<span>email</span></a></h1>
+            </div>
+        </div>
+    </header>
+    <main>
+        <div class="container">
+            <section class="inbox-header">
+                <h2>Your Anonymous Inbox</h2>
+                <div class="inbox-controls">
+                    <div id="email-display"></div>
+                    <div class="btn-group">
+                        <button id="refresh-btn" class="btn">Refresh</button>
+                        <button id="logout-btn" class="btn">Logout</button>
+                    </div>
+                </div>
+            </section>
+            <section id="auth-section" class="card">
+                <h3>Enter Access Token</h3>
+                <p>Please enter the access token you received when creating your Bitcoin Lightning email account.</p>
+                <div class="form-group">
+                    <input type="text" id="access-token-input" placeholder="Your access token">
+                    <button id="auth-btn" class="btn primary">Access Inbox</button>
+                </div>
+            </section>
+            <section id="inbox-section" class="card hidden">
+                <div id="email-list-container">
+                    <div class="email-list-header">
+                        <div class="email-col from">From</div>
+                        <div class="email-col subject">Subject</div>
+                        <div class="email-col date">Date</div>
+                    </div>
+                    <div id="email-list">
+                        <div class="loading-emails">
+                            <div class="loader"></div>
+                            <p>Loading emails...</p>
+                        </div>
+                        <div class="no-emails hidden">
+                            <p>No emails yet. Waiting for new messages...</p>
+                        </div>
+                    </div>
+                </div>
+                <div id="email-content" class="hidden">
+                    <div class="email-content-header">
+                        <button id="back-to-list" class="btn small">« Back to list</button>
+                        <h3 id="email-subject"></h3>
+                        <div class="email-meta">
+                            <p>From: <span id="email-from"></span></p>
+                            <p>To: <span id="email-to"></span></p>
+                            <p>Date: <span id="email-date"></span></p>
+                        </div>
+                    </div>
+                    <div class="email-body">
+                        <div id="email-text"></div>
+                        <div id="email-html" class="hidden"></div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+    <footer>
+        <div class="container">
+            <p>LNemail - Fast anonymous email powered by Bitcoin Lightning Network</p>
+            <p>Contact: <a href="https://njump.me/npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76">npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76</a></p>
+        </div>
+    </footer>
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/inbox.js"></script>
+</body>
+</html>

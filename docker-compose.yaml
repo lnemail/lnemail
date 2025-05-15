@@ -1,0 +1,705 @@
+services:
+  # Bitcoin and Lightning Network
+  bitcoin:
+    image: lncm/bitcoind:v28.0
+    container_name: bitcoin
+    restart: unless-stopped
+    healthcheck:
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      test: ["CMD-SHELL", "bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getblockchaininfo"]
+    command:
+      - '-server=1'
+      - '-regtest=1'
+      - '-rpcauth=${RPC_USER}:${RPC_AUTH}'
+      - '-debug=1'
+      - '-zmqpubrawblock=tcp://0.0.0.0:${ZMQ_BLOCK_PORT}'
+      - '-zmqpubrawtx=tcp://0.0.0.0:${ZMQ_TX_PORT}'
+      - '-zmqpubhashblock=tcp://bitcoin:${ZMQ_HASHBLOCK_PORT}'
+      - '-txindex=1'
+      - '-dnsseed=0'
+      - '-upnp=0'
+      - '-rpcbind=0.0.0.0'
+      - '-rpcallowip=0.0.0.0/0'
+      - '-whitelist=0.0.0.0/0'
+      - '-rpcport=${RPC_PORT}'
+      - '-deprecatedrpc=signrawtransaction'
+      - '-rest'
+      - '-listen=1'
+      - '-listenonion=0'
+      - '-fallbackfee=0.0002'
+      - '-blockfilterindex=1'
+      - '-peerblockfilters=1'
+      - '-maxmempool=5'
+    expose:
+      - "${RPC_PORT}"
+      - "${P2P_PORT}"
+      - "${ZMQ_BLOCK_PORT}"
+      - "${ZMQ_TX_PORT}"
+    volumes:
+      - bitcoin:/home/bitcoin/.bitcoin
+      - ./dev-data/shared:/shared
+    networks:
+      - lnd
+      - lnemail
+    labels:
+      CLI: "bitcoin-cli"
+      CLI_ARGS: "-chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS}"
+      ofelia.enabled: "true"
+      ofelia.job-exec.minecron.schedule: "@every 30s"
+      ofelia.job-exec.minecron.command: |
+        sh -c '
+        set -e
+        export PATH=/usr/local/bin:/usr/bin:/bin
+
+        echo "Starting mining script..."
+        blockcount=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getblockcount 2>/dev/null || echo "0")
+        echo "Current block count: $$blockcount"
+
+        if [ "$$blockcount" -le 100 ]; then
+          echo "Creating wallet and initial mining..."
+          bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} createwallet "" 2>/dev/null || echo "Wallet may already exist"
+
+          # Wait for LND address or create a temporary one for initial mining
+          if [ -f /shared/lnd_address ]; then
+            lnd_addr=$(cat /shared/lnd_address)
+            echo "Using LND address: $$lnd_addr"
+          else
+            echo "LND address not ready, using temporary address for initial mining..."
+            lnd_addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
+            echo "Using temporary address: $$lnd_addr"
+          fi
+
+          echo "Mining 100 blocks to address..."
+          bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 100 "$$lnd_addr"
+          echo "Mining 100 blocks to a random address..."
+          new_addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
+          bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 100 "$$new_addr"
+        else
+          # Check if LND needs funding
+          if [ -f /shared/lnd_needs_funding ]; then
+            echo "LND needs funding..."
+            if [ -f /shared/lnd_address ]; then
+              lnd_addr=$(cat /shared/lnd_address)
+              echo "Mining block to LND address: $$lnd_addr"
+
+              if bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 1 "$$lnd_addr"; then
+                echo "Funds mined directly to LND"
+                # Remove the funding request flag
+                rm -f /shared/lnd_needs_funding
+              else
+                echo "ERROR: Failed to mine to LND address"
+              fi
+            else
+              echo "ERROR: LND address not found"
+            fi
+          else
+            echo "Generating transactions for fee rate estimation..."
+
+            # Check if fee estimation already works
+            if bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} estimatesmartfee 6 | grep -q "feerate"; then
+              echo "Fee estimation already working, mining single block..."
+              # Use LND address if available, otherwise use a new address
+              if [ -f /shared/lnd_address ]; then
+                lnd_addr=$(cat /shared/lnd_address)
+              else
+                lnd_addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
+              fi
+              bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 1 "$$lnd_addr"
+            else
+              echo "Need to generate transactions for fee estimation..."
+              # Generate between 20-30 transactions
+              tx_count=$$(awk "BEGIN{srand(); print int(rand()*11)+20}")
+              echo "Generating $$tx_count transactions..."
+
+              i=0
+              while [ $$i -lt $$tx_count ]; do
+                new_addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
+                fee_rate=$$(awk "BEGIN{srand(); print int(rand()*25)+1}")
+                echo "Sending to $$new_addr with fee rate $$fee_rate"
+                bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} -named sendtoaddress address="$$new_addr" amount=0.01 fee_rate=$$fee_rate
+                i=$$((i + 1))
+              done
+
+              echo "Mining block to confirm transactions..."
+              # Use LND address if available, otherwise use a new address
+              if [ -f /shared/lnd_address ]; then
+                lnd_addr=$(cat /shared/lnd_address)
+              else
+                lnd_addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
+              fi
+              bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 1 "$$lnd_addr"
+            fi
+          fi
+        fi
+
+        echo "Mining script completed successfully"
+        '
+
+  lnd:
+    image: docker.io/lightninglabs/lnd:v0.18.5-beta
+    container_name: lnd
+    restart: unless-stopped
+    healthcheck:
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      test: ["CMD-SHELL", "lncli --network=regtest getinfo"]
+    depends_on:
+      bitcoin:
+        condition: service_healthy
+    environment:
+      - LND_ALIAS=lnd-dev
+    command:
+      - 'lnd'
+      - '--noseedbackup'
+      - '--trickledelay=5000'
+      - '--alias=lnd-dev'
+      - '--externalip=lnd'
+      - '--tlsextradomain=lnd'
+      - '--tlsextradomain=host.docker.internal'
+      - '--listen=0.0.0.0:9735'
+      - '--rpclisten=0.0.0.0:10009'
+      - '--restlisten=0.0.0.0:8080'
+      - '--bitcoin.active'
+      - '--bitcoin.regtest'
+      - '--bitcoin.node=bitcoind'
+      - '--bitcoind.rpchost=bitcoin'
+      - '--bitcoind.rpcuser=${RPC_USER}'
+      - '--bitcoind.rpcpass=${RPC_PASS}'
+      - '--bitcoind.zmqpubrawblock=tcp://bitcoin:${ZMQ_BLOCK_PORT}'
+      - '--bitcoind.zmqpubrawtx=tcp://bitcoin:${ZMQ_TX_PORT}'
+      - '--protocol.wumbo-channels'
+      - '--maxchansize=1000000000'
+      - '--allow-circular-route'
+      - '--bitcoin.defaultchanconfs=1'
+      - '--maxpendingchannels=10'
+    expose:
+      - "9735"
+      - "10009"
+    ports:
+      - "${LND_REST_PORT}:8080"
+      - "${LND_GRPC_PORT}:10009"
+    volumes:
+      - lnd:/root/.lnd
+      - ./dev-data/shared:/shared
+    networks:
+      - lnd
+      - lnemail
+    labels:
+      CLI: "lncli"
+      CLI_ARGS: "--network=regtest"
+      CLI_USER: "lnd"
+      ofelia.enabled: "true"
+      ofelia.job-exec.walletinit.schedule: "@every 30s"
+      ofelia.job-exec.walletinit.command: |
+        sh -c '
+        set -e
+
+        echo "Checking LND wallet status..."
+
+        # Check if wallet exists and is unlocked
+        if lncli --network=regtest getinfo >/dev/null 2>&1; then
+          echo "LND wallet is ready and unlocked"
+
+          # Check wallet balance
+          balance_output=$$(lncli --network=regtest walletbalance 2>/dev/null || echo "{\"confirmed_balance\":\"0\"}")
+          balance=$$(echo "$$balance_output" | jq -r ".confirmed_balance" 2>/dev/null || echo "0")
+          echo "Current wallet balance: $$balance satoshis"
+
+          if [ "$$balance" = "0" ] || [ "$$balance" = "null" ] || [ -z "$$balance" ]; then
+            echo "Wallet has no funds, requesting funds from bitcoin node..."
+
+            # Get a new address from LND if not already exists
+            if [ ! -f /shared/lnd_address ]; then
+              addr_output=$$(lncli --network=regtest newaddress p2wkh)
+              lnd_address=$$(echo "$$addr_output" | jq -r ".address")
+              echo "$$lnd_address" > /shared/lnd_address
+              echo "Generated new LND address: $$lnd_address"
+            else
+              lnd_address=$$(cat /shared/lnd_address)
+              echo "Using existing LND address: $$lnd_address"
+            fi
+
+            if [ -n "$$lnd_address" ] && [ "$$lnd_address" != "null" ]; then
+              # Signal to bitcoin container that LND needs funding
+              touch /shared/lnd_needs_funding
+              echo "Requested funding from bitcoin node"
+            else
+              echo "ERROR: Failed to generate LND address"
+            fi
+          else
+            echo "Wallet already has funds: $$balance satoshis"
+            # Remove funding request if it exists
+            rm -f /shared/lnd_needs_funding
+          fi
+        else
+          echo "LND wallet not ready or needs initialization"
+
+          # Try to create wallet if it doesnt exist
+          if ! lncli --network=regtest getinfo >/dev/null 2>&1; then
+            echo "Attempting to create wallet..."
+            # Create wallet with no seed passphrase for development
+            echo -e "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nn\n" | lncli --network=regtest create 2>/dev/null || echo "Wallet creation attempted"
+            sleep 2
+          fi
+        fi
+        '
+      ofelia.job-exec.openchannel.schedule: "@every 1m"
+      ofelia.job-exec.openchannel.command: |
+        sh -c '
+        set -e
+
+        echo "Waiting for LND to be ready..."
+        until lncli --network=regtest getinfo >/dev/null 2>&1; do
+          sleep 1
+        done
+
+        # Check if we have sufficient balance
+        balance_output=$$(lncli --network=regtest walletbalance 2>/dev/null || echo "{\"confirmed_balance\":\"0\"}")
+        balance=$$(echo "$$balance_output" | jq -r ".confirmed_balance" 2>/dev/null || echo "0")
+        echo "Current wallet balance: $$balance satoshis"
+
+        if [ "$$balance" = "0" ] || [ "$$balance" = "null" ] || [ -z "$$balance" ]; then
+          echo "Insufficient wallet balance, skipping channel operations"
+          exit 0
+        fi
+
+        # Convert balance to BTC for comparison
+        if [ "$$balance" -lt 1000000 ]; then
+          balance_btc=$(echo "scale=8; $$balance/100000000" | bc -l 2>/dev/null || echo "$$balance" | awk "{printf \"%.8f\", \$0/100000000}")
+          echo "Insufficient balance for channel creation (need at least 0.01 BTC, have $$balance_btc BTC)"
+          exit 0
+        fi
+
+        balance_btc=$(echo "scale=8; $$balance/100000000" | bc -l 2>/dev/null || echo "$$balance" | awk "{printf \"%.8f\", \$0/100000000}")
+        echo "Sufficient balance available: $$balance_btc BTC"
+
+        echo "Waiting for router TLS certificate..."
+        retry_count=0
+        while [ ! -f /shared/router_tls.cert ] && [ $$retry_count -lt 30 ]; do
+          echo "Router TLS certificate not found, waiting... ($$retry_count/30)"
+          sleep 2
+          retry_count=$$((retry_count + 1))
+        done
+
+        if [ ! -f /shared/router_tls.cert ]; then
+          echo "ERROR: Router TLS certificate not found after waiting"
+          exit 1
+        fi
+
+        echo "Router TLS certificate found, proceeding..."
+
+        # Check both active and pending channels
+        channel_count=$$(lncli --network=regtest listchannels | jq ".channels | length")
+        pending_channels=$$(lncli --network=regtest pendingchannels | jq ".pending_open_channels | length")
+
+        if [ "$$channel_count" -eq 0 ] && [ "$$pending_channels" -eq 0 ]; then
+          echo "No active or pending channels found, attempting to open channel..."
+
+          router_info=$$(lncli --network=regtest --rpcserver=router_lnd:10010 --tlscertpath=/shared/router_tls.cert --macaroonpath=/shared/router_admin.macaroon getinfo 2>/dev/null)
+          router_pubkey=$$(echo "$$router_info" | jq -r ".identity_pubkey" 2>/dev/null)
+
+          if [ -z "$$router_pubkey" ] || [ "$$router_pubkey" = "null" ]; then
+            echo "ERROR: Failed to get router pubkey"
+            exit 1
+          fi
+
+          echo "Router pubkey: $$router_pubkey"
+
+          # Check existing peer connections
+          echo "Checking existing peer connections..."
+          connected_peers=$$(lncli --network=regtest listpeers | jq -r ".peers[].pub_key" 2>/dev/null || echo "")
+
+          if echo "$$connected_peers" | grep -q "$$router_pubkey"; then
+            echo "Already connected to router peer"
+          else
+            echo "Connecting to router..."
+            set +e
+            connect_output=$$(lncli --network=regtest connect $$router_pubkey@router_lnd:9735 2>&1)
+            connect_exit_code=$$?
+            set -e
+
+            if [ $$connect_exit_code -eq 0 ]; then
+              echo "Successfully connected to router"
+            elif echo "$$connect_output" | grep -q "already connected"; then
+              echo "Already connected to router (detected via error message)"
+            else
+              echo "ERROR: Failed to connect to router: $$connect_output"
+              exit 1
+            fi
+          fi
+
+          echo "Opening channel with 50/50 balance split..."
+          if ! lncli --network=regtest openchannel --node_key=$$router_pubkey --local_amt=1000000 --push_amt=500000; then
+            echo "ERROR: Failed to open channel"
+            exit 1
+          fi
+
+          echo "Channel opening initiated successfully"
+        else
+          echo "Channel(s) exist or pending (active: $$channel_count, pending: $$pending_channels), skipping channel creation"
+        fi
+        '
+
+  lnd-setup:
+    image: docker.io/lightninglabs/lnd:v0.18.5-beta
+    container_name: lnd-setup
+    depends_on:
+      lnd:
+        condition: service_healthy
+      router_lnd:
+        condition: service_healthy
+    volumes:
+      - lnd:/root/.lnd
+      - router_lnd:/root/.router_lnd
+      - ./dev-data/shared:/shared
+    networks:
+      - lnd
+      - lnemail
+    entrypoint: ["sh"]  # Override the lnd entrypoint
+    command:
+      - -c
+      - |
+        set -e
+        echo "Setting up LND macaroons and certificates..."
+
+        # Ensure shared directory exists and has proper permissions
+        mkdir -p /shared
+        chmod 755 /shared
+
+        # Wait for and copy main LND TLS certificate
+        echo "Waiting for main LND certificate..."
+        retry_count=0
+        while [ ! -f /root/.lnd/tls.cert ] && [ $$retry_count -lt 30 ]; do
+          echo "Main LND certificate not ready, waiting... ($$retry_count/30)"
+          sleep 2
+          retry_count=$$((retry_count + 1))
+        done
+
+        if [ -f /root/.lnd/tls.cert ]; then
+          cp /root/.lnd/tls.cert /shared/tls.cert
+          chmod 644 /shared/tls.cert
+          echo "Main LND TLS certificate copied"
+        else
+          echo "ERROR: Main LND TLS certificate not found after waiting"
+          exit 1
+        fi
+
+        # Wait for and copy router LND TLS certificate
+        echo "Waiting for router LND certificate..."
+        retry_count=0
+        while [ ! -f /root/.router_lnd/tls.cert ] && [ $$retry_count -lt 30 ]; do
+          echo "Router LND certificate not ready, waiting... ($$retry_count/30)"
+          sleep 2
+          retry_count=$$((retry_count + 1))
+        done
+
+        if [ -f /root/.router_lnd/tls.cert ]; then
+          cp /root/.router_lnd/tls.cert /shared/router_tls.cert
+          chmod 644 /shared/router_tls.cert
+          echo "Router LND TLS certificate copied"
+        else
+          echo "ERROR: Router LND TLS certificate not found after waiting"
+          exit 1
+        fi
+
+        # Copy admin.macaroon for API usage
+        echo "Waiting for main LND admin macaroon..."
+        retry_count=0
+        while [ ! -f /root/.lnd/data/chain/bitcoin/regtest/admin.macaroon ] && [ $$retry_count -lt 30 ]; do
+          echo "Main LND admin macaroon not ready, waiting... ($$retry_count/30)"
+          sleep 2
+          retry_count=$$((retry_count + 1))
+        done
+
+        if [ -f /root/.lnd/data/chain/bitcoin/regtest/admin.macaroon ]; then
+          cp /root/.lnd/data/chain/bitcoin/regtest/admin.macaroon /shared/admin.macaroon
+          chmod 644 /shared/admin.macaroon
+          echo "Main LND admin macaroon copied"
+        else
+          echo "ERROR: Main LND admin macaroon not found after waiting"
+          exit 1
+        fi
+
+        # Copy router admin.macaroon for router connections
+        echo "Waiting for router LND admin macaroon..."
+        retry_count=0
+        while [ ! -f /root/.router_lnd/data/chain/bitcoin/regtest/admin.macaroon ] && [ $$retry_count -lt 30 ]; do
+          echo "Router LND admin macaroon not ready, waiting... ($$retry_count/30)"
+          sleep 2
+          retry_count=$$((retry_count + 1))
+        done
+
+        if [ -f /root/.router_lnd/data/chain/bitcoin/regtest/admin.macaroon ]; then
+          cp /root/.router_lnd/data/chain/bitcoin/regtest/admin.macaroon /shared/router_admin.macaroon
+          chmod 644 /shared/router_admin.macaroon
+          echo "Router LND admin macaroon copied"
+        else
+          echo "ERROR: Router LND admin macaroon not found after waiting"
+          exit 1
+        fi
+
+        # Create invoice-only macaroon for main LND - connect to LND via network
+        echo "Creating invoice macaroon for main LND..."
+        if lncli --network=regtest --rpcserver=lnd:10009 --tlscertpath=/shared/tls.cert --macaroonpath=/shared/admin.macaroon bakemacaroon invoices:read invoices:write --save_to /shared/invoice.macaroon; then
+          chmod 644 /shared/invoice.macaroon
+          echo "Invoice macaroon created successfully"
+        else
+          echo "ERROR: Failed to create invoice macaroon"
+          exit 1
+        fi
+
+        echo "LND setup completed successfully"
+    restart: "no"  # Only run once
+
+  ofelia:
+    image: mcuadros/ofelia:latest
+    container_name: ofelia
+    restart: unless-stopped
+    command: daemon --docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - bitcoin
+      - lnd
+    networks:
+      - lnd
+      - lnemail
+
+  router_lnd:
+    image: docker.io/lightninglabs/lnd:v0.18.5-beta
+    container_name: router_lnd
+    restart: unless-stopped
+    healthcheck:
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      test: ["CMD-SHELL", "lncli --network=regtest --rpcserver=localhost:10010 getinfo"]
+    depends_on:
+      bitcoin:
+        condition: service_healthy
+    command:
+      - 'lnd'
+      - '--noseedbackup'
+      - '--alias=router_lnd'
+      - '--externalip=router_lnd'
+      - '--tlsextradomain=router_lnd'
+      - '--tlsextradomain=host.docker.internal'
+      - '--listen=0.0.0.0:9735'
+      - '--rpclisten=0.0.0.0:10010'
+      - '--restlisten=0.0.0.0:8081'
+      - '--bitcoin.active'
+      - '--bitcoin.regtest'
+      - '--bitcoin.node=bitcoind'
+      - '--bitcoind.rpchost=bitcoin'
+      - '--bitcoind.rpcuser=${RPC_USER}'
+      - '--bitcoind.rpcpass=${RPC_PASS}'
+      - '--bitcoind.zmqpubrawblock=tcp://bitcoin:${ZMQ_BLOCK_PORT}'
+      - '--bitcoind.zmqpubrawtx=tcp://bitcoin:${ZMQ_TX_PORT}'
+    volumes:
+      - router_lnd:/root/.lnd
+      - ./dev-data/shared:/shared
+    networks:
+      - lnd
+      - lnemail
+
+  # Mail services
+
+  mailserver:
+    image: ghcr.io/docker-mailserver/docker-mailserver:latest
+    container_name: mailserver
+    hostname: mail.lnemail.test
+    restart: unless-stopped
+    env_file: .env.development
+    volumes:
+      - ./dev-data/mail-data/:/var/mail/
+      - ./dev-data/mail-state/:/var/mail-state/
+      - ./dev-data/mail-logs/:/var/log/mail/
+      - ./dev-data/config/:/tmp/docker-mailserver/
+      - /etc/localtime:/etc/localtime:ro
+      - ./dev-data/mail-agent:/var/mail-agent
+      - ./scripts/mail-agent.py:/var/mail-agent/mail-agent.py:ro
+      - ./dev-data/shared:/shared
+    environment:
+      - MAIL_REQUESTS_DIR=/shared/requests
+      - MAIL_RESPONSES_DIR=/shared/responses
+      - MAIL_DOMAIN=lnemail.test
+      - OVERRIDE_HOSTNAME=mail.lnemail.test
+      - POSTMASTER_ADDRESS=postmaster@lnemail.test
+      - PERMIT_DOCKER=host
+      - LOG_LEVEL=debug
+      - ENABLE_FAIL2BAN=0
+      - ENABLE_CLAMAV=0
+      - ENABLE_RSPAMD=0
+    ports:
+      - "25:25"
+      - "143:143" # IMAP
+      - "587:587" # SMTP with TLS
+      - "993:993" # IMAP with SSL
+    networks:
+      - lnemail
+    healthcheck:
+      test: "ss --listening --tcp | grep -P 'LISTEN.+:smtp' || exit 1"
+      timeout: 3s
+      retries: 0
+      interval: 10s
+
+  mail-agent:
+    image: ghcr.io/docker-mailserver/docker-mailserver:latest
+    container_name: mail-agent
+    restart: unless-stopped
+    depends_on:
+      - mailserver
+    volumes:
+      - ./dev-data/mail-data/:/var/mail/
+      - ./dev-data/mail-state/:/var/mail-state/
+      - ./dev-data/mail-logs/:/var/log/mail/
+      - ./dev-data/config/:/tmp/docker-mailserver/
+      - /etc/localtime:/etc/localtime:ro
+      - ./dev-data/mail-agent:/var/mail-agent
+      - ./scripts/mail-agent.py:/var/mail-agent/mail-agent.py:ro
+      - ./dev-data/shared:/shared
+    environment:
+      - MAIL_REQUESTS_DIR=/shared/requests
+      - MAIL_RESPONSES_DIR=/shared/responses
+      - MAIL_DOMAIN=lnemail.test
+    networks:
+      - lnemail
+    entrypoint: ["sh"]
+    command:
+      - -c
+      - |
+        set -e
+        echo "Installing mail agent dependencies..."
+        apt update
+        apt install -y python3-inotify python3-filelock
+        echo "Starting mail agent..."
+        exec python3 /var/mail-agent/mail-agent.py
+
+  # LNEmail services
+  lnemail-redis:
+    image: redis:7-alpine
+    container_name: lnemail-redis
+    restart: unless-stopped
+    volumes:
+      - ./dev-data/redis-data:/data
+    networks:
+      - lnemail
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    ports:
+      - "6379:6379"
+
+  lnemail-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development  # Target the development stage
+    container_name: lnemail-api
+    restart: unless-stopped
+    volumes:
+      - ./:/app  # Mount source code for hot reloading
+      - ./dev-data/lnemail-data:/data
+      - ./dev-data/shared:/shared
+    environment:
+      - DEBUG=True
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DATABASE_URL=sqlite:////data/lnemail.db
+      - MAIL_DOMAIN=lnemail.test
+      - MAIL_DATA_PATH=/var/mail
+      - MAIL_REQUESTS_DIR=/shared/requests
+      - MAIL_RESPONSES_DIR=/shared/responses
+      - LND_GRPC_HOST=lnd:10009
+      - LND_CERT_PATH=/shared/tls.cert
+      - LND_MACAROON_PATH=/shared/invoice.macaroon
+      - EMAIL_PRICE=1000
+      - REDIS_HOST=lnemail-redis
+      - REDIS_PORT=6379
+      - SECRET_KEY=dev_secret_key_for_local_testing_only
+    ports:
+      - "8000:8000"
+    networks:
+      - lnd
+      - lnemail
+    depends_on:
+      - lnemail-redis
+      - mailserver
+      - lnd
+      - lnd-setup  # Wait for setup to complete
+    command: >
+      bash -c "
+        echo 'Waiting for LND certificates to be available...'
+        while [ ! -f /shared/tls.cert ] || [ ! -f /shared/invoice.macaroon ]; do
+          echo 'Certificates not ready, waiting 5 seconds...'
+          sleep 5
+        done
+        echo 'Certificates found, starting API...'
+        alembic upgrade head
+        uvicorn src.lnemail.main:app --host 0.0.0.0 --port 8000 --reload --proxy-headers
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  lnemail-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development  # Target the development stage
+    container_name: lnemail-worker
+    restart: unless-stopped
+    volumes:
+      - ./:/app  # Mount source code for hot reloading
+      - ./dev-data/lnemail-data:/data
+      - ./dev-data/shared:/shared
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=sqlite:////data/lnemail.db
+      - MAIL_DOMAIN=lnemail.test
+      - MAIL_DATA_PATH=/var/mail
+      - MAIL_REQUESTS_DIR=/shared/requests
+      - MAIL_RESPONSES_DIR=/shared/responses
+      - LND_GRPC_HOST=lnd:10009
+      - LND_CERT_PATH=/shared/tls.cert
+      - LND_MACAROON_PATH=/shared/invoice.macaroon
+      - REDIS_HOST=lnemail-redis
+      - REDIS_PORT=6379
+      - SECRET_KEY=dev_secret_key_for_local_testing_only
+    networks:
+      - lnd
+      - lnemail
+    depends_on:
+      - lnemail-redis
+      - mailserver
+      - lnd
+      - lnd-setup  # Wait for setup to complete
+    command: >
+      bash -c "
+        echo 'Waiting for LND certificates to be available...'
+        while [ ! -f /shared/tls.cert ] || [ ! -f /shared/invoice.macaroon ]; do
+          echo 'Certificates not ready, waiting 5 seconds...'
+          sleep 5
+        done
+        echo 'Certificates found, starting worker...'
+        rq worker lnemail
+      "
+networks:
+  lnd:
+    driver: bridge
+  lnemail:
+    driver: bridge
+
+volumes:
+  bitcoin:
+  lnd:
+  router_lnd:

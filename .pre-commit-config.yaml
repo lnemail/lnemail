@@ -1,0 +1,33 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+    -   id: check-yaml
+    -   id: check-added-large-files
+    -   id: check-toml
+    -   id: debug-statements
+    -   id: detect-private-key
+
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.11
+    hooks:
+    -   id: ruff
+        args: [--fix]
+    -   id: ruff-format
+
+-   repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+    -   id: mypy
+        exclude: ^src/lnemail/services/lnd/
+        args: [--ignore-missing-imports, --namespace-packages, --exclude, "src/lnemail/services/lnd"]
+        additional_dependencies: [
+            pydantic,
+            types-redis,
+            types-PyYAML,
+            types-requests,
+            sqlmodel,
+            toml,
+        ]

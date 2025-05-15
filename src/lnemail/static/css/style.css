@@ -1,0 +1,513 @@
+/* Main styles for LNemail */
+
+:root {
+    /* Color variables */
+    --primary-color: #3498db;
+    --primary-dark: #2980b9;
+    --secondary-color: #f39c12;
+    --background-color: #f8f9fa;
+    --card-bg: #ffffff;
+    --text-color: #333333;
+    --text-muted: #6c757d;
+    --border-color: #e0e0e0;
+    --success-color: #2ecc71;
+    --error-color: #e74c3c;
+}
+
+/* Base styles */
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* Typography */
+h1, h2, h3, h4 {
+    margin-top: 0;
+    font-weight: 600;
+}
+
+a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* Header Styles */
+header {
+    background-color: var(--card-bg);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    padding: 15px 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+header .container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+}
+
+.logo h1 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.logo span {
+    color: var(--primary-color);
+}
+
+.logo a {
+    color: var(--text-color);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+}
+
+.logo a:hover, .logo a:visited {
+    color: var(--text-color);
+    text-decoration: none;
+}
+
+/* Navigation */
+.header-nav {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.header-nav .nav-link {
+    color: var(--text-color);
+    font-weight: 500;
+    padding: 8px 12px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.header-nav .nav-link:hover {
+    background-color: rgba(52, 152, 219, 0.1);
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.header-nav .nav-link.active {
+    background-color: rgba(52, 152, 219, 0.15);
+    color: var(--primary-color);
+}
+
+.header-nav .btn {
+    margin-left: 5px;
+}
+
+/* Mobile menu toggle */
+.mobile-menu-toggle {
+    display: none;
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--text-color);
+    padding: 5px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    header .container {
+        flex-wrap: wrap;
+    }
+
+    .mobile-menu-toggle {
+        display: block;
+        order: 2;
+    }
+
+    .header-nav {
+        flex-basis: 100%;
+        order: 3;
+        padding: 15px 0 5px;
+        flex-direction: column;
+        align-items: flex-start;
+        display: none;
+    }
+
+    .header-nav.active {
+        display: flex;
+    }
+
+    .header-nav .nav-link {
+        width: 100%;
+    }
+
+    .header-nav .btn {
+        margin-left: 0;
+        width: 100%;
+        text-align: center;
+    }
+}
+
+/* Footer */
+footer {
+    background-color: var(--card-bg);
+    box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+    padding: 20px 0;
+    margin-top: 40px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+/* Main content */
+main {
+    padding: 40px 0;
+}
+
+/* Cards */
+.card {
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    padding: 30px;
+    margin-bottom: 30px;
+}
+
+/* Hero section */
+.hero {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.hero h2 {
+    font-size: 32px;
+    color: var(--primary-color);
+    margin-bottom: 15px;
+}
+
+.hero p {
+    font-size: 18px;
+    color: var(--text-muted);
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* Features */
+.features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 30px;
+    margin-top: 40px;
+}
+
+.feature {
+    text-align: center;
+    padding: 20px;
+}
+
+.feature h3 {
+    color: var(--primary-color);
+    margin-bottom: 10px;
+}
+
+/* Buttons */
+.btn {
+    display: inline-block;
+    padding: 10px 20px;
+    border-radius: 6px;
+    background-color: var(--background-color);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn:hover {
+    background-color: #e9ecef;
+    text-decoration: none;
+}
+
+.btn.primary {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+}
+
+.btn.primary:hover {
+    background-color: var(--primary-dark);
+}
+
+.btn.small {
+    padding: 5px 10px;
+    font-size: 14px;
+}
+
+.btn-group {
+    display: flex;
+    gap: 10px;
+}
+
+/* Form elements */
+.form-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+input[type="text"] {
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    flex-grow: 1;
+}
+
+/* Payment section */
+.payment-details {
+    margin-top: 20px;
+}
+
+.checkbox-group {
+    margin: 1rem 0;
+}
+.checkbox-group label {
+    display: block;
+    margin: 0.5rem 0;
+}
+.header-nav {
+    margin-left: auto;
+}
+
+#qr-container {
+    display: flex;
+    justify-content: center;
+    margin: 20px 0;
+}
+
+#qrcode {
+    padding: 15px;
+    background-color: white;
+    border-radius: 6px;
+}
+
+.copy-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background-color: #f1f3f5;
+    padding: 10px;
+    border-radius: 6px;
+}
+
+.copy-text {
+    flex-grow: 1;
+    word-break: break-all;
+    font-family: monospace;
+    font-size: 14px;
+}
+
+.status-container {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f1f3f5;
+    border-radius: 6px;
+}
+
+.success-details {
+    margin-top: 20px;
+}
+
+.detail-item {
+    margin-bottom: 20px;
+}
+
+.detail-item .label {
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.detail-item .value {
+    margin-top: 5px;
+}
+
+.detail-item .note {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-top: 5px;
+}
+
+/* Loader */
+.loader {
+    width: 20px;
+    height: 20px;
+    border: 3px solid var(--primary-color);
+    border-top: 3px solid transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Utility classes */
+.hidden {
+    display: none !important;
+}
+
+/* Inbox styles */
+.inbox-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+#email-display {
+    font-weight: 600;
+}
+
+.email-list-header {
+    display: grid;
+    grid-template-columns: 3fr 5fr 2fr;
+    padding: 15px;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+}
+
+.email-list-item {
+    display: grid;
+    grid-template-columns: 3fr 5fr 2fr;
+    padding: 15px;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.email-list-item:hover {
+    background-color: #f1f3f5;
+}
+
+.email-list-item.unread {
+    font-weight: 600;
+}
+
+.loading-emails, .no-emails {
+    padding: 30px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.loading-emails .loader {
+    margin: 0 auto 20px;
+}
+
+.email-content-header {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.email-content-header h3 {
+    margin: 15px 0;
+}
+
+.email-meta {
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.email-meta p {
+    margin: 5px 0;
+}
+
+.email-body {
+    line-height: 1.6;
+    padding: 10px 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .form-group {
+        flex-direction: column;
+    }
+
+    .inbox-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+    }
+
+    .email-list-header, .email-list-item {
+        grid-template-columns: 3fr 5fr;
+    }
+
+    .email-col.date {
+        display: none;
+    }
+}
+
+/* Styling for cancel payment button */
+
+#cancel-payment-btn {
+  margin-top: 20px;
+  background-color: #f8f8f8;
+  color: #333;
+  border: 1px solid #ddd;
+}
+
+#cancel-payment-btn:hover {
+  background-color: #e6e6e6;
+}
+
+/* Styling for reset button in inbox */
+.reset-container {
+  border-top: 1px solid #eee;
+  padding-top: 20px;
+}
+
+#reset-auth-btn {
+  background-color: #f8f8f8;
+  color: #333;
+  border: 1px solid #ddd;
+}
+
+#reset-auth-btn:hover {
+  background-color: #e6e6e6;
+}
+
+/* Additional status messages */
+.status-container .status-warning {
+  color: #e67e22;
+  margin-top: 10px;
+  font-size: 0.9rem;
+}
+
+/* Styling for secondary buttons */
+.btn.secondary {
+  background-color: #f8f8f8;
+  color: #333;
+  border: 1px solid #ddd;
+}
+
+.btn.secondary:hover {
+  background-color: #e6e6e6;
+}
