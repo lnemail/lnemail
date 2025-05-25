@@ -1,4 +1,4 @@
-FROM python:3.11-slim as base
+FROM python:3.11-slim AS base
 
 # Set environment variables
 ENV PYTHONFAULTHANDLER=1 \
@@ -42,7 +42,7 @@ USER appuser
 #######################
 # Development stage
 #######################
-FROM base as development
+FROM base AS development
 
 # Install development dependencies
 USER root
@@ -61,7 +61,7 @@ CMD ["uvicorn", "src.lnemail.main:app", "--host", "0.0.0.0", "--port", "8000", "
 #######################
 # Production stage
 #######################
-FROM base as production
+FROM base AS production
 
 # Copy application code AFTER installing dependencies
 # This is the key optimization - code changes won't invalidate dependency layers
