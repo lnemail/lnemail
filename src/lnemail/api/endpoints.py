@@ -93,8 +93,8 @@ async def get_current_account(
     responses={500: {"model": ErrorResponse, "description": "Internal server error"}},
 )
 async def create_email_account(
-    request_data: EmailCreateRequest,
     background_tasks: BackgroundTasks,
+    request_data: EmailCreateRequest | None = None,
     db: Session = Depends(get_db),
 ) -> InvoiceResponse:
     """Create a new email account and generate Lightning invoice.
@@ -112,9 +112,9 @@ async def create_email_account(
         access_token = EmailAccount.generate_access_token()
 
         memo_parts = ["LNemail account"]
-        if request_data.include_email:
+        if request_data and request_data.include_email:
             memo_parts.append(f"Email: {email_address}")
-        if request_data.include_token:
+        if request_data and request_data.include_token:
             memo_parts.append(f"Token: {access_token}")
         memo_parts.append("(valid for 1 year)")
         memo = " ".join(memo_parts)
