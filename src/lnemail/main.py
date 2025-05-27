@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 import os
 
 from fastapi_cache import FastAPICache
@@ -111,3 +111,36 @@ async def android_chrome_512() -> FileResponse:
 async def site_webmanifest() -> FileResponse:
     """Serve site webmanifest file."""
     return FileResponse(os.path.join(static_dir, "site.webmanifest"))
+
+
+# NIP-05
+
+
+@app.get(
+    "/.well-known/nostr.json", response_class=JSONResponse, include_in_schema=False
+)
+@cache(expire=86400)  # Cache for 24 hours since this rarely changes
+async def nostr_nip05() -> JSONResponse:
+    """
+    NIP-05 Nostr Identity Verification endpoint.
+
+    This endpoint provides Nostr public key verification for domain-based identity.
+    Users can verify their Nostr identity by referencing name@yourdomain.com
+
+    Returns JSON with names mapping to Nostr public keys (hex format).
+    """
+    nostr_data = {
+        "names": {
+            "lneamil": "npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76",
+        }
+    }
+
+    return JSONResponse(
+        content=nostr_data,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Content-Type": "application/json",
+        },
+    )
