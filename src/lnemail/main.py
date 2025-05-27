@@ -5,18 +5,37 @@ API entrypoint module.
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
+import pickle
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from starlette.templating import _TemplateResponse as TemplateResponse
 import os
 
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
 from fastapi_cache.decorator import cache
+from fastapi_cache.coder import Coder
 
 from .api.endpoints import router as api_router, health_router
 from .config import settings
+
+
+class PickleCoder(Coder):
+    """Custom coder for caching TemplateResponse objects using pickle."""
+
+    @classmethod
+    def encode(cls, value: Any) -> bytes:
+        if isinstance(value, TemplateResponse):
+            # Extract the rendered body from TemplateResponse
+            value = value.body
+        return pickle.dumps(value)
+
+    @classmethod
+    def decode(cls, value: bytes) -> Any:
+        return pickle.loads(value)
 
 
 @asynccontextmanager
@@ -45,9 +64,9 @@ app.include_router(api_router, prefix="/api/v1")
 app.include_router(health_router, prefix="/api")
 
 
-# Frontend routes with caching
+# Frontend routes with caching using custom PickleCoder
 @app.get("/", response_class=HTMLResponse)
-@cache(expire=21600)
+@cache(expire=21600, coder=PickleCoder)
 async def index(request: Request) -> HTMLResponse:
     """Home page with payment interface and service information."""
     context = {"request": request, "settings": settings}
@@ -55,7 +74,7 @@ async def index(request: Request) -> HTMLResponse:
 
 
 @app.get("/inbox", response_class=HTMLResponse)
-@cache(expire=21600)
+@cache(expire=21600, coder=PickleCoder)
 async def inbox(request: Request) -> HTMLResponse:
     """Inbox access page for authenticated users."""
     context = {"request": request, "settings": settings}
@@ -63,7 +82,7 @@ async def inbox(request: Request) -> HTMLResponse:
 
 
 @app.get("/tos", response_class=HTMLResponse)
-@cache(expire=21600)
+@cache(expire=21600, coder=PickleCoder)
 async def tos(request: Request) -> HTMLResponse:
     """Terms of Service page."""
     context = {"request": request, "settings": settings}
@@ -114,8 +133,6 @@ async def site_webmanifest() -> FileResponse:
 
 
 # NIP-05
-
-
 @app.get(
     "/.well-known/nostr.json", response_class=JSONResponse, include_in_schema=False
 )
