@@ -11,6 +11,7 @@ packages = [
 [tool.poetry.dependencies]
 python = ">=3.11,<4.0"
 fastapi = ">=0.104.1"
+fastapi-cache2 = ">=0.2.2"
 uvicorn = {extras = ["standard"], version = ">=0.23.2"}
 sqlmodel = ">=0.0.24"
 pydantic = ">=2.4.2"

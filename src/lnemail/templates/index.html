@@ -1,212 +1,177 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LNemail - Fast Anonymous Email with Bitcoin Lightning Network</title>
-    <link rel="stylesheet" href="/static/css/normalize.css">
-    <link rel="stylesheet" href="/static/css/style.css">
-    <link rel="stylesheet" href="/static/fonts/inter.css">
-    <!-- Favicon and App Icons -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-    <link rel="manifest" href="/site.webmanifest">
-    <meta name="description" content="Fast anonymous email accounts powered by Bitcoin Lightning Network. Get instant disposable email addresses with no personal information required - just pay with Bitcoin Lightning and start receiving emails.">
-    <meta name="keywords" content="bitcoin lightning email, fast anonymous email, lightning network disposable email, bitcoin email service, instant anonymous email, lightning payments email, private bitcoin email, anonymous email bitcoin">
-    <meta property="og:title" content="LNemail - Fast Anonymous Email with Bitcoin Lightning Network">
-    <meta property="og:description" content="Get instant anonymous email addresses powered by Bitcoin Lightning Network payments. Fast, private, disposable email accounts with no personal information required.">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://lnemail.net/">
-    <meta property="og:image" content="/static/img/logo.png">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="LNemail - Fast Anonymous Email with Bitcoin Lightning Network">
-    <meta name="twitter:description" content="Instant anonymous email accounts powered by Bitcoin Lightning Network payments. No personal info required.">
-</head>
-<body>
-    <header>
-        <div class="container">
-            <div class="logo">
-                <h1><a href="/">LN<span>email</span></a></h1>
+{% extends "base.html" %}
+
+{% block title %}LNemail - Fast Anonymous Email with Bitcoin Lightning Network{% endblock %}
+
+{% block description %}Fast anonymous email accounts powered by Bitcoin Lightning Network. Get instant disposable email addresses with no personal information required - just pay with Bitcoin Lightning and start receiving emails.{% endblock %}
+
+{% block keywords %}bitcoin lightning email, fast anonymous email, lightning network disposable email, bitcoin email service, instant anonymous email, lightning payments email, private bitcoin email, anonymous email bitcoin{% endblock %}
+
+{% block og_url %}https://lnemail.net/{% endblock %}
+
+{% block extra_head %}
+{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h2>Fast Anonymous Email Accounts</h2>
+    <p>Get instant disposable email addresses powered by Bitcoin Lightning Network. No personal information required - just pay with Lightning and start receiving emails immediately.</p>
+    <p class="beta-notice">⚠️ BETA SOFTWARE - Use at your own risk</p>
+</section>
+
+<section id="payment-section" class="card">
+    <div id="pre-payment">
+        <h3>Get Your Anonymous Email</h3>
+        <p>Price: <strong>{{ settings.EMAIL_PRICE }} sats</strong> for 1 year</p>
+        <!-- LNProxy note temporarily removed
+            <p class="note">Actual price may be slightly higher due to invoice wrapping with <a href="https://lnproxy.org" target="_blank">lnproxy.org</a> for enhanced privacy.</p>
+        -->
+        <div class="checkbox-group">
+            <label>
+                <input type="checkbox" id="include-email" checked> Include email in description
+            </label>
+            <label>
+                <input type="checkbox" id="include-token" checked> Include token in description
+            </label>
+        </div>
+        <button id="create-invoice" class="btn primary">Create Lightning Invoice</button>
+    </div>
+    <div id="payment-pending" class="hidden">
+        <h3>Pay Bitcoin Lightning Invoice</h3>
+        <div id="qr-container">
+            <div id="qrcode"></div>
+        </div>
+        <div class="payment-details">
+            <p>Email Address: <span id="payment-email"></span></p>
+            <p>Access Token: <span id="payment-token"></span></p>
+            <p id="invoice-amount"></p>
+            <p class="copy-wrapper">
+                <span id="bolt11-invoice" class="copy-text"></span>
+                <button id="copy-invoice" class="btn small">Copy</button>
+            </p>
+            <button id="webln-pay-btn" class="btn primary hidden">Pay with Lightning Extension</button>
+            <div class="status-container">
+                <div class="loader"></div>
+                <p class="status-text">Waiting for Lightning payment...</p>
             </div>
-            <!-- Mobile menu toggle button -->
-            <button class="mobile-menu-toggle">&#9776;</button>
-            <nav class="header-nav">
-                <a href="/inbox" class="nav-link">Inbox</a>
-                <!--
-                <a href="/about" class="nav-link">About</a>
-                <a href="/faq" class="nav-link">FAQ</a>
-                <a href="/api" class="nav-link">API</a>
-                <a href="/contact" class="nav-link">Contact</a>
-                <a href="/login" class="btn">Login</a>
-                -->
-            </nav>
         </div>
-    </header>
-    <main>
-        <div class="container">
-            <section class="hero">
-                <h2>Fast Anonymous Email Accounts</h2>
-                <p>Get instant disposable email addresses powered by Bitcoin Lightning Network. No personal information required - just pay with Lightning and start receiving emails immediately.</p>
-                <p class="beta-notice">⚠️ BETA SOFTWARE - Use at your own risk</p>
-            </section>
-            <section id="payment-section" class="card">
-                <div id="pre-payment">
-                    <h3>Get Your Anonymous Email</h3>
-                    <p>Price: <strong>{{ settings.EMAIL_PRICE }} sats</strong> for 1 year</p>
-                    <!-- LNProxy note temporarily removed
-                        <p class="note">Actual price may be slightly higher due to invoice wrapping with <a href="https://lnproxy.org" target="_blank">lnproxy.org</a> for enhanced privacy.</p>
-                    -->
-                    <div class="checkbox-group">
-                        <label>
-                            <input type="checkbox" id="include-email" checked> Include email in description
-                        </label>
-                        <label>
-                            <input type="checkbox" id="include-token" checked> Include token in description
-                        </label>
-                    </div>
-                    <button id="create-invoice" class="btn primary">Create Lightning Invoice</button>
-                </div>
-                <div id="payment-pending" class="hidden">
-                    <h3>Pay Bitcoin Lightning Invoice</h3>
-                    <div id="qr-container">
-                        <div id="qrcode"></div>
-                    </div>
-                    <div class="payment-details">
-                        <p>Email Address: <span id="payment-email"></span></p>
-                        <p>Access Token: <span id="payment-token"></span></p>
-                        <p id="invoice-amount"></p>
-                        <p class="copy-wrapper">
-                            <span id="bolt11-invoice" class="copy-text"></span>
-                            <button id="copy-invoice" class="btn small">Copy</button>
-                        </p>
-                        <button id="webln-pay-btn" class="btn primary hidden">Pay with Lightning Extension</button>
-                        <div class="status-container">
-                            <div class="loader"></div>
-                            <p class="status-text">Waiting for Lightning payment...</p>
-                        </div>
-                    </div>
-                </div>
-                <div id="payment-success" class="hidden">
-                    <h3>Lightning Payment Successful!</h3>
-                    <div class="success-details">
-                        <div class="detail-item">
-                            <p class="label">Your Email Address:</p>
-                            <p id="email-address" class="value copy-wrapper">
-                                <span class="copy-text"></span>
-                                <button class="btn small copy-btn">Copy</button>
-                            </p>
-                        </div>
-                        <div class="detail-item">
-                            <p class="label">Access Token:</p>
-                            <p id="access-token" class="value copy-wrapper">
-                                <span class="copy-text"></span>
-                                <button class="btn small copy-btn">Copy</button>
-                            </p>
-                            <p class="note">Store this token safely. You'll need it to access your inbox.</p>
-                        </div>
-                        <div class="detail-item">
-                            <p class="label">Expires:</p>
-                            <p id="expires-at" class="value"></p>
-                        </div>
-                        <a href="/inbox" class="btn primary">Go to Inbox</a>
-                    </div>
-                </div>
-            </section>
-            <section class="example">
-                <h3>How It Works</h3>
-                <div class="example-steps">
-                    <div class="step">
-                        <h4>1. Create Lightning Invoice</h4>
-                        <p>Click "Create Lightning Invoice" to generate a Bitcoin Lightning Network payment request.</p>
-                    </div>
-                    <div class="step">
-                        <h4>2. Pay with Bitcoin Lightning</h4>
-                        <p>Scan the QR code or copy the invoice to your Lightning wallet and pay instantly.</p>
-                    </div>
-                    <div class="step">
-                        <h4>3. Receive Email Address</h4>
-                        <p>Once Lightning payment confirms, you'll get your anonymous email address and access token.</p>
-                    </div>
-                    <div class="step">
-                        <h4>4. Start Receiving Emails</h4>
-                        <p>Access your inbox through our web interface or API to read incoming emails.</p>
-                    </div>
-                </div>
-            </section>
-            <section class="features">
-                <div class="feature">
-                    <h3>Anonymous</h3>
-                    <p>No personal information required. Pay with Bitcoin Lightning for maximum privacy and speed.</p>
-                </div>
-                <div class="feature">
-                    <h3>Instant</h3>
-                    <p>Lightning Network payments confirm in seconds. Start receiving emails immediately.</p>
-                </div>
-                <div class="feature">
-                    <h3>Simple</h3>
-                    <p>Just an inbox for one year. No attachments, no complications, no tracking.</p>
-                </div>
-            </section>
-            <section class="limitations">
-                <h3>Service Limitations</h3>
-                <ul>
-                    <li><strong>Receiving Only:</strong> You cannot send emails from this service.</li>
-                    <li><strong>No IMAP Access:</strong> Emails can only be accessed through our web interface or API.</li>
-                    <li><strong>No Attachments:</strong> Email attachments are not supported or displayed.</li>
-                    <li><strong>HTML Stripped:</strong> For security, emails are displayed as plain text only.</li>
-                </ul>
-            </section>
-            <section class="use-cases">
-                <h3>Perfect For</h3>
-                <div class="use-case-list">
-                    <div class="use-case">
-                        <h4>Two-Factor Authentication</h4>
-                        <p>Fast email delivery for 2FA codes without the limitations of 10-minute mail services.</p>
-                    </div>
-                    <div class="use-case">
-                        <h4>Account Verification</h4>
-                        <p>Anonymous account verification that lasts longer than temporary email services.</p>
-                    </div>
-                    <div class="use-case">
-                        <h4>Bitcoin & Lightning Apps</h4>
-                        <p>Perfect for Bitcoin-native applications needing email integration with Lightning payments.</p>
-                    </div>
-                </div>
-            </section>
-            <section class="api-usage">
-                <h3>API Access</h3>
-                <p>LNemail can be accessed programmatically via our simple API:</p>
-                <div class="code-example">
-                    <h4>Create Email Account</h4>
-                    <pre><code class="language-bash">curl -X POST 'https://lnemail.net/api/v1/email'</code></pre>
-                </div>
-                <div class="code-example">
-                    <h4>Check Inbox</h4>
-                    <pre><code class="language-bash">curl -X GET 'https://lnemail.net/api/v1/emails' \
+    </div>
+    <div id="payment-success" class="hidden">
+        <h3>Lightning Payment Successful!</h3>
+        <div class="success-details">
+            <div class="detail-item">
+                <p class="label">Your Email Address:</p>
+                <p id="email-address" class="value copy-wrapper">
+                    <span class="copy-text"></span>
+                    <button class="btn small copy-btn">Copy</button>
+                </p>
+            </div>
+            <div class="detail-item">
+                <p class="label">Access Token:</p>
+                <p id="access-token" class="value copy-wrapper">
+                    <span class="copy-text"></span>
+                    <button class="btn small copy-btn">Copy</button>
+                </p>
+                <p class="note">Store this token safely. You'll need it to access your inbox.</p>
+            </div>
+            <div class="detail-item">
+                <p class="label">Expires:</p>
+                <p id="expires-at" class="value"></p>
+            </div>
+            <a href="/inbox" class="btn primary">Go to Inbox</a>
+        </div>
+    </div>
+</section>
+
+<section class="example">
+    <h3>How It Works</h3>
+    <div class="example-steps">
+        <div class="step">
+            <h4>1. Create Lightning Invoice</h4>
+            <p>Click "Create Lightning Invoice" to generate a Bitcoin Lightning Network payment request.</p>
+        </div>
+        <div class="step">
+            <h4>2. Pay with Bitcoin Lightning</h4>
+            <p>Scan the QR code or copy the invoice to your Lightning wallet and pay instantly.</p>
+        </div>
+        <div class="step">
+            <h4>3. Receive Email Address</h4>
+            <p>Once Lightning payment confirms, you'll get your anonymous email address and access token.</p>
+        </div>
+        <div class="step">
+            <h4>4. Start Receiving Emails</h4>
+            <p>Access your inbox through our web interface or API to read incoming emails.</p>
+        </div>
+    </div>
+</section>
+
+<section class="features">
+    <div class="feature">
+        <h3>Anonymous</h3>
+        <p>No personal information required. Pay with Bitcoin Lightning for maximum privacy and speed.</p>
+    </div>
+    <div class="feature">
+        <h3>Instant</h3>
+        <p>Lightning Network payments confirm in seconds. Start receiving emails immediately.</p>
+    </div>
+    <div class="feature">
+        <h3>Simple</h3>
+        <p>Just an inbox for one year. No attachments, no complications, no tracking.</p>
+    </div>
+</section>
+
+<section class="limitations">
+    <h3>Service Limitations</h3>
+    <ul>
+        <li><strong>Receiving Only:</strong> You cannot send emails from this service.</li>
+        <li><strong>No IMAP Access:</strong> Emails can only be accessed through our web interface or API.</li>
+        <li><strong>No Attachments:</strong> Email attachments are not supported or displayed.</li>
+        <li><strong>HTML Stripped:</strong> For security, emails are displayed as plain text only.</li>
+    </ul>
+</section>
+
+<section class="use-cases">
+    <h3>Perfect For</h3>
+    <div class="use-case-list">
+        <div class="use-case">
+            <h4>Two-Factor Authentication</h4>
+            <p>Fast email delivery for 2FA codes without the limitations of 10-minute mail services.</p>
+        </div>
+        <div class="use-case">
+            <h4>Account Verification</h4>
+            <p>Anonymous account verification that lasts longer than temporary email services.</p>
+        </div>
+        <div class="use-case">
+            <h4>Bitcoin & Lightning Apps</h4>
+            <p>Perfect for Bitcoin-native applications needing email integration with Lightning payments.</p>
+        </div>
+    </div>
+</section>
+
+<section class="api-usage">
+    <h3>API Access</h3>
+    <p>LNemail can be accessed programmatically via our simple API:</p>
+    <div class="code-example">
+        <h4>Create Email Account</h4>
+        <pre><code class="language-bash">curl -X POST 'https://lnemail.net/api/v1/email'</code></pre>
+    </div>
+    <div class="code-example">
+        <h4>Check Inbox</h4>
+        <pre><code class="language-bash">curl -X GET 'https://lnemail.net/api/v1/emails' \
     -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'</code></pre>
-                </div>
-                <div class="code-example">
-                    <h4>Get Email Content</h4>
-                    <pre><code class="language-bash">curl -X GET 'https://lnemail.net/api/v1/emails/EMAIL_ID' \
+    </div>
+    <div class="code-example">
+        <h4>Get Email Content</h4>
+        <pre><code class="language-bash">curl -X GET 'https://lnemail.net/api/v1/emails/EMAIL_ID' \
     -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'</code></pre>
-                </div>
-                <div class="code-example">
-                    <h4>Check Lightning Payment Status</h4>
-                    <pre><code class="language-bash">curl -X GET 'https://lnemail.net/api/v1/payment/PAYMENT_HASH'</code></pre>
-                </div>
-            </section>
-        </div>
-    </main>
-    <footer>
-        <div class="container">
-            <p>LNemail - Fast anonymous email powered by Bitcoin Lightning Network</p>
-            <p>Contact: <a href="https://njump.me/npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76">npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76</a></p>
-            <a href="/tos">Terms of Service</a>
-        </div>
-    </footer>
-    <script src="/static/js/qrious.min.js"></script>
-    <script src="/static/js/main.js"></script>
-    <script src="/static/js/payment.js"></script>
-</body>
-</html>
+    </div>
+    <div class="code-example">
+        <h4>Check Lightning Payment Status</h4>
+        <pre><code class="language-bash">curl -X GET 'https://lnemail.net/api/v1/payment/PAYMENT_HASH'</code></pre>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/qrious.min.js"></script>
+<script src="/static/js/payment.js"></script>
+{% endblock %}

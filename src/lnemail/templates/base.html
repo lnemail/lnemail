@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}LNemail - Fast Anonymous Email with Bitcoin Lightning Network{% endblock %}</title>
+
+    <!-- Common CSS -->
+    <link rel="stylesheet" href="/static/css/normalize.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/fonts/inter.css">
+
+    <!-- Favicon and App Icons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="{% block description %}Fast anonymous email accounts powered by Bitcoin Lightning Network. Get instant disposable email addresses with no personal information required.{% endblock %}">
+    <meta name="keywords" content="{% block keywords %}bitcoin lightning email, fast anonymous email, lightning network disposable email, bitcoin email service, instant anonymous email{% endblock %}">
+
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="{% block og_title %}{{ self.title() }}{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}{{ self.description() }}{% endblock %}">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{% block og_url %}https://lnemail.net/{% endblock %}">
+    <meta property="og:image" content="/static/img/logo.png">
+
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{% block twitter_title %}{{ self.og_title() }}{% endblock %}">
+    <meta name="twitter:description" content="{% block twitter_description %}{{ self.og_description() }}{% endblock %}">
+
+    <!-- Page-specific head content -->
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="logo">
+                <h1><a href="/">LN<span>email</span></a></h1>
+            </div>
+            {% block mobile_menu %}
+            <!-- Mobile menu toggle button -->
+            <button class="mobile-menu-toggle">&#9776;</button>
+            {% endblock %}
+            <nav class="header-nav">
+                {% block nav_links %}
+                <a href="/inbox" class="nav-link">Inbox</a>
+                {% endblock %}
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <div class="container">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>LNemail - Fast anonymous email powered by Bitcoin Lightning Network</p>
+            <div class="footer-links">
+                <p>Contact: <a href="https://njump.me/npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76">npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76</a></p>
+                <a href="/tos">Terms of Service</a> |
+                <a href="https://github.com/lnemail/lnemail" target="_blank" rel="noopener">Source Code (MIT)</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Common JavaScript -->
+    <script src="/static/js/main.js"></script>
+
+    <!-- Page-specific JavaScript -->
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
