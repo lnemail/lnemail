@@ -45,6 +45,13 @@ async def inbox(request: Request) -> HTMLResponse:
     )
 
 
+@app.get("/tos", response_class=HTMLResponse)
+async def tos(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "tos.html", {"request": request, "settings": settings}
+    )
+
+
 # Serve favicon.ico from the root path
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon() -> FileResponse:
