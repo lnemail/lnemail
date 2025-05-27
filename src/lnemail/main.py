@@ -148,7 +148,7 @@ async def nostr_nip05() -> JSONResponse:
     """
     nostr_data = {
         "names": {
-            "lneamil": "npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76",
+            "lnemail": "npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76",
         }
     }
 
