@@ -109,6 +109,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 payment_hash: data.payment_hash,
                 payment_request: data.payment_request,
                 price_sats: data.price_sats,
+                email_address: data.email_address,
+                access_token: data.access_token,
+                expires_at: data.expires_at,
                 created_at: new Date().toISOString()
             };
             sessionStorage.setItem(PAYMENT_STORAGE_KEY, JSON.stringify(paymentData));
@@ -151,6 +154,16 @@ document.addEventListener('DOMContentLoaded', () => {
         bolt11Invoice.textContent = paymentData.payment_request;
         invoiceAmount.textContent = `Amount: ${paymentData.price_sats} sats`;
 
+        const paymentEmailEl = document.getElementById('payment-email');
+        const paymentTokenEl = document.getElementById('payment-token');
+
+        if (paymentEmailEl && paymentData.email_address) {
+            paymentEmailEl.textContent = paymentData.email_address;
+        }
+        if (paymentTokenEl && paymentData.access_token) {
+            paymentTokenEl.textContent = paymentData.access_token;
+        }
+
         // Clear any previous QR code
         qrContainer.innerHTML = '';
 
@@ -168,9 +181,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Add cancel button
         addCancelButton();
-
-        document.getElementById('payment-email').textContent = paymentData.email_address;
-        document.getElementById('payment-token').textContent = paymentData.access_token;
     }
 
     // Check if payment has been received
