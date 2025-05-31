@@ -3,6 +3,7 @@ Email service for managing and accessing email accounts.
 Modified to handle file permission issues between root and worker processes.
 This module provides methods for creating email accounts,
 listing emails, and retrieving email content via IMAP.
+Enhanced with reverse chronological sorting, read status tracking, and attachment support.
 """
 
 import email as email_lib
@@ -13,7 +14,9 @@ import secrets
 import time
 import uuid
 import stat
+from datetime import datetime, timezone
 from email.header import decode_header
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Tuple, Optional, cast
 from filelock import FileLock
 from loguru import logger
@@ -237,15 +240,141 @@ class EmailService:
 
         return decoded_value
 
+    def _parse_email_date(self, date_str: Optional[str]) -> datetime:
+        """Parse email date string to datetime object.
+
+        Args:
+            date_str: Raw date string from email header
+
+        Returns:
+            Parsed datetime object, defaults to epoch if parsing fails
+        """
+        if not date_str:
+            return datetime.fromtimestamp(0, tz=timezone.utc)
+
+        try:
+            # Parse RFC 2822 date format
+            parsed_date = parsedate_to_datetime(date_str)
+            # Ensure timezone awareness
+            if parsed_date.tzinfo is None:
+                parsed_date = parsed_date.replace(tzinfo=timezone.utc)
+            return parsed_date
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Failed to parse date '{date_str}': {e}")
+            return datetime.fromtimestamp(0, tz=timezone.utc)
+
+    def _check_read_status(self, mail: imaplib.IMAP4, email_id: bytes) -> bool:
+        """Check if email has been read by examining IMAP flags.
+
+        Args:
+            mail: IMAP connection
+            email_id: Email ID to check
+
+        Returns:
+            True if email has been read, False otherwise
+        """
+        try:
+            # Convert bytes to string for IMAP fetch
+            email_id_str = email_id.decode("utf-8")
+            status, data = mail.fetch(email_id_str, "(FLAGS)")
+            if status == "OK" and data and data[0]:
+                # Handle bytes response properly
+                flags_data = data[0]
+                if isinstance(flags_data, bytes):
+                    flags_str = flags_data.decode("utf-8", errors="replace")
+                else:
+                    flags_str = str(flags_data)
+                return "\\Seen" in flags_str
+        except Exception as e:
+            logger.error(f"Error checking read status for email {email_id!r}: {e}")
+        return False
+
+    def _mark_as_read(self, mail: imaplib.IMAP4, email_id: str) -> bool:
+        """Mark email as read by setting IMAP \\Seen flag.
+
+        Args:
+            mail: IMAP connection
+            email_id: Email ID to mark as read
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            status, _ = mail.store(email_id, "+FLAGS", "\\Seen")
+            return status == "OK"
+        except Exception as e:
+            logger.error(f"Error marking email {email_id} as read: {e}")
+            return False
+
+    def _extract_text_attachments(
+        self, msg: email_lib.message.Message
+    ) -> List[Dict[str, str]]:
+        """Extract plain text attachments from email message.
+
+        Args:
+            msg: Email message object
+
+        Returns:
+            List of attachment dictionaries with filename and content
+        """
+        attachments = []
+
+        for part in msg.walk():
+            if part.get_content_disposition() == "attachment":
+                filename = part.get_filename()
+                if not filename:
+                    continue
+
+                # Decode filename if needed
+                filename = self._decode_header_value(filename)
+
+                # Only process text files and files without extension (common for GPG)
+                is_text_file = (
+                    filename.lower().endswith((".txt", ".asc", ".gpg", ".pgp"))
+                    or "." not in filename
+                    or part.get_content_type().startswith("text/")
+                )
+
+                if is_text_file:
+                    try:
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            # Handle payload type properly
+                            if isinstance(payload, bytes):
+                                # Try to decode as text
+                                charset = part.get_content_charset() or "utf-8"
+                                try:
+                                    content = payload.decode(charset, errors="replace")
+                                except (UnicodeDecodeError, LookupError):
+                                    # Fallback to latin-1 which can decode any byte sequence
+                                    content = payload.decode(
+                                        "latin-1", errors="replace"
+                                    )
+                            else:
+                                # Already a string or other type
+                                content = str(payload)
+
+                            attachments.append(
+                                {
+                                    "filename": filename,
+                                    "content": content,
+                                    "content_type": part.get_content_type(),
+                                }
+                            )
+                    except Exception as e:
+                        logger.error(f"Error extracting attachment {filename}: {e}")
+
+        return attachments
+
     def list_emails(self, email_address: str, password: str) -> List[Dict[str, Any]]:
-        """List emails for an account via IMAP.
+        """List emails for an account via IMAP with reverse chronological sorting.
 
         Args:
             email_address: Email address to access
             password: Password for the email account
 
         Returns:
-            List of email metadata dictionaries
+            List of email metadata dictionaries sorted by date (newest first)
         """
         emails: List[Dict[str, Any]] = []
 
@@ -283,15 +412,20 @@ class EmailService:
                     # Extract and decode headers
                     subject = self._decode_header_value(msg["Subject"])
                     sender = self._decode_header_value(msg["From"])
-                    date = msg["Date"]
+                    date_str = msg["Date"]
+                    parsed_date = self._parse_email_date(date_str)
+
+                    # Check read status
+                    is_read = self._check_read_status(mail, email_id)
 
                     emails.append(
                         {
                             "id": email_id.decode(),
                             "subject": subject,
                             "sender": sender,
-                            "date": date,
-                            "read": False,  # Basic implementation - could be expanded
+                            "date": date_str,
+                            "parsed_date": parsed_date.isoformat(),
+                            "read": is_read,
                         }
                     )
 
@@ -302,6 +436,9 @@ class EmailService:
             mail.close()
             mail.logout()
 
+            # Sort emails by parsed date in reverse chronological order (newest first)
+            emails.sort(key=lambda x: x["parsed_date"], reverse=True)
+
         except Exception as e:
             logger.error(f"Error listing emails for {email_address}: {str(e)}")
 
@@ -310,7 +447,7 @@ class EmailService:
     def get_email_content(
         self, email_address: str, password: str, email_id: str
     ) -> Dict[str, Any]:
-        """Get content of specific email via IMAP.
+        """Get content of specific email via IMAP with attachment support.
 
         Args:
             email_address: Email address to access
@@ -318,7 +455,7 @@ class EmailService:
             email_id: ID of the email to retrieve
 
         Returns:
-            Dictionary with email content and metadata
+            Dictionary with email content, metadata, and attachments
         """
         try:
             # Connect to IMAP server
@@ -379,6 +516,12 @@ class EmailService:
                 except Exception as e:
                     logger.error(f"Error decoding email: {str(e)}")
 
+            # Extract text attachments
+            attachments = self._extract_text_attachments(msg)
+
+            # Mark email as read
+            self._mark_as_read(mail, email_id)
+
             mail.close()
             mail.logout()
 
@@ -389,6 +532,8 @@ class EmailService:
                 "date": date,
                 "body": body,
                 "content_type": content_type,
+                "attachments": attachments,
+                "read": True,  # Set to True since we just marked it as read
             }
 
         except Exception as e:

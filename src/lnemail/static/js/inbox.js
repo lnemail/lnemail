@@ -16,8 +16,22 @@ document.addEventListener('DOMContentLoaded', function() {
     const emailList = document.getElementById('email-list');
     const noEmailsDiv = document.querySelector('.no-emails');
     const loadingDiv = document.querySelector('.loading-emails');
+
+    // Email content elements
+    const emailSubject = document.getElementById('email-subject');
+    const emailFrom = document.getElementById('email-from');
+    const emailTo = document.getElementById('email-to');
+    const emailDate = document.getElementById('email-date');
+    const emailText = document.getElementById('email-text');
+    const emailHtml = document.getElementById('email-html');
+    const emailAttachments = document.getElementById('email-attachments');
+    const attachmentsList = document.getElementById('attachments-list');
+    const attachmentsCount = document.getElementById('email-attachments-count');
+    const attachmentCountSpan = document.getElementById('attachment-count');
+
     let autoRefreshInterval = null;
     let currentEmailAddress = '';
+    let emailsData = []; // Store for sorting and filtering
 
     // Check for existing access token
     const storedToken = localStorage.getItem(STORAGE_KEYS.accessToken);
@@ -32,27 +46,21 @@ document.addEventListener('DOMContentLoaded', function() {
     refreshBtn.addEventListener('click', fetchEmails);
     backToListBtn.addEventListener('click', showEmailList);
 
-    // Add a logout button to auth section as well
+    // Authentication and initialization
     function addResetButton() {
-        // Check if button already exists
-        if (document.getElementById('reset-auth-btn')) {
-            return;
-        }
+        if (document.getElementById('reset-auth-btn')) return;
 
-        // Create a container for the logout button
         const resetContainer = document.createElement('div');
         resetContainer.className = 'form-group reset-container';
         resetContainer.style.marginTop = '20px';
         resetContainer.style.textAlign = 'center';
 
-        // Create the button
         const resetBtn = document.createElement('button');
         resetBtn.id = 'reset-auth-btn';
         resetBtn.className = 'btn secondary';
         resetBtn.textContent = 'Cancel and Start Over';
         resetBtn.addEventListener('click', handleLogout);
 
-        // Add to container
         resetContainer.appendChild(resetBtn);
         authSection.appendChild(resetContainer);
     }
@@ -75,7 +83,6 @@ document.addEventListener('DOMContentLoaded', function() {
     async function authenticateAndLoadInbox(token) {
         showLoadingState();
         try {
-            // Get account details
             const accountData = await apiRequest(`${API_BASE_URL}/account`);
             currentEmailAddress = accountData.email_address;
             emailDisplay.textContent = currentEmailAddress;
@@ -91,12 +98,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Email fetching and rendering
     async function fetchEmails() {
         showLoadingState();
         try {
             const response = await apiRequest(ENDPOINTS.listEmails);
-            // Check if the response contains the emails array
             const emails = Array.isArray(response) ? response : (response.emails || []);
+
+            // Store emails data for future operations
+            emailsData = emails;
+
+            // Emails are already sorted by date in reverse chronological order from backend
             renderEmails(emails);
         } catch (error) {
             handleEmailFetchError(error);
@@ -105,31 +117,58 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function renderEmails(emails) {
         emailList.innerHTML = '';
+
         if (emails.length === 0) {
             noEmailsDiv.classList.remove('hidden');
             loadingDiv.classList.add('hidden');
             return;
         }
+
         emails.forEach(email => {
-            const emailElement = document.createElement('div');
-            emailElement.className = 'email-list-item';
-            emailElement.innerHTML = `
-                <div class="email-col from">${email.sender || email.from}</div>
-                <div class="email-col subject">${email.subject}</div>
-                <div class="email-col date">${formatDate(email.date)}</div>
-            `;
-            emailElement.addEventListener('click', () => showEmailContent(email.id));
+            const emailElement = createEmailListItem(email);
             emailList.appendChild(emailElement);
         });
+
         loadingDiv.classList.add('hidden');
         noEmailsDiv.classList.add('hidden');
     }
 
+    function createEmailListItem(email) {
+        const emailElement = document.createElement('div');
+        emailElement.className = `email-list-item${!email.read ? ' unread' : ''}`;
+
+        const readStatus = email.read ? 'read' : 'unread';
+        const readIcon = email.read ? '●' : '●';
+        const readColor = email.read ? '#28a745' : '#007bff';
+
+        emailElement.innerHTML = `
+            <div class="email-col status">
+                <span class="read-status ${readStatus}" style="color: ${readColor};">${readIcon}</span>
+            </div>
+            <div class="email-col from" title="${escapeHtml(email.sender || email.from)}">
+                ${escapeHtml(truncateText(email.sender || email.from, 25))}
+            </div>
+            <div class="email-col subject" title="${escapeHtml(email.subject)}">
+                ${escapeHtml(email.subject || '(No Subject)')}
+            </div>
+            <div class="email-col date" title="${formatFullDate(email.date)}">
+                ${formatDate(email.date)}
+            </div>
+        `;
+
+        emailElement.addEventListener('click', () => showEmailContent(email.id));
+        return emailElement;
+    }
+
+    // Email content display
     async function showEmailContent(emailId) {
         showLoadingState();
         try {
             const email = await apiRequest(ENDPOINTS.getEmail(emailId));
             populateEmailContent(email);
+
+            // Update the email list item to show as read
+            updateEmailReadStatus(emailId, true);
 
             emailListContainer.classList.add('hidden');
             emailContentSection.classList.remove('hidden');
@@ -139,21 +178,159 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function populateEmailContent(email) {
-        document.getElementById('email-subject').textContent = email.subject;
-        document.getElementById('email-from').textContent = email.sender || email.from;
-        document.getElementById('email-to').textContent = currentEmailAddress || email.to;
-        document.getElementById('email-date').textContent = formatDate(email.date);
-        document.getElementById('email-text').textContent = email.body || email.text_body;
-        // Only try to use HTML body if it exists
+        emailSubject.textContent = email.subject || '(No Subject)';
+        emailFrom.textContent = email.sender || email.from || 'Unknown';
+        emailTo.textContent = currentEmailAddress || email.to || 'Unknown';
+        emailDate.textContent = formatFullDate(email.date);
+
+        // Handle email body content
+        const bodyContent = email.body || email.text_body || '';
+        emailText.textContent = bodyContent;
+
+        // Handle HTML content if available
         const htmlBody = email.html_body || '';
-        const htmlContent = document.getElementById('email-html');
-        htmlContent.innerHTML = htmlBody;
-        htmlContent.classList.toggle('hidden', !htmlBody);
+        emailHtml.innerHTML = htmlBody;
+        emailHtml.classList.toggle('hidden', !htmlBody);
+
+        // Handle attachments
+        displayAttachments(email.attachments || []);
     }
 
+    function displayAttachments(attachments) {
+        if (!attachments || attachments.length === 0) {
+            emailAttachments.classList.add('hidden');
+            attachmentsCount.classList.add('hidden');
+            return;
+        }
+
+        attachmentsCount.classList.remove('hidden');
+        attachmentCountSpan.textContent = attachments.length;
+        emailAttachments.classList.remove('hidden');
+
+        attachmentsList.innerHTML = '';
+
+        attachments.forEach((attachment, index) => {
+            const attachmentElement = createAttachmentElement(attachment, index);
+            attachmentsList.appendChild(attachmentElement);
+        });
+    }
+
+    function createAttachmentElement(attachment, index) {
+        const attachmentDiv = document.createElement('div');
+        attachmentDiv.className = 'attachment-item';
+
+        const isGpgFile = isGpgContent(attachment.filename, attachment.content);
+        const contentClass = isGpgFile ? 'attachment-content gpg-content' : 'attachment-content';
+
+        attachmentDiv.innerHTML = `
+            <div class="attachment-header">
+                <span class="attachment-name" title="${escapeHtml(attachment.filename)}">
+                    📎 ${escapeHtml(attachment.filename)}
+                </span>
+                <span class="attachment-type">
+                    ${escapeHtml(attachment.content_type || 'text/plain')}
+                </span>
+            </div>
+            <div class="${contentClass}" id="attachment-${index}">
+                ${escapeHtml(attachment.content)}
+            </div>
+        `;
+
+        return attachmentDiv;
+    }
+
+    // Utility functions
+    function updateEmailReadStatus(emailId, isRead) {
+        // Update in stored data
+        const emailIndex = emailsData.findIndex(email => email.id === emailId);
+        if (emailIndex !== -1) {
+            emailsData[emailIndex].read = isRead;
+        }
+
+        // Update UI - find the email item and update its class
+        const emailItems = document.querySelectorAll('.email-list-item');
+        emailItems.forEach(item => {
+            // Check if this is the right email item by looking for the email ID
+            // Since we don't store the ID directly, we'll refresh the list
+        });
+
+        // For now, just refresh the email list to reflect the updated read status
+        // In a more sophisticated implementation, we could store the email ID as a data attribute
+        setTimeout(() => {
+            renderEmails(emailsData);
+        }, 100);
+    }
+
+    function isGpgContent(filename, content) {
+        const gpgExtensions = ['.asc', '.gpg', '.pgp'];
+        const hasGpgExtension = gpgExtensions.some(ext =>
+            filename.toLowerCase().endsWith(ext)
+        );
+
+        const hasGpgHeaders = content.includes('-----BEGIN PGP') ||
+                             content.includes('-----END PGP');
+
+        return hasGpgExtension || hasGpgHeaders;
+    }
+
+    function truncateText(text, maxLength) {
+        if (!text) return '';
+        return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function formatDate(dateStr) {
+        if (!dateStr) return 'Unknown';
+
+        try {
+            const date = new Date(dateStr);
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const emailDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+            if (emailDate.getTime() === today.getTime()) {
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } else if (emailDate.getTime() === today.getTime() - 86400000) {
+                return 'Yesterday';
+            } else if (date.getFullYear() === now.getFullYear()) {
+                return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+            } else {
+                return date.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+            }
+        } catch (error) {
+            return 'Invalid Date';
+        }
+    }
+
+    function formatFullDate(dateStr) {
+        if (!dateStr) return 'Unknown';
+
+        try {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString([], {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        } catch (error) {
+            return 'Invalid Date';
+        }
+    }
+
+    // Navigation and state management
     function showEmailList() {
         emailContentSection.classList.add('hidden');
         emailListContainer.classList.remove('hidden');
+        // Refresh emails to show updated read statuses
         fetchEmails();
     }
 
@@ -166,7 +343,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function showLoadingState() {
         loadingDiv.classList.remove('hidden');
         noEmailsDiv.classList.add('hidden');
-        emailList.innerHTML = '';
+        if (emailList) {
+            emailList.innerHTML = '';
+        }
     }
 
     function handleEmailFetchError(error) {
@@ -181,10 +360,10 @@ document.addEventListener('DOMContentLoaded', function() {
         autoRefreshInterval = setInterval(fetchEmails, 30000); // Refresh every 30 seconds
     }
 
-    // Add reset button to auth section
+    // Initialize
     addResetButton();
 
-    // Cleanup on page unload
+    // Cleanup
     window.addEventListener('beforeunload', () => {
         if (autoRefreshInterval) clearInterval(autoRefreshInterval);
     });

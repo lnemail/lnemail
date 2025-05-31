@@ -41,6 +41,7 @@
 <section id="inbox-section" class="card hidden">
     <div id="email-list-container">
         <div class="email-list-header">
+            <div class="email-col status">Status</div>
             <div class="email-col from">From</div>
             <div class="email-col subject">Subject</div>
             <div class="email-col date">Date</div>
@@ -63,14 +64,181 @@
                 <p>From: <span id="email-from"></span></p>
                 <p>To: <span id="email-to"></span></p>
                 <p>Date: <span id="email-date"></span></p>
+                <p id="email-attachments-count" class="hidden">Attachments: <span id="attachment-count"></span></p>
             </div>
         </div>
         <div class="email-body">
             <div id="email-text"></div>
             <div id="email-html" class="hidden"></div>
+            <div id="email-attachments" class="hidden">
+                <h4>Attachments</h4>
+                <div id="attachments-list"></div>
+            </div>
         </div>
     </div>
 </section>
+
+<style>
+/* Enhanced inbox styles */
+.email-list-item {
+    display: grid;
+    grid-template-columns: 60px 1fr 2fr 150px;
+    gap: 15px;
+    padding: 12px 15px;
+    border-bottom: 1px solid #e0e0e0;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    min-height: 50px;
+    align-items: center;
+}
+
+.email-list-item:hover {
+    background-color: #f8f9fa;
+}
+
+.email-list-item.unread {
+    background-color: #fff9e6;
+    font-weight: 600;
+}
+
+.email-list-item.unread:hover {
+    background-color: #fff3d3;
+}
+
+.email-list-header {
+    display: grid;
+    grid-template-columns: 60px 1fr 2fr 150px;
+    gap: 15px;
+    padding: 12px 15px;
+    background-color: #f5f5f5;
+    border-bottom: 2px solid #ddd;
+    font-weight: 600;
+    color: #555;
+    align-items: center;
+}
+
+.email-col {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.email-col.status {
+    text-align: center;
+    font-size: 12px;
+}
+
+.email-col.from {
+    color: #666;
+}
+
+.email-col.subject {
+    color: #333;
+}
+
+.email-col.date {
+    color: #888;
+    font-size: 14px;
+    text-align: right;
+}
+
+.read-status {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+
+.read-status.unread {
+    background-color: #007bff;
+}
+
+.read-status.read {
+    background-color: #28a745;
+}
+
+/* Attachment styles */
+.email-attachments {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.email-attachments h4 {
+    margin-bottom: 15px;
+    color: #333;
+    font-size: 16px;
+}
+
+.attachment-item {
+    background-color: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.attachment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.attachment-name {
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+}
+
+.attachment-type {
+    font-size: 12px;
+    color: #666;
+    background-color: #e9ecef;
+    padding: 2px 8px;
+    border-radius: 3px;
+}
+
+.attachment-content {
+    background-color: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.attachment-content.gpg-content {
+    background-color: #f8f9fa;
+    border-left: 4px solid #28a745;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .email-list-item,
+    .email-list-header {
+        grid-template-columns: 40px 1fr 100px;
+        gap: 10px;
+    }
+
+    .email-col.subject {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        margin-top: 5px;
+        font-size: 14px;
+    }
+
+    .email-list-item {
+        min-height: 70px;
+    }
+}
+</style>
 {% endblock %}
 
 {% block extra_js %}
