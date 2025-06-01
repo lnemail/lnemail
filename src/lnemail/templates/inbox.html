@@ -1,34 +1,27 @@
 {% extends "base.html" %}
-
 {% block title %}LNemail Inbox - Bitcoin Lightning Email Service{% endblock %}
-
 {% block description %}Access your anonymous LNemail inbox. Bitcoin Lightning Network powered disposable email service with instant delivery and maximum privacy.{% endblock %}
-
 {% block keywords %}bitcoin lightning email inbox, anonymous email access, lightning network email, bitcoin email service, private disposable email, fast anonymous email{% endblock %}
-
 {% block og_title %}LNemail Inbox - Bitcoin Lightning Email Service{% endblock %}
 {% block og_url %}https://lnemail.net/inbox{% endblock %}
-
 {% block mobile_menu %}
 <!-- No mobile menu toggle needed for inbox -->
 {% endblock %}
-
 {% block nav_links %}
 <!-- Simple navigation for inbox -->
 {% endblock %}
-
 {% block content %}
 <section class="inbox-header">
     <h2>Your Anonymous Inbox</h2>
     <div class="inbox-controls">
         <div id="email-display"></div>
         <div class="btn-group">
+            <button id="compose-btn" class="btn primary">Compose</button> {# New Compose button #}
             <button id="refresh-btn" class="btn">Refresh</button>
             <button id="logout-btn" class="btn">Logout</button>
         </div>
     </div>
 </section>
-
 <section id="auth-section" class="card">
     <h3>Enter Access Token</h3>
     <p>Please enter the access token you received when creating your Bitcoin Lightning email account.</p>
@@ -37,7 +30,6 @@
         <button id="auth-btn" class="btn primary">Access Inbox</button>
     </div>
 </section>
-
 <section id="inbox-section" class="card hidden">
     <div id="email-list-container">
         <div class="email-list-header">
@@ -76,9 +68,56 @@
             </div>
         </div>
     </div>
+    {# New Compose Email Section #}
+    <div id="compose-email-section" class="hidden">
+        <h3>Compose New Email</h3>
+        <div class="compose-form">
+            <div class="form-group">
+                <label for="compose-to">To:</label>
+                <input type="email" id="compose-to" placeholder="recipient@example.com" required>
+            </div>
+            <div class="form-group">
+                <label for="compose-subject">Subject:</label>
+                <input type="text" id="compose-subject" placeholder="Email subject">
+            </div>
+            <div class="form-group">
+                <label for="compose-body">Body (Plain Text Only):</label>
+                <textarea id="compose-body" rows="10" placeholder="Your message here..." required></textarea>
+            </div>
+            <div class="form-actions">
+                <button id="send-email-btn" class="btn primary">Send Email</button>
+                <button id="cancel-compose-btn" class="btn secondary">Cancel</button>
+            </div>
+        </div>
+        {# Payment pending section for sending an email #}
+        <div id="send-payment-pending" class="hidden payment-section card"> {# Added 'card' class #}
+            <h4>Pay Lightning Invoice to Send Email</h4>
+            <div class="payment-content">
+                <div id="send-qr-container">
+                    <div id="send-qrcode"></div>
+                </div>
+                <div class="payment-details">
+                    <p id="send-invoice-amount"></p>
+                    <div class="copy-wrapper">
+                        <span id="send-bolt11-invoice" class="copy-text"></span>
+                        <button id="send-copy-invoice" class="btn small">Copy</button>
+                    </div>
+                    <button id="send-webln-pay-btn" class="btn primary hidden">Pay with Lightning Extension</button>
+                    <div class="status-container">
+                        <div id="send-loader" class="loader"></div>
+                        <p id="send-status-text" class="status-text"></p>
+                    </div>
+                    <button id="cancel-send-payment-btn" class="btn secondary">Cancel Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </section>
+{# Global Notification Container #}
+<div id="notification-container"></div>
 {% endblock %}
-
 {% block extra_js %}
+<script src="/static/js/qrious.min.js"></script> {# Required for QR codes #}
 <script src="/static/js/inbox.js"></script>
 {% endblock %}
+> src/lnemail/static/css/style.css <

@@ -1,6 +1,5 @@
 """
 Configuration settings for the LNemail application.
-
 This module provides a centralized configuration management system using Pydantic Settings.
 All environment variables are loaded and validated here before being used in the application.
 """
@@ -31,6 +30,11 @@ class Settings(BaseSettings):
     IMAP_HOST: str = "mail.lnemail.net"
     IMAP_PORT: int = 143
 
+    # SMTP settings for sending emails
+    SMTP_HOST: str = "mail.lnemail.net"
+    SMTP_PORT: int = 587
+    SMTP_USE_TLS: bool = True
+
     # LND settings
     LND_GRPC_HOST: str = "lnd:10009"
     LND_CERT_PATH: str = "/lnd/tls.cert"
@@ -38,6 +42,7 @@ class Settings(BaseSettings):
 
     # Payment settings
     EMAIL_PRICE: int = 994
+    EMAIL_SEND_PRICE: int = 100  # New: Price for sending one email
 
     # LNProxy settings
     USE_LNPROXY: bool = True

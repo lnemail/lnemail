@@ -1,23 +1,15 @@
 {% extends "base.html" %}
-
 {% block title %}LNemail - Fast Anonymous Email with Bitcoin Lightning Network{% endblock %}
-
-{% block description %}Fast anonymous email accounts powered by Bitcoin Lightning Network. Get instant disposable email addresses with no personal information required - just pay with Bitcoin Lightning and start receiving emails.{% endblock %}
-
+{% block description %}Fast anonymous email accounts powered by Bitcoin Lightning Network. Get instant disposable email addresses with no personal information required - just pay with Bitcoin Lightning and start sending and receiving emails.{% endblock %}
 {% block keywords %}bitcoin lightning email, fast anonymous email, lightning network disposable email, bitcoin email service, instant anonymous email, lightning payments email, private bitcoin email, anonymous email bitcoin{% endblock %}
-
 {% block og_url %}https://lnemail.net/{% endblock %}
-
 {% block extra_head %}
 {% endblock %}
-
 {% block content %}
 <section class="hero">
     <h2>Fast Anonymous Email Accounts</h2>
-    <p>Get instant disposable email addresses powered by Bitcoin Lightning Network. No personal information required - just pay with Lightning and start receiving emails immediately.</p>
-    <p class="beta-notice">⚠️ BETA SOFTWARE - Use at your own risk</p>
+    <p>Get instant disposable email addresses powered by Bitcoin Lightning Network. No personal information required - just pay with Lightning and start sending and receiving emails immediately.</p>
 </section>
-
 <section id="payment-section" class="card">
     <div id="pre-payment">
         <h3>Get Your Anonymous Email</h3>
@@ -81,7 +73,6 @@
         </div>
     </div>
 </section>
-
 <section class="example">
     <h3>How It Works</h3>
     <div class="example-steps">
@@ -98,12 +89,11 @@
             <p>Once Lightning payment confirms, you'll get your anonymous email address and access token.</p>
         </div>
         <div class="step">
-            <h4>4. Start Receiving Emails</h4>
-            <p>Access your inbox through our web interface or API to read incoming emails.</p>
+            <h4>4. Send and Receive Emails</h4>
+            <p>Access your inbox through our web interface or API to read incoming emails and send outgoing messages.</p>
         </div>
     </div>
 </section>
-
 <section class="features">
     <div class="feature">
         <h3>Anonymous</h3>
@@ -111,45 +101,42 @@
     </div>
     <div class="feature">
         <h3>Instant</h3>
-        <p>Lightning Network payments confirm in seconds. Start receiving emails immediately.</p>
+        <p>Lightning Network payments confirm in seconds. Start sending and receiving emails immediately.</p>
     </div>
     <div class="feature">
-        <h3>Simple</h3>
-        <p>Just an inbox for one year. No attachments, no complications, no tracking.</p>
+        <h3>Full Service</h3>
+        <p>Complete email functionality - send and receive messages with Lightning-powered payments.</p>
     </div>
 </section>
-
 <section class="limitations">
-    <h3>Service Limitations</h3>
+    <h3>Service Capabilities</h3>
     <ul>
-        <li><strong>Receiving Only:</strong> You cannot send emails from this service.</li>
-        <li><strong>No IMAP Access:</strong> Emails can only be accessed through our web interface or API.</li>
-        <li><strong>No Attachments:</strong> Email attachments are not supported or displayed.</li>
-        <li><strong>HTML Stripped:</strong> For security, emails are displayed as plain text only.</li>
+        <li><strong>Send & Receive:</strong> Full email functionality with Lightning payments for sending.</li>
+        <li><strong>Web & API Access:</strong> Emails accessible through our web interface and REST API.</li>
+        <li><strong>Plain Text Focus:</strong> HTML content is stripped for security; emails are displayed as plain text.</li>
+        <li><strong>Lightning Payments:</strong> Small Lightning payments required for each outgoing email ({{ settings.EMAIL_SEND_PRICE }} sats).</li>
     </ul>
 </section>
-
 <section class="use-cases">
     <h3>Perfect For</h3>
     <div class="use-case-list">
         <div class="use-case">
             <h4>Two-Factor Authentication</h4>
-            <p>Fast email delivery for 2FA codes without the limitations of 10-minute mail services.</p>
+            <p>Fast email delivery for 2FA codes with reliable long-term access.</p>
         </div>
         <div class="use-case">
-            <h4>Account Verification</h4>
-            <p>Anonymous account verification that lasts longer than temporary email services.</p>
+            <h4>Anonymous Communication</h4>
+            <p>Send and receive emails anonymously with Bitcoin Lightning payments.</p>
         </div>
         <div class="use-case">
             <h4>Bitcoin & Lightning Apps</h4>
-            <p>Perfect for Bitcoin-native applications needing email integration with Lightning payments.</p>
+            <p>Perfect for Bitcoin-native applications needing full email integration with Lightning payments.</p>
         </div>
     </div>
 </section>
-
 <section class="api-usage">
     <h3>API Access</h3>
-    <p>LNemail can be accessed programmatically via our simple API. <a href="/docs" target="_blank" class="api-docs-link">View full API documentation →</a></p>
+    <p>LNemail can be accessed programmatically via our REST API. <a href="/docs" target="_blank" class="api-docs-link">View full API documentation →</a></p>
     <div class="code-example">
         <h4>Create Email Account</h4>
         <pre><code class="language-bash">curl -X POST 'https://lnemail.net/api/v1/email'</code></pre>
@@ -165,12 +152,21 @@
     -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'</code></pre>
     </div>
     <div class="code-example">
-        <h4>Check Lightning Payment Status</h4>
+        <h4>Send Email</h4>
+        <pre><code class="language-bash">curl -X POST 'https://lnemail.net/api/v1/email/send' \
+    -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+    -d '{"recipient": "example@example.com", "subject": "Test", "body": "Hello World!"}'</code></pre>
+    </div>
+    <div class="code-example">
+        <h4>Check Send Payment Status</h4>
+        <pre><code class="language-bash">curl -X GET 'https://lnemail.net/api/v1/email/send/status/PAYMENT_HASH'</code></pre>
+    </div>
+    <div class="code-example">
+        <h4>Check Account Payment Status</h4>
         <pre><code class="language-bash">curl -X GET 'https://lnemail.net/api/v1/payment/PAYMENT_HASH'</code></pre>
     </div>
 </section>
 {% endblock %}
-
 {% block extra_js %}
 <script src="/static/js/qrious.min.js"></script>
 <script src="/static/js/payment.js"></script>

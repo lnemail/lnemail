@@ -1,14 +1,15 @@
 # LNemail
 
-Fast anonymous email accounts powered by Bitcoin Lightning Network payments. Get a private disposable email address in seconds - no personal information required, just pay with Bitcoin Lightning and start receiving emails immediately.
+Fast anonymous email accounts powered by Bitcoin Lightning Network payments. Get a private disposable email address in seconds - no personal information required, just pay with Bitcoin Lightning and start sending and receiving emails immediately.
 
 ## Features
 
 - **Fast & Anonymous**: Get your email address instantly after Bitcoin Lightning payment - no signup, no verification
 - **Bitcoin-Powered Privacy**: Pay with Lightning Network for maximum anonymity and speed
+- **Send & Receive**: Full email functionality with Lightning payments for outgoing messages
 - **One-Year Duration**: Email accounts valid for one year with renewal option
-- **Receive-Only**: Simple inbox for incoming emails, no attachments or HTML rendering
 - **Secure Access**: Token-based authentication with no password storage
+- **API Access**: Complete REST API for programmatic email management
 
 ## System Architecture
 
@@ -17,27 +18,29 @@ Fast anonymous email accounts powered by Bitcoin Lightning Network payments. Get
 #### Backend API (FastAPI)
 - Core service handling Lightning Network payments, email management, and user authentication
 - Connects to LND for Bitcoin Lightning payments via `LNDService`
-- Manages email accounts via `EmailService`
-- Provides RESTful API endpoints for email reading and account management
+- Manages email accounts and SMTP sending via `EmailService`
+- Provides RESTful API endpoints for email reading, sending, and account management
 
 #### Database (SQLModel)
 - Uses SQLite with SQLModel ORM and Alembic migrations
-- Stores email accounts, access tokens, and payment status
-- Manages expiration dates for accounts
+- Stores email accounts, access tokens, payment status, and pending outgoing emails
+- Manages expiration dates for accounts and email send payments
 
 #### Background Processing (RQ + Redis)
 - Manages asynchronous tasks via task queue
 - Handles Lightning payment verification via `check_payment_status`
 - Processes email account creation after successful Bitcoin payment
+- Handles outgoing email delivery after Lightning payment confirmation
 
 #### Mail Server Integration
 - Creates individual email accounts via IPC (Inter-Process Communication)
 - Uses file-based requests between services with locking mechanism
 - Reads emails via IMAP protocol
+- Sends emails via SMTP with authentication
 
 #### Web Interfaces
 - Account creation and Lightning payment interface (`index.html`)
-- Email reading interface (`inbox.html`)
+- Email reading and composition interface (`inbox.html`)
 - Static assets (CSS, JavaScript) for frontend functionality
 
 ## API Endpoints
@@ -63,6 +66,15 @@ Fast anonymous email accounts powered by Bitcoin Lightning Network payments. Get
    - Requires access token authentication
    - Returns email content with HTML stripped
 
+5. **Send Email**
+   - `POST /api/v1/email/send`
+   - Requires access token authentication
+   - Generates Lightning invoice for email sending
+
+6. **Check Send Payment Status**
+   - `GET /api/v1/email/send/status/{payment_hash}`
+   - Returns status of outgoing email Lightning payment
+
 ### Authentication
 
 All email access endpoints require a valid access token passed in the Authorization header:
@@ -71,27 +83,31 @@ All email access endpoints require a valid access token passed in the Authorizat
 Authorization: Bearer {access_token}
 ```
 
-## Service Limitations
+## Service Capabilities
 
-- **Receiving Only**: You cannot send emails from this service
-- **No IMAP Access**: Emails can only be accessed through the web interface or API
-- **No Attachments**: Email attachments are not supported or displayed
-- **HTML Stripped**: For security, emails are displayed as plain text only
+- **Send & Receive**: Full email functionality with Lightning payments for sending
+- **Web & API Access**: Emails accessible through web interface and REST API
+- **Plain Text Focus**: HTML content is stripped for security; emails are displayed as plain text
+- **Lightning Payments**: Small Lightning payments required for each outgoing email
 
 ## Technical Implementation
 
 ### Email Service
+
 The `EmailService` class handles:
 - Account creation via IPC with mail system
 - Email listing and fetching via IMAP
+- Email sending via SMTP with authentication
 - Secure file-based inter-process communication with proper permissions handling
 - Email header decoding for internationalization support
 
 ### Lightning Payment Processing
+
 The system uses:
 - Direct LND integration for Bitcoin Lightning Network payments
 - Optional LNProxy integration for enhanced privacy
 - Background job processing for Lightning payment verification
+- Separate payment flows for account creation and email sending
 
 ### Security Model
 
@@ -112,10 +128,11 @@ The system uses:
 
 LNemail is ideal for:
 - Two-factor authentication requiring fast email delivery
+- Anonymous communication with Bitcoin Lightning integration
 - Account verification where anonymous registration is preferred
 - Newsletter subscriptions without personal data exposure
 - Services requiring persistent email beyond temporary mail services
-- Bitcoin/Lightning-native applications needing email integration
+- Bitcoin/Lightning-native applications needing full email integration
 
 ## Development Environment
 
@@ -159,7 +176,7 @@ docker exec lnd lncli --network=regtest {walletbalance|channelbalance|pendingcha
 The development environment includes:
 - Bitcoin regtest node with automatic mining
 - Two LND nodes with channels for Lightning payments
-- Mail server for email handling
+- Mail server for email handling with SMTP support
 - Redis for background job processing
 - LNemail API and worker services
 
@@ -182,6 +199,8 @@ swaks --to sereneforest630@lnemail.test \
       --body "Test email body" \
       --header "Subject: Test Email"
 ```
+
+You can also send emails from your LNemail account using the web interface or API.
 
 ### Cleanup
 

@@ -681,6 +681,8 @@ services:
       - SECRET_KEY=dev_secret_key_for_local_testing_only
       - IMAP_HOST=mail.lnemail.test
       - IMAP_PORT=143
+      - SMTP_HOST=mail.lnemail.test
+      - SMTP_PORT=587
     ports:
       - "8000:8000"
     networks:
@@ -733,6 +735,10 @@ services:
       - REDIS_HOST=lnemail-redis
       - REDIS_PORT=6379
       - SECRET_KEY=dev_secret_key_for_local_testing_only
+      - IMAP_HOST=mail.lnemail.test
+      - IMAP_PORT=143
+      - SMTP_HOST=mail.lnemail.test
+      - SMTP_PORT=587
     networks:
       - lnd
       - lnemail

@@ -1,13 +1,11 @@
 """
 API request and response schema models.
-
 These Pydantic models define the structure of data accepted and returned by the API,
 providing validation, serialization, and documentation.
 """
 
 from datetime import datetime
-from typing import List
-
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -62,6 +60,34 @@ class EmailContent(BaseModel):
     content_type: str
     attachments: list[dict[str, str]]
     read: bool
+
+
+class EmailSendRequest(BaseModel):
+    """Request schema for sending an email."""
+
+    recipient: str
+    subject: str
+    body: str
+
+
+class EmailSendInvoiceResponse(BaseModel):
+    """Response schema for initiating an email send, returning an invoice."""
+
+    payment_request: str
+    payment_hash: str
+    price_sats: int
+    sender_email: str
+    recipient: str
+    subject: str
+
+
+class EmailSendStatusResponse(BaseModel):
+    """Response schema for checking the status of an email send payment."""
+
+    payment_status: str
+    sender_email: Optional[str] = None
+    recipient: Optional[str] = None
+    subject: Optional[str] = None
 
 
 class ErrorResponse(BaseModel):

@@ -1,29 +1,22 @@
 {% extends "base.html" %}
-
 {% block title %}Terms of Service - LNemail{% endblock %}
-
 {% block description %}Terms of Service for LNemail - Fast anonymous email accounts powered by Bitcoin Lightning Network{% endblock %}
-
 {% block keywords %}LNemail terms of service, bitcoin lightning email terms, anonymous email service terms{% endblock %}
-
 {% block og_title %}Terms of Service - LNemail{% endblock %}
 {% block og_url %}https://lnemail.net/tos{% endblock %}
-
 {% block nav_links %}
 <a href="/" class="nav-link">Home</a>
 <a href="/inbox" class="nav-link">Inbox</a>
 {% endblock %}
-
 {% block content %}
 <section class="hero">
     <h2>Terms of Service</h2>
-    <p class="last-updated">Last updated: May 2025</p>
+    <p class="last-updated">Last updated: June 2025</p>
 </section>
-
 <section class="card">
     <div class="tos-content">
         <h3>1. Service Overview</h3>
-        <p>LNemail provides fast anonymous email accounts powered by Bitcoin Lightning Network payments. This is a receive-only email service that prioritizes privacy and anonymity.</p>
+        <p>LNemail provides fast anonymous email accounts powered by Bitcoin Lightning Network payments. This is a full-featured email service supporting both sending and receiving with Lightning-powered payments.</p>
 
         <h3>2. Privacy & Anonymity Commitment</h3>
         <ul>
@@ -42,41 +35,44 @@
             <li><strong>No Long-term Storage:</strong> We do not retain user data beyond the service period and grace period.</li>
         </ul>
 
-        <h3>4. Service Limitations</h3>
+        <h3>4. Service Features</h3>
         <ul>
-            <li><strong>Receive-Only:</strong> You cannot send emails from LNemail accounts.</li>
-            <li><strong>No IMAP/POP3:</strong> Email access is only available through our web interface or API.</li>
-            <li><strong>No Attachments:</strong> Email attachments are not supported or displayed.</li>
-            <li><strong>Plain Text Only:</strong> HTML content is stripped for security; emails are displayed as plain text.</li>
-            <li><strong>Beta Software:</strong> This service is currently in beta - use at your own risk.</li>
+            <li><strong>Send & Receive:</strong> Full email functionality with Lightning payments for outgoing messages.</li>
+            <li><strong>Web & API Access:</strong> Email access through our web interface and REST API.</li>
+            <li><strong>Plain Text Focus:</strong> HTML content is stripped for security; emails are displayed as plain text.</li>
+            <li><strong>Lightning Payments for Sending:</strong> Small Lightning payments required for each outgoing email for spam prevention.</li>
+            <li><strong>No Attachments:</strong> Email attachments are not supported for security reasons.</li>
         </ul>
 
         <h3>5. Payment & Access</h3>
         <ul>
             <li><strong>Lightning Network Only:</strong> All payments must be made via Bitcoin Lightning Network.</li>
+            <li><strong>Account Creation:</strong> One-time Lightning payment for one-year email account access.</li>
+            <li><strong>Email Sending:</strong> Per-email Lightning payments for outgoing messages to prevent spam.</li>
             <li><strong>Token-Based Authentication:</strong> Access is controlled through secure tokens with no password storage.</li>
             <li><strong>No Refunds:</strong> All Lightning Network payments are final and non-refundable.</li>
-            <li><strong>Payment Verification:</strong> Account activation requires successful Lightning payment confirmation.</li>
+            <li><strong>Payment Verification:</strong> Account activation and email sending require successful Lightning payment confirmation.</li>
         </ul>
 
         <h3>6. Acceptable Use</h3>
         <ul>
-            <li>Service is intended for legitimate email receiving purposes only.</li>
-            <li>Service may not be used for spam, phishing, or other malicious activities.</li>
+            <li>Service is intended for legitimate email communication purposes only.</li>
+            <li>Service may not be used for spam, phishing, harassment, or other malicious activities.</li>
+            <li>Lightning payment requirements help prevent abuse and spam.</li>
         </ul>
 
         <h3>7. Service Availability</h3>
         <ul>
             <li><strong>Best Effort:</strong> We provide service on a best-effort basis with no uptime guarantees.</li>
             <li><strong>Maintenance:</strong> Service may be interrupted for maintenance or upgrades.</li>
-            <li><strong>Beta Status:</strong> As beta software, temporary outages or data loss may occur.</li>
+            <li><strong>Continuous Improvement:</strong> Service is actively maintained and improved.</li>
         </ul>
 
         <h3>8. Liability & Disclaimers</h3>
         <ul>
-            <li><strong>Use at Your Own Risk:</strong> LNemail is provided "as is" without warranties.</li>
-            <li><strong>No Liability:</strong> We are not liable for any damages, losses, or issues arising from service use.</li>
-            <li><strong>Data Loss:</strong> Users should not rely on LNemail for critical communications as data loss may occur.</li>
+            <li><strong>Service Provided "As Is":</strong> LNemail is provided without warranties.</li>
+            <li><strong>Limited Liability:</strong> We are not liable for any damages, losses, or issues arising from service use.</li>
+            <li><strong>Data Backup:</strong> Users should not rely solely on LNemail for critical communications.</li>
         </ul>
 
         <h3>9. Open Source</h3>

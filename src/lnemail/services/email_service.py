@@ -1,12 +1,6 @@
-"""
-Email service for managing and accessing email accounts.
-Modified to handle file permission issues between root and worker processes.
+"""Email service for managing and accessing email accounts.
 This module provides methods for creating email accounts,
-listing emails, and retrieving email content via IMAP.
-Enhanced with reverse chronological sorting, read status tracking, and attachment support.
-Updated with TLS/SSL support for secure IMAP connections.
-Fixed to handle missing or None email headers gracefully.
-Fixed read state management to preserve unread status during listing.
+listing, sending, and retrieving email content via IMAP.
 """
 
 import email as email_lib
@@ -14,12 +8,15 @@ import imaplib
 import json
 import os
 import secrets
+import smtplib
 import ssl
+import stat
 import time
 import uuid
-import stat
 from datetime import datetime, timezone
 from email.header import decode_header
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Tuple, Optional, cast
 from filelock import FileLock
@@ -36,6 +33,11 @@ class EmailService:
         self.mail_domain = settings.MAIL_DOMAIN
         self.imap_host = settings.IMAP_HOST
         self.imap_port = settings.IMAP_PORT
+
+        # SMTP settings
+        self.smtp_host = settings.SMTP_HOST
+        self.smtp_port = settings.SMTP_PORT
+        self.smtp_use_tls = settings.SMTP_USE_TLS
 
         # Shared file system paths
         self.requests_dir = settings.MAIL_REQUESTS_DIR
@@ -65,35 +67,64 @@ class EmailService:
                 if settings.DEBUG:
                     context.check_hostname = False
                     context.verify_mode = ssl.CERT_NONE
-
                 mail = imaplib.IMAP4_SSL(
                     host=self.imap_host, port=self.imap_port, ssl_context=context
                 )
                 logger.debug(
                     f"Created SSL IMAP connection to {self.imap_host}:{self.imap_port}"
                 )
-
             else:
                 # Use explicit TLS (STARTTLS) connection
                 mail = imaplib.IMAP4(host=self.imap_host, port=self.imap_port)
-
                 # Create SSL context
                 context = ssl.create_default_context()
                 # For development environments with self-signed certificates
                 if settings.DEBUG:
                     context.check_hostname = False
                     context.verify_mode = ssl.CERT_NONE
-
                 # Upgrade to TLS
                 mail.starttls(ssl_context=context)
                 logger.debug(
                     f"Created STARTTLS IMAP connection to {self.imap_host}:{self.imap_port}"
                 )
-
             return mail
-
         except Exception as e:
             logger.error(f"Failed to create IMAP connection: {e}")
+            raise
+
+    def _create_smtp_connection(self) -> smtplib.SMTP:
+        """Create and return a secure SMTP connection.
+
+        Returns:
+            Configured SMTP connection with TLS enabled
+
+        Raises:
+            Exception: If connection fails
+        """
+        try:
+            # Create SMTP connection
+            smtp = smtplib.SMTP(self.smtp_host, self.smtp_port)
+
+            if self.smtp_use_tls:
+                # Create SSL context
+                context = ssl.create_default_context()
+                # For development environments with self-signed certificates
+                if settings.DEBUG:
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+                # Upgrade to TLS
+                smtp.starttls(context=context)
+                logger.debug(
+                    f"Created STARTTLS SMTP connection to {self.smtp_host}:{self.smtp_port}"
+                )
+            else:
+                logger.debug(
+                    f"Created plain SMTP connection to {self.smtp_host}:{self.smtp_port}"
+                )
+
+            return smtp
+        except Exception as e:
+            logger.error(f"Failed to create SMTP connection: {e}")
             raise
 
     def _set_permissions(self, file_path: str) -> None:
@@ -202,7 +233,6 @@ class EmailService:
                     return response_data.get("success", False), response_data.get(
                         "data", {}
                     )
-
                 except (json.JSONDecodeError, FileNotFoundError) as e:
                     logger.error(f"Error reading response file: {str(e)}")
                     time.sleep(wait_interval)
@@ -265,10 +295,74 @@ class EmailService:
                 error_msg = response.get("error", "Unknown error")
                 logger.error(f"Failed to create email account: {error_msg}")
                 return False, ""
-
         except Exception as e:
             logger.error(f"Error creating email account: {str(e)}")
             return False, ""
+
+    def send_email_with_auth(
+        self, sender: str, sender_password: str, recipient: str, subject: str, body: str
+    ) -> Tuple[bool, str]:
+        """Send an email via SMTP with authentication.
+
+        Args:
+            sender: The email address from which to send
+            sender_password: The password for the sender's email account
+            recipient: The email address to send to
+            subject: The subject of the email
+            body: The plain text body of the email
+
+        Returns:
+            Tuple containing success status and an optional error message or confirmation
+        """
+        try:
+            # Get current UTC timestamp
+            utc_timestamp = datetime.now(timezone.utc)
+
+            # Create the email message
+            msg = MIMEMultipart()
+            msg["From"] = sender
+            msg["To"] = recipient
+            msg["Subject"] = subject
+            # Set the Date header with current UTC timestamp
+            msg["Date"] = utc_timestamp.strftime("%a, %d %b %Y %H:%M:%S %z")
+
+            msg.attach(MIMEText(body, "plain"))
+
+            # Create SMTP connection
+            smtp = self._create_smtp_connection()
+
+            try:
+                # Login with sender credentials
+                smtp.login(sender, sender_password)
+
+                # Send the email
+                smtp.send_message(msg)
+
+                logger.info(
+                    f"Successfully sent email from {sender} to {recipient} at {utc_timestamp.isoformat()}"
+                )
+                return True, f"Email sent successfully at {utc_timestamp.isoformat()}"
+
+            finally:
+                # Always close the SMTP connection
+                smtp.quit()
+
+        except smtplib.SMTPAuthenticationError as e:
+            error_msg = f"SMTP authentication failed for {sender}: {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
+        except smtplib.SMTPRecipientsRefused as e:
+            error_msg = f"Recipient {recipient} refused: {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
+        except smtplib.SMTPSenderRefused as e:
+            error_msg = f"Sender {sender} refused: {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
+        except Exception as e:
+            error_msg = f"Failed to send email: {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
 
     def _decode_header_value(self, header_value: Optional[str]) -> str:
         """Safely decode email header values.
@@ -662,7 +756,6 @@ class EmailService:
 
             # Handle read status based on parameters and initial state
             final_read_status = True  # Default assumption after RFC822 fetch
-
             if not mark_as_read and not initial_read_status:
                 # User doesn't want to mark as read and it wasn't read before
                 # Try to restore the unread state
@@ -765,7 +858,6 @@ class EmailService:
                 error_msg = response.get("error", "Unknown error")
                 logger.error(f"Failed to delete email account: {error_msg}")
                 return False
-
         except Exception as e:
             logger.error(f"Error deleting email account: {str(e)}")
             return False

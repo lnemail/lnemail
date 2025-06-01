@@ -13,13 +13,16 @@ from sqlmodel import Session, select
 from loguru import logger
 
 from ..config import settings
-from ..core.models import EmailAccount, PaymentStatus
+from ..core.models import EmailAccount, PaymentStatus, PendingOutgoingEmail
 from ..core.schemas import (
     AccountResponse,
     EmailContent,
     EmailHeader,
     EmailListResponse,
     EmailCreateRequest,
+    EmailSendInvoiceResponse,
+    EmailSendRequest,
+    EmailSendStatusResponse,
     ErrorResponse,
     HealthResponse,
     InvoiceResponse,
@@ -28,7 +31,7 @@ from ..core.schemas import (
 from ..db import get_db
 from ..services.email_service import EmailService
 from ..services.lnd_service import LNDService
-from ..services.tasks import check_payment_status, queue
+from ..services.tasks import check_payment_status, process_send_email_payment, queue
 
 # Create routers
 router = APIRouter()
@@ -154,10 +157,10 @@ async def create_email_account(
             price_sats=settings.EMAIL_PRICE,
         )
 
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create email account: {str(e)}",
+            detail="Failed to create email account",
         )
 
 
@@ -216,6 +219,136 @@ async def check_payment(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to check payment status",
+        )
+
+
+@router.post(
+    "/email/send",
+    response_model=EmailSendInvoiceResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Account not paid or expired"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def send_email(
+    send_request: EmailSendRequest,
+    account: EmailAccount = Depends(get_current_account),
+    db: Session = Depends(get_db),
+) -> EmailSendInvoiceResponse:
+    """Initiate sending an email from the authenticated account.
+
+    Generates a Lightning invoice that the user must pay to send the email.
+    The email itself will be sent in a background task after the invoice is paid.
+
+    Args:
+        send_request: Details of the email to send (recipient, subject, body).
+        account: Authenticated EmailAccount from token validation.
+        db: Database session dependency.
+
+    Returns:
+        EmailSendInvoiceResponse: Details of the Lightning invoice to pay.
+    """
+    try:
+        sender_email = account.email_address
+        memo = f"Send email from {sender_email} to {send_request.recipient}"
+
+        invoice = lnd_service.create_invoice(settings.EMAIL_SEND_PRICE, memo)
+
+        pending_email = PendingOutgoingEmail(
+            sender_email=sender_email,
+            recipient=send_request.recipient,
+            subject=send_request.subject,
+            body=send_request.body,
+            payment_hash=invoice["payment_hash"],
+            payment_request=invoice["payment_request"],
+            price_sats=settings.EMAIL_SEND_PRICE,
+            status=PaymentStatus.PENDING,
+        )
+
+        db.add(pending_email)
+        db.commit()
+        db.refresh(pending_email)
+
+        # Schedule background task to process email send after payment
+        queue.enqueue(
+            process_send_email_payment,
+            invoice["payment_hash"],
+            job_timeout=600,  # 10 minute timeout for payment confirmation
+        )
+
+        return EmailSendInvoiceResponse(
+            payment_request=invoice["payment_request"],
+            payment_hash=invoice["payment_hash"],
+            price_sats=settings.EMAIL_SEND_PRICE,
+            sender_email=sender_email,
+            recipient=send_request.recipient,
+            subject=send_request.subject,
+        )
+
+    except Exception as e:
+        logger.error(f"Error initiating email send: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to initiate email send",
+        )
+
+
+@router.get(
+    "/email/send/status/{payment_hash}",
+    response_model=EmailSendStatusResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Payment not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def check_send_email_payment_status(
+    payment_hash: str, db: Session = Depends(get_db)
+) -> EmailSendStatusResponse:
+    """Check payment status for an outgoing email send.
+
+    Args:
+        payment_hash: The Lightning payment hash for the email send.
+        db: Database session dependency.
+
+    Returns:
+        EmailSendStatusResponse: The status of the payment for the outgoing email.
+    """
+    try:
+        statement = select(PendingOutgoingEmail).where(
+            PendingOutgoingEmail.payment_hash == payment_hash
+        )
+        pending_email = db.exec(statement).first()
+
+        if not pending_email:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Outgoing email payment not found",
+            )
+
+        # If still pending, check with LND
+        if pending_email.status == PaymentStatus.PENDING:
+            paid = lnd_service.check_invoice(payment_hash)
+            if paid:
+                # Payment just received, trigger the email sending process
+                # This will be picked up by the RQ worker
+                queue.enqueue(process_send_email_payment, payment_hash, job_timeout=600)
+
+        return EmailSendStatusResponse(
+            payment_status=pending_email.status,
+            sender_email=pending_email.sender_email,
+            recipient=pending_email.recipient,
+            subject=pending_email.subject,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking outgoing email payment status: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to check outgoing email payment status",
         )
 
 

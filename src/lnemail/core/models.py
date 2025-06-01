@@ -1,6 +1,5 @@
 """
 Core data models for the LNemail application.
-
 This module contains SQLModel table definitions that map to database tables
 and provide data validation, relationships, and utility methods.
 """
@@ -10,7 +9,6 @@ import string
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import ClassVar
-
 from sqlmodel import Field, SQLModel
 
 
@@ -20,13 +18,13 @@ class PaymentStatus(str, Enum):
     PENDING = "pending"
     PAID = "paid"
     EXPIRED = "expired"
+    FAILED = "failed"
 
 
 class EmailAccount(SQLModel, table=True):
     """Email account model representing user accounts in the system."""
 
     __tablename__: ClassVar[str] = "email_accounts"
-
     id: int | None = Field(default=None, primary_key=True)
     email_address: str = Field(unique=True, index=True)
     access_token: str = Field(unique=True, index=True)
@@ -42,10 +40,8 @@ class EmailAccount(SQLModel, table=True):
     @classmethod
     def generate_random_email(cls, domain: str = "lnemail.net") -> str:
         """Generate a random email address with a recognizable pattern.
-
         Args:
             domain: The domain name for the email address
-
         Returns:
             A randomly generated email address string
         """
@@ -101,7 +97,6 @@ class EmailAccount(SQLModel, table=True):
             "electric",
             "magnetic",
         ]
-
         NOUNS = [
             "raven",
             "falcon",
@@ -154,7 +149,6 @@ class EmailAccount(SQLModel, table=True):
             "star",
             "comet",
         ]
-
         VERBS = [
             "run",
             "jump",
@@ -197,7 +191,6 @@ class EmailAccount(SQLModel, table=True):
             "find",
             "explore",
         ]
-
         COLORS = [
             "red",
             "blue",
@@ -230,7 +223,6 @@ class EmailAccount(SQLModel, table=True):
             "ebony",
             "ivory",
         ]
-
         TECH = [
             "cyber",
             "crypto",
@@ -273,9 +265,7 @@ class EmailAccount(SQLModel, table=True):
             "circuit",
             "chip",
         ]
-
         numbers = "".join(secrets.choice(string.digits) for _ in range(3))
-
         # only logical combination (adjective+noun, verb+noun, color+noun, tech+noun) and random number
         name_type = secrets.choice(["adj_noun", "verb_noun", "color_noun", "tech_noun"])
         if name_type == "adj_noun":
@@ -286,13 +276,11 @@ class EmailAccount(SQLModel, table=True):
             nickname = f"{secrets.choice(COLORS)}{secrets.choice(NOUNS)}{numbers}"
         else:
             nickname = f"{secrets.choice(TECH)}{secrets.choice(NOUNS)}{numbers}"
-
         return f"{nickname}@{domain}"
 
     @classmethod
     def generate_access_token(cls) -> str:
         """Generate a cryptographically secure access token.
-
         Returns:
             A URL-safe token string
         """
@@ -303,7 +291,6 @@ class Email(SQLModel, table=True):
     """Model for tracking emails received by accounts (optional extension)."""
 
     __tablename__: ClassVar[str] = "emails"
-
     id: int | None = Field(default=None, primary_key=True)
     account_id: int = Field(foreign_key="email_accounts.id", index=True)
     message_id: str = Field(index=True)
@@ -311,3 +298,23 @@ class Email(SQLModel, table=True):
     subject: str = Field(default="")
     received_at: datetime = Field(default_factory=datetime.utcnow)
     read: bool = Field(default=False)
+
+
+class PendingOutgoingEmail(SQLModel, table=True):
+    """Model for tracking pending outgoing emails requiring payment."""
+
+    __tablename__: ClassVar[str] = "pending_outgoing_emails"
+    id: int | None = Field(default=None, primary_key=True)
+    sender_email: str = Field(index=True)
+    recipient: str
+    subject: str
+    body: str
+    payment_hash: str = Field(unique=True, index=True)
+    payment_request: str
+    price_sats: int
+    status: PaymentStatus = Field(default=PaymentStatus.PENDING)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    # TTL for pending emails, e.g., 1 hour to prevent stale invoices
+    expires_at: datetime = Field(
+        default_factory=lambda: datetime.utcnow() + timedelta(hours=1)
+    )
