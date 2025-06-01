@@ -126,6 +126,7 @@ LNemail is ideal for:
 mkdir -p dev-data/mail-data
 mkdir -p dev-data/mail-state
 mkdir -p dev-data/mail-logs
+mkdir -p dev-data/config/ssl
 mkdir -p dev-data/config
 mkdir -p dev-data/mail-agent
 mkdir -p dev-data/shared/requests
@@ -168,6 +169,18 @@ Use the web or API to generate an invoice, then pay it from the second LND node:
 
 ```shell
 docker exec router_lnd lncli --network=regtest --rpcserver=router_lnd:10010 --tlscertpath=/shared/router_tls.cert --macaroonpath=/shared/router_admin.macaroon payinvoice --force {invoice}
+```
+
+#### Send test email
+
+Once you have an email account, you can send a test email to it:
+
+```bash
+swaks --to sereneforest630@lnemail.test \
+      --from sender@lnemail.test \
+      --server localhost:25 \
+      --body "Test email body" \
+      --header "Subject: Test Email"
 ```
 
 ### Cleanup

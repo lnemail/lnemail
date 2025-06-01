@@ -505,14 +505,68 @@ services:
       - lnd
       - lnemail
 
-  # Mail services
+  # Mail certificate generation service
+  cert-generator:
+    image: alpine:latest
+    container_name: cert-generator
+    volumes:
+      - ./dev-data/config/ssl:/certs
+    command: >
+      sh -c "
+        apk add --no-cache openssl &&
+        if [ ! -f /certs/mail.lnemail.test-cert.pem ] || [ ! -f /certs/mail.lnemail.test-key.pem ] || [ ! -f /certs/demoCA/cacert.pem ]; then
+          echo 'Generating SSL certificates for mail server...' &&
+          mkdir -p /certs/demoCA &&
+          echo 'Creating CA private key...' &&
+          openssl genrsa -out /certs/demoCA/cakey.pem 2048 &&
+          echo 'Creating CA certificate...' &&
+          openssl req -new -x509 -key /certs/demoCA/cakey.pem -out /certs/demoCA/cacert.pem -days 3650 -subj '/CN=LNEmail Development CA/O=LNEmail/C=US' &&
+          echo 'Creating server private key...' &&
+          openssl genrsa -out /certs/mail.lnemail.test-key.pem 2048 &&
+          echo 'Creating server certificate signing request...' &&
+          openssl req -new -key /certs/mail.lnemail.test-key.pem -out /certs/mail.lnemail.test.csr -subj '/CN=mail.lnemail.test/O=LNEmail/C=US' &&
+          echo 'Creating OpenSSL config for extensions...' &&
+          {
+            echo '[req]';
+            echo 'distinguished_name = req_distinguished_name';
+            echo 'req_extensions = v3_req';
+            echo '';
+            echo '[req_distinguished_name]';
+            echo '';
+            echo '[v3_req]';
+            echo 'subjectAltName = @alt_names';
+            echo '';
+            echo '[alt_names]';
+            echo 'DNS.1 = mail.lnemail.test';
+            echo 'DNS.2 = lnemail.test';
+            echo 'DNS.3 = localhost';
+          } > /certs/openssl.conf &&
+          echo 'Creating server certificate...' &&
+          openssl x509 -req -in /certs/mail.lnemail.test.csr -CA /certs/demoCA/cacert.pem -CAkey /certs/demoCA/cakey.pem -CAcreateserial -out /certs/mail.lnemail.test-cert.pem -days 3650 -extensions v3_req -extfile /certs/openssl.conf &&
+          echo 'Cleaning up temporary files...' &&
+          rm -f /certs/mail.lnemail.test.csr /certs/openssl.conf &&
+          echo 'Setting permissions...' &&
+          chmod 644 /certs/mail.lnemail.test-cert.pem /certs/mail.lnemail.test-key.pem /certs/demoCA/cacert.pem &&
+          chmod 600 /certs/demoCA/cakey.pem &&
+          echo 'SSL certificates generated successfully'
+        else
+          echo 'SSL certificates already exist, skipping generation'
+        fi
+      "
+    restart: "no"
+    networks:
+      - lnemail
 
+  # Mail services
   mailserver:
     image: ghcr.io/docker-mailserver/docker-mailserver:latest
     container_name: mailserver
     hostname: mail.lnemail.test
     restart: unless-stopped
     env_file: .env.development
+    depends_on:
+      cert-generator:
+        condition: service_completed_successfully
     volumes:
       - ./dev-data/mail-data/:/var/mail/
       - ./dev-data/mail-state/:/var/mail-state/
@@ -533,11 +587,13 @@ services:
       - ENABLE_FAIL2BAN=0
       - ENABLE_CLAMAV=0
       - ENABLE_RSPAMD=0
+      - SSL_TYPE=self-signed
     ports:
       - "25:25"
       - "143:143" # IMAP
       - "587:587" # SMTP with TLS
       - "993:993" # IMAP with SSL
+      - "465:465" # SMTP with SSL
     networks:
       - lnemail
     healthcheck:
@@ -623,6 +679,8 @@ services:
       - REDIS_HOST=lnemail-redis
       - REDIS_PORT=6379
       - SECRET_KEY=dev_secret_key_for_local_testing_only
+      - IMAP_HOST=mail.lnemail.test
+      - IMAP_PORT=143
     ports:
       - "8000:8000"
     networks:

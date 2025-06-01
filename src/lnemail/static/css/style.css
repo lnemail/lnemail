@@ -444,6 +444,22 @@ input[type="text"] {
     padding: 10px 0;
 }
 
+.read-status {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+
+.read-status.unread {
+    background-color: #007bff;
+}
+
+.read-status.read {
+    background-color: #28a745;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .form-group {

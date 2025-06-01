@@ -138,12 +138,10 @@ document.addEventListener('DOMContentLoaded', function() {
         emailElement.className = `email-list-item${!email.read ? ' unread' : ''}`;
 
         const readStatus = email.read ? 'read' : 'unread';
-        const readIcon = email.read ? '●' : '●';
-        const readColor = email.read ? '#28a745' : '#007bff';
 
         emailElement.innerHTML = `
             <div class="email-col status">
-                <span class="read-status ${readStatus}" style="color: ${readColor};">${readIcon}</span>
+                <span class="read-status ${readStatus}"></span>
             </div>
             <div class="email-col from" title="${escapeHtml(email.sender || email.from)}">
                 ${escapeHtml(truncateText(email.sender || email.from, 25))}

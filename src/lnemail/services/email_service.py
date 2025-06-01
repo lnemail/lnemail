@@ -4,6 +4,9 @@ Modified to handle file permission issues between root and worker processes.
 This module provides methods for creating email accounts,
 listing emails, and retrieving email content via IMAP.
 Enhanced with reverse chronological sorting, read status tracking, and attachment support.
+Updated with TLS/SSL support for secure IMAP connections.
+Fixed to handle missing or None email headers gracefully.
+Fixed read state management to preserve unread status during listing.
 """
 
 import email as email_lib
@@ -11,6 +14,7 @@ import imaplib
 import json
 import os
 import secrets
+import ssl
 import time
 import uuid
 import stat
@@ -42,6 +46,55 @@ class EmailService:
         os.makedirs(self.responses_dir, exist_ok=True)
 
         logger.info("Email service initialized")
+
+    def _create_imap_connection(self) -> imaplib.IMAP4:
+        """Create and return a secure IMAP connection.
+
+        Returns:
+            Configured IMAP connection with TLS enabled
+
+        Raises:
+            Exception: If connection fails
+        """
+        try:
+            mail: imaplib.IMAP4
+            if self.imap_port == 993:
+                # Use implicit TLS (SSL) connection
+                context = ssl.create_default_context()
+                # For development environments with self-signed certificates
+                if settings.DEBUG:
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+
+                mail = imaplib.IMAP4_SSL(
+                    host=self.imap_host, port=self.imap_port, ssl_context=context
+                )
+                logger.debug(
+                    f"Created SSL IMAP connection to {self.imap_host}:{self.imap_port}"
+                )
+
+            else:
+                # Use explicit TLS (STARTTLS) connection
+                mail = imaplib.IMAP4(host=self.imap_host, port=self.imap_port)
+
+                # Create SSL context
+                context = ssl.create_default_context()
+                # For development environments with self-signed certificates
+                if settings.DEBUG:
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+
+                # Upgrade to TLS
+                mail.starttls(ssl_context=context)
+                logger.debug(
+                    f"Created STARTTLS IMAP connection to {self.imap_host}:{self.imap_port}"
+                )
+
+            return mail
+
+        except Exception as e:
+            logger.error(f"Failed to create IMAP connection: {e}")
+            raise
 
     def _set_permissions(self, file_path: str) -> None:
         """Set appropriate permissions for shared files.
@@ -240,6 +293,28 @@ class EmailService:
 
         return decoded_value
 
+    def _safe_get_header(
+        self, msg: email_lib.message.Message, header_name: str, default: str = ""
+    ) -> str:
+        """Safely extract email header with fallback to default value.
+
+        Args:
+            msg: Email message object
+            header_name: Name of the header to extract
+            default: Default value if header is missing or None
+
+        Returns:
+            Header value as string, or default if not found/None
+        """
+        try:
+            header_value = msg.get(header_name)
+            if header_value is None:
+                return default
+            return str(header_value)
+        except Exception as e:
+            logger.warning(f"Error extracting header '{header_name}': {e}")
+            return default
+
     def _parse_email_date(self, date_str: Optional[str]) -> datetime:
         """Parse email date string to datetime object.
 
@@ -263,7 +338,42 @@ class EmailService:
             logger.warning(f"Failed to parse date '{date_str}': {e}")
             return datetime.fromtimestamp(0, tz=timezone.utc)
 
-    def _check_read_status(self, mail: imaplib.IMAP4, email_id: bytes) -> bool:
+    def _get_email_flags(self, mail: imaplib.IMAP4, email_id: str) -> List[str]:
+        """Get IMAP flags for an email without modifying them.
+
+        Args:
+            mail: IMAP connection
+            email_id: Email ID to check
+
+        Returns:
+            List of flags for the email
+        """
+        try:
+            status, data = mail.fetch(email_id, "(FLAGS)")
+            if status == "OK" and data and data[0]:
+                # Handle bytes response properly
+                flags_data = data[0]
+                if isinstance(flags_data, bytes):
+                    flags_str = flags_data.decode("utf-8", errors="replace")
+                else:
+                    flags_str = str(flags_data)
+
+                # Extract flags from the response
+                # Response format: b'1 (FLAGS (\\Seen \\Recent))'
+                start = flags_str.find("(FLAGS (")
+                if start != -1:
+                    start += 8  # Length of "(FLAGS ("
+                    end = flags_str.find("))", start)
+                    if end != -1:
+                        flags_part = flags_str[start:end]
+                        return [
+                            flag.strip() for flag in flags_part.split() if flag.strip()
+                        ]
+        except Exception as e:
+            logger.error(f"Error getting flags for email {email_id}: {e}")
+        return []
+
+    def _check_read_status(self, mail: imaplib.IMAP4, email_id: str) -> bool:
         """Check if email has been read by examining IMAP flags.
 
         Args:
@@ -273,21 +383,8 @@ class EmailService:
         Returns:
             True if email has been read, False otherwise
         """
-        try:
-            # Convert bytes to string for IMAP fetch
-            email_id_str = email_id.decode("utf-8")
-            status, data = mail.fetch(email_id_str, "(FLAGS)")
-            if status == "OK" and data and data[0]:
-                # Handle bytes response properly
-                flags_data = data[0]
-                if isinstance(flags_data, bytes):
-                    flags_str = flags_data.decode("utf-8", errors="replace")
-                else:
-                    flags_str = str(flags_data)
-                return "\\Seen" in flags_str
-        except Exception as e:
-            logger.error(f"Error checking read status for email {email_id!r}: {e}")
-        return False
+        flags = self._get_email_flags(mail, email_id)
+        return "\\Seen" in flags
 
     def _mark_as_read(self, mail: imaplib.IMAP4, email_id: str) -> bool:
         """Mark email as read by setting IMAP \\Seen flag.
@@ -304,6 +401,23 @@ class EmailService:
             return status == "OK"
         except Exception as e:
             logger.error(f"Error marking email {email_id} as read: {e}")
+            return False
+
+    def _mark_as_unread(self, mail: imaplib.IMAP4, email_id: str) -> bool:
+        """Mark email as unread by removing IMAP \\Seen flag.
+
+        Args:
+            mail: IMAP connection
+            email_id: Email ID to mark as unread
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            status, _ = mail.store(email_id, "-FLAGS", "\\Seen")
+            return status == "OK"
+        except Exception as e:
+            logger.error(f"Error marking email {email_id} as unread: {e}")
             return False
 
     def _extract_text_attachments(
@@ -369,6 +483,9 @@ class EmailService:
     def list_emails(self, email_address: str, password: str) -> List[Dict[str, Any]]:
         """List emails for an account via IMAP with reverse chronological sorting.
 
+        This method preserves the original read status of emails by only fetching
+        headers and flags, not the full message content.
+
         Args:
             email_address: Email address to access
             password: Password for the email account
@@ -379,8 +496,8 @@ class EmailService:
         emails: List[Dict[str, Any]] = []
 
         try:
-            # Connect to IMAP server
-            mail = imaplib.IMAP4(self.imap_host, self.imap_port)
+            # Connect to IMAP server with TLS
+            mail = self._create_imap_connection()
             mail.login(email_address, password)
             mail.select("INBOX")
 
@@ -394,33 +511,45 @@ class EmailService:
 
             email_ids = data[0].split()
 
-            # Process each email
+            # Process each email using header-only fetch to preserve read status
             for email_id in email_ids:
                 try:
-                    status, data = mail.fetch(email_id, "(RFC822)")
+                    email_id_str = email_id.decode("utf-8")
+
+                    # First, check the current read status before any fetching
+                    is_read = self._check_read_status(mail, email_id_str)
+
+                    # Fetch only headers to avoid marking as read
+                    status, data = mail.fetch(email_id_str, "(RFC822.HEADER)")
                     if status != "OK" or not data or not data[0]:
                         continue
 
-                    # Safely access the raw email data
+                    # Safely access the raw email headers
                     item = data[0]
                     if not isinstance(item, tuple) or len(item) < 2:
                         continue
 
-                    raw_email = item[1]
-                    msg = email_lib.message_from_bytes(raw_email)
+                    raw_headers = item[1]
+                    msg = email_lib.message_from_bytes(raw_headers)
 
-                    # Extract and decode headers
-                    subject = self._decode_header_value(msg["Subject"])
-                    sender = self._decode_header_value(msg["From"])
-                    date_str = msg["Date"]
+                    # Extract and decode headers with safe fallbacks
+                    subject = self._decode_header_value(
+                        self._safe_get_header(msg, "Subject", "(No Subject)")
+                    )
+                    sender = self._decode_header_value(
+                        self._safe_get_header(msg, "From", "(Unknown Sender)")
+                    )
+                    date_str = self._safe_get_header(msg, "Date", "")
+
+                    # Provide fallback date string if empty
+                    if not date_str:
+                        date_str = "Thu, 01 Jan 1970 00:00:00 +0000"
+
                     parsed_date = self._parse_email_date(date_str)
-
-                    # Check read status
-                    is_read = self._check_read_status(mail, email_id)
 
                     emails.append(
                         {
-                            "id": email_id.decode(),
+                            "id": email_id_str,
                             "subject": subject,
                             "sender": sender,
                             "date": date_str,
@@ -445,7 +574,11 @@ class EmailService:
         return emails
 
     def get_email_content(
-        self, email_address: str, password: str, email_id: str
+        self,
+        email_address: str,
+        password: str,
+        email_id: str,
+        mark_as_read: bool = True,
     ) -> Dict[str, Any]:
         """Get content of specific email via IMAP with attachment support.
 
@@ -453,17 +586,21 @@ class EmailService:
             email_address: Email address to access
             password: Password for the email account
             email_id: ID of the email to retrieve
+            mark_as_read: Whether to mark the email as read after fetching
 
         Returns:
             Dictionary with email content, metadata, and attachments
         """
         try:
-            # Connect to IMAP server
-            mail = imaplib.IMAP4(self.imap_host, self.imap_port)
+            # Connect to IMAP server with TLS
+            mail = self._create_imap_connection()
             mail.login(email_address, password)
             mail.select("INBOX")
 
-            # Fetch the email
+            # Check initial read status
+            initial_read_status = self._check_read_status(mail, email_id)
+
+            # Fetch the email - this will mark it as read due to RFC822 fetch
             status, data = mail.fetch(email_id, "(RFC822)")
             if status != "OK" or not data or not data[0]:
                 logger.error(f"Failed to fetch email {email_id}: {status}")
@@ -481,10 +618,14 @@ class EmailService:
             raw_email = item[1]
             msg = email_lib.message_from_bytes(raw_email)
 
-            # Extract and decode headers
-            subject = self._decode_header_value(msg["Subject"])
-            sender = self._decode_header_value(msg["From"])
-            date = msg["Date"]
+            # Extract and decode headers with safe fallbacks
+            subject = self._decode_header_value(
+                self._safe_get_header(msg, "Subject", "(No Subject)")
+            )
+            sender = self._decode_header_value(
+                self._safe_get_header(msg, "From", "(Unknown Sender)")
+            )
+            date = self._safe_get_header(msg, "Date", "Thu, 01 Jan 1970 00:00:00 +0000")
 
             # Extract body content
             content_type = "text/plain"
@@ -519,8 +660,26 @@ class EmailService:
             # Extract text attachments
             attachments = self._extract_text_attachments(msg)
 
-            # Mark email as read
-            self._mark_as_read(mail, email_id)
+            # Handle read status based on parameters and initial state
+            final_read_status = True  # Default assumption after RFC822 fetch
+
+            if not mark_as_read and not initial_read_status:
+                # User doesn't want to mark as read and it wasn't read before
+                # Try to restore the unread state
+                if self._mark_as_unread(mail, email_id):
+                    final_read_status = False
+                    logger.debug(f"Restored unread status for email {email_id}")
+                else:
+                    logger.warning(
+                        f"Failed to restore unread status for email {email_id}"
+                    )
+            elif mark_as_read and not initial_read_status:
+                # Explicitly mark as read (though RFC822 fetch likely already did this)
+                self._mark_as_read(mail, email_id)
+                final_read_status = True
+            else:
+                # Email was already read, or we want to mark it as read
+                final_read_status = True
 
             mail.close()
             mail.logout()
@@ -533,12 +692,56 @@ class EmailService:
                 "body": body,
                 "content_type": content_type,
                 "attachments": attachments,
-                "read": True,  # Set to True since we just marked it as read
+                "read": final_read_status,
             }
 
         except Exception as e:
             logger.error(f"Error getting email content: {str(e)}")
             return {}
+
+    def mark_email_read_status(
+        self, email_address: str, password: str, email_id: str, read: bool
+    ) -> bool:
+        """Mark an email's read status.
+
+        Args:
+            email_address: Email address to access
+            password: Password for the email account
+            email_id: ID of the email to modify
+            read: Whether to mark as read (True) or unread (False)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Connect to IMAP server with TLS
+            mail = self._create_imap_connection()
+            mail.login(email_address, password)
+            mail.select("INBOX")
+
+            # Mark read or unread based on parameter
+            if read:
+                success = self._mark_as_read(mail, email_id)
+                action = "read"
+            else:
+                success = self._mark_as_unread(mail, email_id)
+                action = "unread"
+
+            mail.close()
+            mail.logout()
+
+            if success:
+                logger.info(f"Marked email {email_id} as {action}")
+            else:
+                logger.error(f"Failed to mark email {email_id} as {action}")
+
+            return success
+
+        except Exception as e:
+            logger.error(
+                f"Error marking email {email_id} as {'read' if read else 'unread'}: {str(e)}"
+            )
+            return False
 
     def delete_account(self, email_address: str) -> bool:
         """Delete an email account from the mail server.
