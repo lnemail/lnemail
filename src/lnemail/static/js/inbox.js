@@ -1,6 +1,6 @@
 /**
- * Inbox functionality for LNemail
- */
+* Inbox functionality for LNemail
+*/
 document.addEventListener('DOMContentLoaded', function() {
     // DOM Elements
     const authSection = document.getElementById('auth-section');
@@ -16,7 +16,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const emailList = document.getElementById('email-list');
     const noEmailsDiv = document.querySelector('.no-emails');
     const loadingDiv = document.querySelector('.loading-emails');
-
     // Email content elements
     const emailSubject = document.getElementById('email-subject');
     const emailFrom = document.getElementById('email-from');
@@ -28,7 +27,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const attachmentsList = document.getElementById('attachments-list');
     const attachmentsCount = document.getElementById('email-attachments-count');
     const attachmentCountSpan = document.getElementById('attachment-count');
-
     let autoRefreshInterval = null;
     let currentEmailAddress = '';
     let emailsData = []; // Store for sorting and filtering
@@ -49,18 +47,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Authentication and initialization
     function addResetButton() {
         if (document.getElementById('reset-auth-btn')) return;
-
         const resetContainer = document.createElement('div');
         resetContainer.className = 'form-group reset-container';
         resetContainer.style.marginTop = '20px';
         resetContainer.style.textAlign = 'center';
-
         const resetBtn = document.createElement('button');
         resetBtn.id = 'reset-auth-btn';
         resetBtn.className = 'btn secondary';
         resetBtn.textContent = 'Cancel and Start Over';
         resetBtn.addEventListener('click', handleLogout);
-
         resetContainer.appendChild(resetBtn);
         authSection.appendChild(resetContainer);
     }
@@ -86,7 +81,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const accountData = await apiRequest(`${API_BASE_URL}/account`);
             currentEmailAddress = accountData.email_address;
             emailDisplay.textContent = currentEmailAddress;
-
             await fetchEmails();
             authSection.classList.add('hidden');
             inboxSection.classList.remove('hidden');
@@ -104,10 +98,8 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const response = await apiRequest(ENDPOINTS.listEmails);
             const emails = Array.isArray(response) ? response : (response.emails || []);
-
             // Store emails data for future operations
             emailsData = emails;
-
             // Emails are already sorted by date in reverse chronological order from backend
             renderEmails(emails);
         } catch (error) {
@@ -117,18 +109,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function renderEmails(emails) {
         emailList.innerHTML = '';
-
         if (emails.length === 0) {
             noEmailsDiv.classList.remove('hidden');
             loadingDiv.classList.add('hidden');
             return;
         }
-
         emails.forEach(email => {
             const emailElement = createEmailListItem(email);
             emailList.appendChild(emailElement);
         });
-
         loadingDiv.classList.add('hidden');
         noEmailsDiv.classList.add('hidden');
     }
@@ -136,9 +125,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function createEmailListItem(email) {
         const emailElement = document.createElement('div');
         emailElement.className = `email-list-item${!email.read ? ' unread' : ''}`;
-
         const readStatus = email.read ? 'read' : 'unread';
-
         emailElement.innerHTML = `
             <div class="email-col status">
                 <span class="read-status ${readStatus}"></span>
@@ -153,7 +140,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 ${formatDate(email.date)}
             </div>
         `;
-
         emailElement.addEventListener('click', () => showEmailContent(email.id));
         return emailElement;
     }
@@ -164,10 +150,8 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const email = await apiRequest(ENDPOINTS.getEmail(emailId));
             populateEmailContent(email);
-
             // Update the email list item to show as read
             updateEmailReadStatus(emailId, true);
-
             emailListContainer.classList.add('hidden');
             emailContentSection.classList.remove('hidden');
         } catch (error) {
@@ -181,9 +165,9 @@ document.addEventListener('DOMContentLoaded', function() {
         emailTo.textContent = currentEmailAddress || email.to || 'Unknown';
         emailDate.textContent = formatFullDate(email.date);
 
-        // Handle email body content
+        // Handle email body content - use innerHTML to preserve formatting
         const bodyContent = email.body || email.text_body || '';
-        emailText.textContent = bodyContent;
+        emailText.innerHTML = escapeHtml(bodyContent);
 
         // Handle HTML content if available
         const htmlBody = email.html_body || '';
@@ -204,7 +188,6 @@ document.addEventListener('DOMContentLoaded', function() {
         attachmentsCount.classList.remove('hidden');
         attachmentCountSpan.textContent = attachments.length;
         emailAttachments.classList.remove('hidden');
-
         attachmentsList.innerHTML = '';
 
         attachments.forEach((attachment, index) => {
@@ -217,22 +200,33 @@ document.addEventListener('DOMContentLoaded', function() {
         const attachmentDiv = document.createElement('div');
         attachmentDiv.className = 'attachment-item';
 
-        const isGpgFile = isGpgContent(attachment.filename, attachment.content);
-        const contentClass = isGpgFile ? 'attachment-content gpg-content' : 'attachment-content';
+        // Create download link
+        const blob = new Blob([attachment.content], { type: 'text/plain' });
+        const downloadUrl = URL.createObjectURL(blob);
 
         attachmentDiv.innerHTML = `
             <div class="attachment-header">
                 <span class="attachment-name" title="${escapeHtml(attachment.filename)}">
                     📎 ${escapeHtml(attachment.filename)}
                 </span>
-                <span class="attachment-type">
-                    ${escapeHtml(attachment.content_type || 'text/plain')}
-                </span>
+                <div class="attachment-actions">
+                    <span class="attachment-type">
+                        ${escapeHtml(attachment.content_type || 'text/plain')}
+                    </span>
+                    <a href="${downloadUrl}" download="${escapeHtml(attachment.filename)}" class="btn small download-btn">
+                        Download
+                    </a>
+                </div>
             </div>
-            <div class="${contentClass}" id="attachment-${index}">
+            <div class="attachment-content" id="attachment-${index}">
                 ${escapeHtml(attachment.content)}
             </div>
         `;
+
+        // Clean up blob URL when attachment is removed
+        attachmentDiv.addEventListener('DOMNodeRemoved', () => {
+            URL.revokeObjectURL(downloadUrl);
+        });
 
         return attachmentDiv;
     }
@@ -244,31 +238,17 @@ document.addEventListener('DOMContentLoaded', function() {
         if (emailIndex !== -1) {
             emailsData[emailIndex].read = isRead;
         }
-
         // Update UI - find the email item and update its class
         const emailItems = document.querySelectorAll('.email-list-item');
         emailItems.forEach(item => {
             // Check if this is the right email item by looking for the email ID
             // Since we don't store the ID directly, we'll refresh the list
         });
-
         // For now, just refresh the email list to reflect the updated read status
         // In a more sophisticated implementation, we could store the email ID as a data attribute
         setTimeout(() => {
             renderEmails(emailsData);
         }, 100);
-    }
-
-    function isGpgContent(filename, content) {
-        const gpgExtensions = ['.asc', '.gpg', '.pgp'];
-        const hasGpgExtension = gpgExtensions.some(ext =>
-            filename.toLowerCase().endsWith(ext)
-        );
-
-        const hasGpgHeaders = content.includes('-----BEGIN PGP') ||
-                             content.includes('-----END PGP');
-
-        return hasGpgExtension || hasGpgHeaders;
     }
 
     function truncateText(text, maxLength) {
@@ -285,13 +265,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function formatDate(dateStr) {
         if (!dateStr) return 'Unknown';
-
         try {
             const date = new Date(dateStr);
             const now = new Date();
             const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
             const emailDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
             if (emailDate.getTime() === today.getTime()) {
                 return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             } else if (emailDate.getTime() === today.getTime() - 86400000) {
@@ -308,7 +286,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function formatFullDate(dateStr) {
         if (!dateStr) return 'Unknown';
-
         try {
             const date = new Date(dateStr);
             return date.toLocaleDateString([], {
@@ -364,5 +341,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Cleanup
     window.addEventListener('beforeunload', () => {
         if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+        // Clean up any blob URLs
+        document.querySelectorAll('.download-btn').forEach(btn => {
+            if (btn.href && btn.href.startsWith('blob:')) {
+                URL.revokeObjectURL(btn.href);
+            }
+        });
     });
 });

@@ -60,6 +60,8 @@ class EmailContent(BaseModel):
     date: str
     body: str
     content_type: str
+    attachments: list[dict[str, str]]
+    read: bool
 
 
 class ErrorResponse(BaseModel):

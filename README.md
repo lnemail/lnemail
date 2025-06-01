@@ -194,6 +194,10 @@ docker volume rm lnemail_bitcoin lnemail_lnd lnemail_router_lnd
 sudo rm -f dev-data/shared/*.cert dev-data/shared/*.macaroon dev-data/shared/lnd_*
 ```
 
+## Nice tools
+
+- https://emkei.cz/
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
