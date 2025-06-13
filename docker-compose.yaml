@@ -47,94 +47,62 @@ services:
       CLI: "bitcoin-cli"
       CLI_ARGS: "-chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS}"
       ofelia.enabled: "true"
-      ofelia.job-exec.minecron.schedule: "@every 30s"
-      ofelia.job-exec.minecron.command: |
+      ofelia.job-exec.mining.schedule: "@every 30s"
+      ofelia.job-exec.mining.command: |
         sh -c '
         set -e
         export PATH=/usr/local/bin:/usr/bin:/bin
 
-        echo "Starting mining script..."
+        # Get current blockchain state
         blockcount=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getblockcount 2>/dev/null || echo "0")
-        echo "Current block count: $$blockcount"
 
-        if [ "$$blockcount" -le 100 ]; then
-          echo "Creating wallet and initial mining..."
-          bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} createwallet "" 2>/dev/null || echo "Wallet may already exist"
+        # Create wallet if it doesnt exist
+        bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} createwallet "" 2>/dev/null || true
 
-          # Wait for LND address or create a temporary one for initial mining
-          if [ -f /shared/lnd_address ]; then
-            lnd_addr=$(cat /shared/lnd_address)
-            echo "Using LND address: $$lnd_addr"
-          else
-            echo "LND address not ready, using temporary address for initial mining..."
-            lnd_addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
-            echo "Using temporary address: $$lnd_addr"
-          fi
-
-          echo "Mining 100 blocks to address..."
-          bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 100 "$$lnd_addr"
-          echo "Mining 100 blocks to a random address..."
-          new_addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
-          bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 100 "$$new_addr"
-        else
-          # Check if LND needs funding
-          if [ -f /shared/lnd_needs_funding ]; then
-            echo "LND needs funding..."
-            if [ -f /shared/lnd_address ]; then
-              lnd_addr=$(cat /shared/lnd_address)
-              echo "Mining block to LND address: $$lnd_addr"
-
-              if bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 1 "$$lnd_addr"; then
-                echo "Funds mined directly to LND"
-                # Remove the funding request flag
-                rm -f /shared/lnd_needs_funding
-              else
-                echo "ERROR: Failed to mine to LND address"
-              fi
-            else
-              echo "ERROR: LND address not found"
-            fi
-          else
-            echo "Generating transactions for fee rate estimation..."
-
-            # Check if fee estimation already works
-            if bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} estimatesmartfee 6 | grep -q "feerate"; then
-              echo "Fee estimation already working, mining single block..."
-              # Use LND address if available, otherwise use a new address
-              if [ -f /shared/lnd_address ]; then
-                lnd_addr=$(cat /shared/lnd_address)
-              else
-                lnd_addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
-              fi
-              bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 1 "$$lnd_addr"
-            else
-              echo "Need to generate transactions for fee estimation..."
-              # Generate between 20-30 transactions
-              tx_count=$$(awk "BEGIN{srand(); print int(rand()*11)+20}")
-              echo "Generating $$tx_count transactions..."
-
-              i=0
-              while [ $$i -lt $$tx_count ]; do
-                new_addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
-                fee_rate=$$(awk "BEGIN{srand(); print int(rand()*25)+1}")
-                echo "Sending to $$new_addr with fee rate $$fee_rate"
-                bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} -named sendtoaddress address="$$new_addr" amount=0.01 fee_rate=$$fee_rate
-                i=$$((i + 1))
-              done
-
-              echo "Mining block to confirm transactions..."
-              # Use LND address if available, otherwise use a new address
-              if [ -f /shared/lnd_address ]; then
-                lnd_addr=$(cat /shared/lnd_address)
-              else
-                lnd_addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
-              fi
-              bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 1 "$$lnd_addr"
-            fi
-          fi
+        # Phase 1: Initial blockchain setup (first 50 blocks)
+        if [ "$$blockcount" -lt 50 ]; then
+          echo "Phase 1: Initial blockchain setup (block $$blockcount/50)"
+          temp_addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
+          bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 10 "$$temp_addr"
+          exit 0
         fi
 
-        echo "Mining script completed successfully"
+        # Phase 2: Fund LND and mature the coins
+        if [ "$$blockcount" -lt 200 ]; then
+          if [ -f /shared/lnd_address ]; then
+            lnd_addr=$$(cat /shared/lnd_address)
+            echo "Phase 2: Funding LND and maturing coins (block $$blockcount/200)"
+            echo "Mining to LND address: $$lnd_addr"
+            bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 10 "$$lnd_addr"
+          else
+            echo "Phase 2: Waiting for LND address (block $$blockcount/200)"
+            temp_addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
+            bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 5 "$$temp_addr"
+          fi
+          exit 0
+        fi
+
+        # Phase 3: Ongoing maintenance - single block with transactions
+        echo "Phase 3: Maintenance mining (block $$blockcount)"
+
+        # Generate some transactions for fee estimation if mempool is empty
+        mempool_count=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getmempoolinfo | jq -r .size 2>/dev/null || echo "0")
+        if [ "$$mempool_count" -eq 0 ]; then
+          echo "Generating transactions for fee market"
+          for i in 1 2 3; do
+            addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
+            bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} sendtoaddress "$$addr" 0.01 2>/dev/null || true
+          done
+        fi
+
+        # Mine single block
+        if [ -f /shared/lnd_address ]; then
+          lnd_addr=$$(cat /shared/lnd_address)
+          bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 1 "$$lnd_addr"
+        else
+          temp_addr=$$(bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} getnewaddress)
+          bitcoin-cli -chain=regtest -rpcport=${RPC_PORT} -rpcuser=${RPC_USER} -rpcpassword=${RPC_PASS} generatetoaddress 1 "$$temp_addr"
+        fi
         '
 
   lnd:
@@ -192,154 +160,81 @@ services:
       CLI_ARGS: "--network=regtest"
       CLI_USER: "lnd"
       ofelia.enabled: "true"
-      ofelia.job-exec.walletinit.schedule: "@every 30s"
-      ofelia.job-exec.walletinit.command: |
+      ofelia.job-exec.lnd_setup.schedule: "@every 15s"
+      ofelia.job-exec.lnd_setup.command: |
         sh -c '
         set -e
 
-        echo "Checking LND wallet status..."
+        # Check if LND is responsive
+        if ! lncli --network=regtest getinfo >/dev/null 2>&1; then
+          echo "LND not ready, attempting wallet creation..."
+          # Auto-create wallet with empty passphrase for development
+          echo -e "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nn\n" | lncli --network=regtest create 2>/dev/null || echo "Wallet creation attempted"
+          exit 0
+        fi
 
-        # Check if wallet exists and is unlocked
-        if lncli --network=regtest getinfo >/dev/null 2>&1; then
-          echo "LND wallet is ready and unlocked"
+        echo "LND is ready"
 
-          # Check wallet balance
-          balance_output=$$(lncli --network=regtest walletbalance 2>/dev/null || echo "{\"confirmed_balance\":\"0\"}")
-          balance=$$(echo "$$balance_output" | jq -r ".confirmed_balance" 2>/dev/null || echo "0")
-          echo "Current wallet balance: $$balance satoshis"
-
-          if [ "$$balance" = "0" ] || [ "$$balance" = "null" ] || [ -z "$$balance" ]; then
-            echo "Wallet has no funds, requesting funds from bitcoin node..."
-
-            # Get a new address from LND if not already exists
-            if [ ! -f /shared/lnd_address ]; then
-              addr_output=$$(lncli --network=regtest newaddress p2wkh)
-              lnd_address=$$(echo "$$addr_output" | jq -r ".address")
-              echo "$$lnd_address" > /shared/lnd_address
-              echo "Generated new LND address: $$lnd_address"
-            else
-              lnd_address=$$(cat /shared/lnd_address)
-              echo "Using existing LND address: $$lnd_address"
-            fi
-
-            if [ -n "$$lnd_address" ] && [ "$$lnd_address" != "null" ]; then
-              # Signal to bitcoin container that LND needs funding
-              touch /shared/lnd_needs_funding
-              echo "Requested funding from bitcoin node"
-            else
-              echo "ERROR: Failed to generate LND address"
-            fi
-          else
-            echo "Wallet already has funds: $$balance satoshis"
-            # Remove funding request if it exists
-            rm -f /shared/lnd_needs_funding
-          fi
-        else
-          echo "LND wallet not ready or needs initialization"
-
-          # Try to create wallet if it doesnt exist
-          if ! lncli --network=regtest getinfo >/dev/null 2>&1; then
-            echo "Attempting to create wallet..."
-            # Create wallet with no seed passphrase for development
-            echo -e "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nn\n" | lncli --network=regtest create 2>/dev/null || echo "Wallet creation attempted"
-            sleep 2
+        # Generate address if not exists
+        if [ ! -f /shared/lnd_address ]; then
+          echo "Generating LND address..."
+          addr_output=$$(lncli --network=regtest newaddress p2wkh)
+          lnd_address=$$(echo "$$addr_output" | jq -r ".address")
+          if [ -n "$$lnd_address" ] && [ "$$lnd_address" != "null" ]; then
+            echo "$$lnd_address" > /shared/lnd_address
+            echo "LND address saved: $$lnd_address"
           fi
         fi
-        '
-      ofelia.job-exec.openchannel.schedule: "@every 1m"
-      ofelia.job-exec.openchannel.command: |
-        sh -c '
-        set -e
 
-        echo "Waiting for LND to be ready..."
-        until lncli --network=regtest getinfo >/dev/null 2>&1; do
-          sleep 1
-        done
-
-        # Check if we have sufficient balance
+        # Check wallet balance
         balance_output=$$(lncli --network=regtest walletbalance 2>/dev/null || echo "{\"confirmed_balance\":\"0\"}")
         balance=$$(echo "$$balance_output" | jq -r ".confirmed_balance" 2>/dev/null || echo "0")
-        echo "Current wallet balance: $$balance satoshis"
 
-        if [ "$$balance" = "0" ] || [ "$$balance" = "null" ] || [ -z "$$balance" ]; then
-          echo "Insufficient wallet balance, skipping channel operations"
-          exit 0
-        fi
+        echo "Current balance: $$balance satoshis"
 
-        # Convert balance to BTC for comparison
-        if [ "$$balance" -lt 1000000 ]; then
-          balance_btc=$(echo "scale=8; $$balance/100000000" | bc -l 2>/dev/null || echo "$$balance" | awk "{printf \"%.8f\", \$0/100000000}")
-          echo "Insufficient balance for channel creation (need at least 0.01 BTC, have $$balance_btc BTC)"
-          exit 0
-        fi
+        # Channel management - only proceed if we have sufficient balance
+        if [ "$$balance" -gt 10000000 ]; then  # 0.1 BTC minimum for channel operations
+          echo "Sufficient balance for channel operations"
 
-        balance_btc=$(echo "scale=8; $$balance/100000000" | bc -l 2>/dev/null || echo "$$balance" | awk "{printf \"%.8f\", \$0/100000000}")
-        echo "Sufficient balance available: $$balance_btc BTC"
+          # Check for existing channels
+          active_channels=$$(lncli --network=regtest listchannels | jq ".channels | length")
+          pending_channels=$$(lncli --network=regtest pendingchannels | jq ".pending_open_channels | length")
 
-        echo "Waiting for router TLS certificate..."
-        retry_count=0
-        while [ ! -f /shared/router_tls.cert ] && [ $$retry_count -lt 30 ]; do
-          echo "Router TLS certificate not found, waiting... ($$retry_count/30)"
-          sleep 2
-          retry_count=$$((retry_count + 1))
-        done
+          if [ "$$active_channels" -eq 0 ] && [ "$$pending_channels" -eq 0 ]; then
+            echo "No channels exist, checking for router..."
 
-        if [ ! -f /shared/router_tls.cert ]; then
-          echo "ERROR: Router TLS certificate not found after waiting"
-          exit 1
-        fi
+            # Wait for router TLS certificate
+            if [ -f /shared/router_tls.cert ]; then
+              echo "Attempting channel creation with router..."
 
-        echo "Router TLS certificate found, proceeding..."
+              # Get router info
+              router_info=$$(lncli --network=regtest --rpcserver=router_lnd:10010 --tlscertpath=/shared/router_tls.cert --macaroonpath=/shared/router_admin.macaroon getinfo 2>/dev/null || echo "{}")
+              router_pubkey=$$(echo "$$router_info" | jq -r ".identity_pubkey" 2>/dev/null || echo "")
 
-        # Check both active and pending channels
-        channel_count=$$(lncli --network=regtest listchannels | jq ".channels | length")
-        pending_channels=$$(lncli --network=regtest pendingchannels | jq ".pending_open_channels | length")
+              if [ -n "$$router_pubkey" ] && [ "$$router_pubkey" != "null" ] && [ "$$router_pubkey" != "" ]; then
+                echo "Router pubkey: $$router_pubkey"
 
-        if [ "$$channel_count" -eq 0 ] && [ "$$pending_channels" -eq 0 ]; then
-          echo "No active or pending channels found, attempting to open channel..."
+                # Connect to router
+                lncli --network=regtest connect $$router_pubkey@router_lnd:9735 2>/dev/null || echo "Already connected or connection failed"
 
-          router_info=$$(lncli --network=regtest --rpcserver=router_lnd:10010 --tlscertpath=/shared/router_tls.cert --macaroonpath=/shared/router_admin.macaroon getinfo 2>/dev/null)
-          router_pubkey=$$(echo "$$router_info" | jq -r ".identity_pubkey" 2>/dev/null)
-
-          if [ -z "$$router_pubkey" ] || [ "$$router_pubkey" = "null" ]; then
-            echo "ERROR: Failed to get router pubkey"
-            exit 1
-          fi
-
-          echo "Router pubkey: $$router_pubkey"
-
-          # Check existing peer connections
-          echo "Checking existing peer connections..."
-          connected_peers=$$(lncli --network=regtest listpeers | jq -r ".peers[].pub_key" 2>/dev/null || echo "")
-
-          if echo "$$connected_peers" | grep -q "$$router_pubkey"; then
-            echo "Already connected to router peer"
-          else
-            echo "Connecting to router..."
-            set +e
-            connect_output=$$(lncli --network=regtest connect $$router_pubkey@router_lnd:9735 2>&1)
-            connect_exit_code=$$?
-            set -e
-
-            if [ $$connect_exit_code -eq 0 ]; then
-              echo "Successfully connected to router"
-            elif echo "$$connect_output" | grep -q "already connected"; then
-              echo "Already connected to router (detected via error message)"
+                # Open channel
+                echo "Opening channel with router..."
+                if lncli --network=regtest openchannel --node_key=$$router_pubkey --local_amt=5000000 --push_amt=2500000; then
+                  echo "Channel opening initiated"
+                else
+                  echo "Channel opening failed"
+                fi
+              else
+                echo "Router not available yet"
+              fi
             else
-              echo "ERROR: Failed to connect to router: $$connect_output"
-              exit 1
+              echo "Router TLS certificate not available"
             fi
+          else
+            echo "Channels exist: active=$$active_channels, pending=$$pending_channels"
           fi
-
-          echo "Opening channel with 50/50 balance split..."
-          if ! lncli --network=regtest openchannel --node_key=$$router_pubkey --local_amt=1000000 --push_amt=500000; then
-            echo "ERROR: Failed to open channel"
-            exit 1
-          fi
-
-          echo "Channel opening initiated successfully"
         else
-          echo "Channel(s) exist or pending (active: $$channel_count, pending: $$pending_channels), skipping channel creation"
+          echo "Insufficient balance for channel operations (need > 0.1 BTC)"
         fi
         '
 
@@ -358,91 +253,48 @@ services:
     networks:
       - lnd
       - lnemail
-    entrypoint: ["sh"]  # Override the lnd entrypoint
+    entrypoint: ["sh"]
     command:
       - -c
       - |
         set -e
-        echo "Setting up LND macaroons and certificates..."
+        echo "Setting up LND certificates and macaroons..."
 
-        # Ensure shared directory exists and has proper permissions
         mkdir -p /shared
         chmod 755 /shared
 
-        # Wait for and copy main LND TLS certificate
-        echo "Waiting for main LND certificate..."
-        retry_count=0
-        while [ ! -f /root/.lnd/tls.cert ] && [ $$retry_count -lt 30 ]; do
-          echo "Main LND certificate not ready, waiting... ($$retry_count/30)"
-          sleep 2
-          retry_count=$$((retry_count + 1))
-        done
+        # Copy certificates with retry logic
+        copy_with_retry() {
+          local src="$1"
+          local dest="$2"
+          local name="$3"
+          local max_attempts=30
+          local attempt=0
 
-        if [ -f /root/.lnd/tls.cert ]; then
-          cp /root/.lnd/tls.cert /shared/tls.cert
-          chmod 644 /shared/tls.cert
-          echo "Main LND TLS certificate copied"
-        else
-          echo "ERROR: Main LND TLS certificate not found after waiting"
-          exit 1
-        fi
+          while [ $$attempt -lt $$max_attempts ]; do
+            if [ -f "$$src" ]; then
+              cp "$$src" "$$dest"
+              chmod 644 "$$dest"
+              echo "$$name copied successfully"
+              return 0
+            fi
+            echo "Waiting for $$name... ($$attempt/$$max_attempts)"
+            sleep 2
+            attempt=$((attempt + 1))
+          done
 
-        # Wait for and copy router LND TLS certificate
-        echo "Waiting for router LND certificate..."
-        retry_count=0
-        while [ ! -f /root/.router_lnd/tls.cert ] && [ $$retry_count -lt 30 ]; do
-          echo "Router LND certificate not ready, waiting... ($$retry_count/30)"
-          sleep 2
-          retry_count=$$((retry_count + 1))
-        done
+          echo "ERROR: $$name not found after $$max_attempts attempts"
+          return 1
+        }
 
-        if [ -f /root/.router_lnd/tls.cert ]; then
-          cp /root/.router_lnd/tls.cert /shared/router_tls.cert
-          chmod 644 /shared/router_tls.cert
-          echo "Router LND TLS certificate copied"
-        else
-          echo "ERROR: Router LND TLS certificate not found after waiting"
-          exit 1
-        fi
+        # Copy all required files
+        copy_with_retry "/root/.lnd/tls.cert" "/shared/tls.cert" "Main LND TLS certificate"
+        copy_with_retry "/root/.router_lnd/tls.cert" "/shared/router_tls.cert" "Router LND TLS certificate"
+        copy_with_retry "/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon" "/shared/admin.macaroon" "Main LND admin macaroon"
+        copy_with_retry "/root/.router_lnd/data/chain/bitcoin/regtest/admin.macaroon" "/shared/router_admin.macaroon" "Router LND admin macaroon"
 
-        # Copy admin.macaroon for API usage
-        echo "Waiting for main LND admin macaroon..."
-        retry_count=0
-        while [ ! -f /root/.lnd/data/chain/bitcoin/regtest/admin.macaroon ] && [ $$retry_count -lt 30 ]; do
-          echo "Main LND admin macaroon not ready, waiting... ($$retry_count/30)"
-          sleep 2
-          retry_count=$$((retry_count + 1))
-        done
-
-        if [ -f /root/.lnd/data/chain/bitcoin/regtest/admin.macaroon ]; then
-          cp /root/.lnd/data/chain/bitcoin/regtest/admin.macaroon /shared/admin.macaroon
-          chmod 644 /shared/admin.macaroon
-          echo "Main LND admin macaroon copied"
-        else
-          echo "ERROR: Main LND admin macaroon not found after waiting"
-          exit 1
-        fi
-
-        # Copy router admin.macaroon for router connections
-        echo "Waiting for router LND admin macaroon..."
-        retry_count=0
-        while [ ! -f /root/.router_lnd/data/chain/bitcoin/regtest/admin.macaroon ] && [ $$retry_count -lt 30 ]; do
-          echo "Router LND admin macaroon not ready, waiting... ($$retry_count/30)"
-          sleep 2
-          retry_count=$$((retry_count + 1))
-        done
-
-        if [ -f /root/.router_lnd/data/chain/bitcoin/regtest/admin.macaroon ]; then
-          cp /root/.router_lnd/data/chain/bitcoin/regtest/admin.macaroon /shared/router_admin.macaroon
-          chmod 644 /shared/router_admin.macaroon
-          echo "Router LND admin macaroon copied"
-        else
-          echo "ERROR: Router LND admin macaroon not found after waiting"
-          exit 1
-        fi
-
-        # Create invoice-only macaroon for main LND - connect to LND via network
-        echo "Creating invoice macaroon for main LND..."
+        # Create invoice macaroon
+        echo "Creating invoice macaroon..."
         if lncli --network=regtest --rpcserver=lnd:10009 --tlscertpath=/shared/tls.cert --macaroonpath=/shared/admin.macaroon bakemacaroon invoices:read invoices:write --save_to /shared/invoice.macaroon; then
           chmod 644 /shared/invoice.macaroon
           echo "Invoice macaroon created successfully"
@@ -452,7 +304,7 @@ services:
         fi
 
         echo "LND setup completed successfully"
-    restart: "no"  # Only run once
+    restart: "no"
 
   ofelia:
     image: mcuadros/ofelia:latest
@@ -504,6 +356,21 @@ services:
     networks:
       - lnd
       - lnemail
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.router_setup.schedule: "@every 20s"
+      ofelia.job-exec.router_setup.command: |
+        sh -c '
+        set -e
+
+        # Auto-create router wallet if needed
+        if ! lncli --network=regtest --rpcserver=localhost:10010 getinfo >/dev/null 2>&1; then
+          echo "Creating router wallet..."
+          echo -e "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nn\n" | lncli --network=regtest --rpcserver=localhost:10010 create 2>/dev/null || echo "Router wallet creation attempted"
+        else
+          echo "Router LND is ready"
+        fi
+        '
 
   # Mail certificate generation service
   cert-generator:
@@ -656,11 +523,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: development  # Target the development stage
+      target: development
     container_name: lnemail-api
     restart: unless-stopped
     volumes:
-      - ./:/app  # Mount source code for hot reloading
+      - ./:/app
       - ./dev-data/lnemail-data:/data
       - ./dev-data/shared:/shared
     environment:
@@ -692,7 +559,7 @@ services:
       - lnemail-redis
       - mailserver
       - lnd
-      - lnd-setup  # Wait for setup to complete
+      - lnd-setup
     command: >
       bash -c "
         echo 'Waiting for LND certificates to be available...'
@@ -715,11 +582,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: development  # Target the development stage
+      target: development
     container_name: lnemail-worker
     restart: unless-stopped
     volumes:
-      - ./:/app  # Mount source code for hot reloading
+      - ./:/app
       - ./dev-data/lnemail-data:/data
       - ./dev-data/shared:/shared
     environment:
@@ -746,7 +613,7 @@ services:
       - lnemail-redis
       - mailserver
       - lnd
-      - lnd-setup  # Wait for setup to complete
+      - lnd-setup
     command: >
       bash -c "
         echo 'Waiting for LND certificates to be available...'
@@ -757,6 +624,7 @@ services:
         echo 'Certificates found, starting worker...'
         rq worker lnemail
       "
+
 networks:
   lnd:
     driver: bridge
