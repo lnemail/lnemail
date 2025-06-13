@@ -107,3 +107,18 @@ class HealthResponse(BaseModel):
 class AccountResponse(BaseModel):
     email_address: str
     expires_at: datetime
+
+
+class EmailDeleteRequest(BaseModel):
+    """Request schema for deleting emails."""
+
+    email_ids: List[str]
+
+
+class EmailDeleteResponse(BaseModel):
+    """Response schema for email deletion operations."""
+
+    success: bool
+    deleted_count: int
+    failed_ids: List[str] = Field(default_factory=list)
+    message: str

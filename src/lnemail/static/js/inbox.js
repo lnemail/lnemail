@@ -7,31 +7,37 @@ document.addEventListener('DOMContentLoaded', function() {
     const STORAGE_KEYS = {
         accessToken: 'lnemail_access_token',
         emailAddress: 'lnemail_email_address',
-        sendPaymentData: 'lnemail_send_payment_data' // New key for pending send payments
+        sendPaymentData: 'lnemail_send_payment_data'
     };
     const ENDPOINTS = {
         account: `${API_BASE_URL}/account`,
         listEmails: `${API_BASE_URL}/emails`,
         getEmail: (emailId) => `${API_BASE_URL}/emails/${emailId}`,
-        sendEmail: `${API_BASE_URL}/email/send`, // New endpoint for sending email
-        sendPaymentStatus: (paymentHash) => `${API_BASE_URL}/email/send/status/${paymentHash}` // New endpoint for checking send payment status
+        deleteEmail: (emailId) => `${API_BASE_URL}/emails/${emailId}`,
+        deleteEmailsBulk: `${API_BASE_URL}/emails`,
+        sendEmail: `${API_BASE_URL}/email/send`,
+        sendPaymentStatus: (paymentHash) => `${API_BASE_URL}/email/send/status/${paymentHash}`
     };
+
     // DOM Elements
     const authSection = document.getElementById('auth-section');
     const inboxSection = document.getElementById('inbox-section');
     const emailListContainer = document.getElementById('email-list-container');
     const emailContentSection = document.getElementById('email-content');
-    const composeEmailSection = document.getElementById('compose-email-section'); // New compose section
+    const composeEmailSection = document.getElementById('compose-email-section');
     const accessTokenInput = document.getElementById('access-token-input');
     const authBtn = document.getElementById('auth-btn');
     const logoutBtn = document.getElementById('logout-btn');
     const refreshBtn = document.getElementById('refresh-btn');
-    const composeBtn = document.getElementById('compose-btn'); // New compose button
+    const composeBtn = document.getElementById('compose-btn');
     const backToListBtn = document.getElementById('back-to-list');
+    const selectAllCheckbox = document.getElementById('select-all-checkbox');
+    const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
     const emailDisplay = document.getElementById('email-display');
     const emailList = document.getElementById('email-list');
     const noEmailsDiv = document.querySelector('.no-emails');
     const loadingDiv = document.querySelector('.loading-emails');
+
     // Email content elements
     const emailSubject = document.getElementById('email-subject');
     const emailFrom = document.getElementById('email-from');
@@ -43,13 +49,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const attachmentsList = document.getElementById('attachments-list');
     const attachmentsCount = document.getElementById('email-attachments-count');
     const attachmentCountSpan = document.getElementById('attachment-count');
+
     // Compose elements
     const composeToInput = document.getElementById('compose-to');
     const composeSubjectInput = document.getElementById('compose-subject');
     const composeBodyTextarea = document.getElementById('compose-body');
     const sendEmailBtn = document.getElementById('send-email-btn');
     const cancelComposeBtn = document.getElementById('cancel-compose-btn');
-    const sendPaymentPendingDiv = document.getElementById('send-payment-pending'); // New payment section for sending
+    const sendPaymentPendingDiv = document.getElementById('send-payment-pending');
     const sendQrContainer = document.getElementById('send-qrcode');
     const sendBolt11Invoice = document.getElementById('send-bolt11-invoice');
     const sendInvoiceAmount = document.getElementById('send-invoice-amount');
@@ -58,11 +65,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const sendStatusText = document.getElementById('send-status-text');
     const sendLoader = document.getElementById('send-loader');
     const cancelSendPaymentBtn = document.getElementById('cancel-send-payment-btn');
+
     let autoRefreshInterval = null;
     let currentEmailAddress = '';
-    let emailsData = []; // Store for sorting and filtering
+    let emailsData = [];
     let currentSendPaymentHash = '';
     let sendCheckInterval = null;
+    let selectedEmailIds = new Set();
+
     // Utility functions for API requests and notifications
     async function apiRequest(url, options = {}) {
         const token = localStorage.getItem(STORAGE_KEYS.accessToken);
@@ -78,6 +88,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         return response.json();
     }
+
     function showNotification(message, type = 'info', duration = 3000) {
         const notificationContainer = document.getElementById('notification-container');
         if (!notificationContainer) {
@@ -93,20 +104,23 @@ document.addEventListener('DOMContentLoaded', function() {
             notification.addEventListener('transitionend', () => notification.remove());
         }, duration);
     }
+
     function copyToClipboard(text) {
         navigator.clipboard.writeText(text).then(() => {
-            showNotification('Copied to clipboard!', 'success');
+            // Success - no notification needed
         }).catch(err => {
             console.error('Failed to copy text: ', err);
             showNotification('Failed to copy text.', 'error');
         });
     }
+
     // Check for existing access token
     const storedToken = localStorage.getItem(STORAGE_KEYS.accessToken);
     if (storedToken) {
         accessTokenInput.value = storedToken;
         authenticateAndLoadInbox(storedToken);
     }
+
     // Check for pending send payment on page load
     const storedSendPaymentData = sessionStorage.getItem(STORAGE_KEYS.sendPaymentData);
     if (storedSendPaymentData) {
@@ -121,18 +135,28 @@ document.addEventListener('DOMContentLoaded', function() {
             sessionStorage.removeItem(STORAGE_KEYS.sendPaymentData);
         }
     }
+
     // Event Listeners
     authBtn.addEventListener('click', handleAuthentication);
     logoutBtn.addEventListener('click', handleLogout);
     refreshBtn.addEventListener('click', fetchEmails);
-    composeBtn.addEventListener('click', showComposeForm); // New event listener
+    composeBtn.addEventListener('click', showComposeForm);
     backToListBtn.addEventListener('click', showEmailList);
-    sendEmailBtn.addEventListener('click', handleSendEmail); // New event listener
-    cancelComposeBtn.addEventListener('click', cancelCompose); // New event listener
-    sendCopyInvoiceBtn.addEventListener('click', () => { // New event listener
+    sendEmailBtn.addEventListener('click', handleSendEmail);
+    cancelComposeBtn.addEventListener('click', cancelCompose);
+    sendCopyInvoiceBtn.addEventListener('click', () => {
         copyToClipboard(sendBolt11Invoice.textContent);
     });
-    cancelSendPaymentBtn.addEventListener('click', cancelSendPayment); // New event listener
+    cancelSendPaymentBtn.addEventListener('click', cancelSendPayment);
+
+    // Delete functionality event listeners
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', handleSelectAll);
+    }
+    if (bulkDeleteBtn) {
+        bulkDeleteBtn.addEventListener('click', handleBulkDelete);
+    }
+
     // Authentication and initialization
     function addResetButton() {
         if (document.getElementById('reset-auth-btn')) return;
@@ -148,6 +172,7 @@ document.addEventListener('DOMContentLoaded', function() {
         resetContainer.appendChild(resetBtn);
         authSection.appendChild(resetContainer);
     }
+
     async function handleAuthentication() {
         const token = accessTokenInput.value.trim();
         if (!token) {
@@ -162,6 +187,7 @@ document.addEventListener('DOMContentLoaded', function() {
             localStorage.removeItem(STORAGE_KEYS.accessToken);
         }
     }
+
     async function authenticateAndLoadInbox(token) {
         showLoadingState();
         try {
@@ -178,22 +204,25 @@ document.addEventListener('DOMContentLoaded', function() {
             throw error;
         }
     }
+
     // Email fetching and rendering
     async function fetchEmails() {
         showLoadingState();
         try {
             const response = await apiRequest(ENDPOINTS.listEmails);
             const emails = Array.isArray(response) ? response : (response.emails || []);
-            // Store emails data for future operations
             emailsData = emails;
-            // Emails are already sorted by date in reverse chronological order from backend
             renderEmails(emails);
         } catch (error) {
             handleEmailFetchError(error);
         }
     }
+
     function renderEmails(emails) {
         emailList.innerHTML = '';
+        selectedEmailIds.clear();
+        updateBulkDeleteButton();
+        updateSelectAllCheckbox();
         if (emails.length === 0) {
             noEmailsDiv.classList.remove('hidden');
             loadingDiv.classList.add('hidden');
@@ -206,11 +235,16 @@ document.addEventListener('DOMContentLoaded', function() {
         loadingDiv.classList.add('hidden');
         noEmailsDiv.classList.add('hidden');
     }
+
     function createEmailListItem(email) {
         const emailElement = document.createElement('div');
         emailElement.className = `email-list-item${!email.read ? ' unread' : ''}`;
+        emailElement.dataset.emailId = email.id;
         const readStatus = email.read ? 'read' : 'unread';
         emailElement.innerHTML = `
+            <div class="email-col checkbox">
+                <input type="checkbox" class="email-checkbox" data-email-id="${email.id}">
+            </div>
             <div class="email-col status">
                 <span class="read-status ${readStatus}"></span>
             </div>
@@ -223,41 +257,63 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="email-col date" title="${formatFullDate(email.date)}">
                 ${formatDate(email.date)}
             </div>
+            <div class="email-col actions">
+                <button class="btn small delete-btn" data-email-id="${email.id}" title="Delete email">
+                    🗑️
+                </button>
+            </div>
         `;
-        emailElement.addEventListener('click', () => showEmailContent(email.id));
+
+        emailElement.addEventListener('click', (e) => {
+            if (e.target.type === 'checkbox' || e.target.classList.contains('delete-btn') || e.target.closest('.delete-btn')) {
+                return;
+            }
+            showEmailContent(email.id);
+        });
+
+        const checkbox = emailElement.querySelector('.email-checkbox');
+        checkbox.addEventListener('change', (e) => {
+            handleEmailSelection(email.id, e.target.checked);
+        });
+
+        const deleteBtn = emailElement.querySelector('.delete-btn');
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            handleDeleteEmail(email.id);
+        });
+
         return emailElement;
     }
+
     // Email content display
     async function showEmailContent(emailId) {
         showLoadingState();
         try {
             const email = await apiRequest(ENDPOINTS.getEmail(emailId));
             populateEmailContent(email);
-            // Update the email list item to show as read
             updateEmailReadStatus(emailId, true);
             emailListContainer.classList.add('hidden');
-            composeEmailSection.classList.add('hidden'); // Hide compose section
+            composeEmailSection.classList.add('hidden');
             emailContentSection.classList.remove('hidden');
-            loadingDiv.classList.add('hidden'); // Hide loading after content is loaded
+            loadingDiv.classList.add('hidden');
         } catch (error) {
             showNotification('Failed to load email', 'error');
         }
     }
+
     function populateEmailContent(email) {
         emailSubject.textContent = email.subject || '(No Subject)';
         emailFrom.textContent = email.sender || email.from || 'Unknown';
         emailTo.textContent = currentEmailAddress || email.to || 'Unknown';
         emailDate.textContent = formatFullDate(email.date);
-        // Handle email body content - use innerHTML to preserve formatting
         const bodyContent = email.body || email.text_body || '';
         emailText.innerHTML = escapeHtml(bodyContent);
-        // Handle HTML content if available
         const htmlBody = email.html_body || '';
         emailHtml.innerHTML = htmlBody;
         emailHtml.classList.toggle('hidden', !htmlBody);
-        // Handle attachments
         displayAttachments(email.attachments || []);
     }
+
     function displayAttachments(attachments) {
         if (!attachments || attachments.length === 0) {
             emailAttachments.classList.add('hidden');
@@ -273,10 +329,10 @@ document.addEventListener('DOMContentLoaded', function() {
             attachmentsList.appendChild(attachmentElement);
         });
     }
+
     function createAttachmentElement(attachment, index) {
         const attachmentDiv = document.createElement('div');
         attachmentDiv.className = 'attachment-item';
-        // Create download link
         const blob = new Blob([attachment.content], { type: 'text/plain' });
         const downloadUrl = URL.createObjectURL(blob);
         attachmentDiv.innerHTML = `
@@ -297,70 +353,70 @@ document.addEventListener('DOMContentLoaded', function() {
                 ${escapeHtml(attachment.content)}
             </div>
         `;
-        // Clean up blob URL when attachment is removed
         attachmentDiv.addEventListener('DOMNodeRemoved', () => {
             URL.revokeObjectURL(downloadUrl);
         });
         return attachmentDiv;
     }
+
     // Email composition and sending
     function showComposeForm() {
         emailListContainer.classList.add('hidden');
         emailContentSection.classList.add('hidden');
         composeEmailSection.classList.remove('hidden');
-        // Reset form fields
         composeToInput.value = '';
         composeSubjectInput.value = '';
         composeBodyTextarea.value = '';
-        sendPaymentPendingDiv.classList.add('hidden'); // Hide payment section initially
-        sendEmailBtn.classList.remove('hidden'); // Show send button
+        sendPaymentPendingDiv.classList.add('hidden');
+        sendEmailBtn.classList.remove('hidden');
         sendEmailBtn.disabled = false;
         sendEmailBtn.textContent = 'Send Email';
-        // Reset send status text and styles
         sendStatusText.textContent = '';
         sendStatusText.classList.remove('status-success', 'status-error');
-        sendWeblnPayBtn.classList.add('hidden'); // Hide WebLN button
-        sendLoader.classList.add('hidden'); // Hide loader
+        sendWeblnPayBtn.classList.add('hidden');
+        sendLoader.classList.add('hidden');
     }
+
     function cancelCompose() {
         composeEmailSection.classList.add('hidden');
         sendPaymentPendingDiv.classList.add('hidden');
-        showEmailList(); // Go back to inbox list
-        // Clear any pending payment interval
+        showEmailList();
         if (sendCheckInterval) {
             clearInterval(sendCheckInterval);
             sendCheckInterval = null;
         }
         sessionStorage.removeItem(STORAGE_KEYS.sendPaymentData);
     }
+
     async function handleSendEmail() {
         const recipient = composeToInput.value.trim();
         const subject = composeSubjectInput.value.trim();
         const body = composeBodyTextarea.value.trim();
+
         if (!recipient || !body) {
             showNotification('Recipient and message body cannot be empty.', 'error');
             return;
         }
+
         if (!isValidEmail(recipient)) {
             showNotification('Please enter a valid recipient email address.', 'error');
             return;
         }
+
         try {
             sendEmailBtn.disabled = true;
             sendEmailBtn.textContent = 'Generating Invoice...';
-            // Update status text in the payment section (which will be shown next)
             sendStatusText.textContent = 'Generating Lightning invoice...';
             sendStatusText.classList.remove('status-success', 'status-error');
             sendLoader.classList.remove('hidden');
-            sendPaymentPendingDiv.classList.remove('hidden'); // Show payment section early
-            sendWeblnPayBtn.classList.add('hidden'); // Hide WebLN button initially
+            sendPaymentPendingDiv.classList.remove('hidden');
+            sendWeblnPayBtn.classList.add('hidden');
 
             const response = await apiRequest(ENDPOINTS.sendEmail, {
                 method: 'POST',
                 body: JSON.stringify({ recipient, subject, body })
             });
 
-            // Store invoice data in session storage
             const paymentData = {
                 payment_hash: response.payment_hash,
                 payment_request: response.payment_request,
@@ -373,7 +429,6 @@ document.addEventListener('DOMContentLoaded', function() {
             sessionStorage.setItem(STORAGE_KEYS.sendPaymentData, JSON.stringify(paymentData));
             displaySendPaymentScreen(paymentData);
 
-            // WebLN integration
             if (window.webln) {
                 sendWeblnPayBtn.classList.remove('hidden');
                 sendWeblnPayBtn.onclick = async () => {
@@ -381,12 +436,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         await window.webln.enable();
                         await window.webln.sendPayment(sendBolt11Invoice.textContent);
                         showNotification('WebLN payment initiated. Checking status...', 'info');
-                        checkSendPaymentStatus(); // Check status immediately after WebLN pay
+                        checkSendPaymentStatus();
                     } catch (error) {
                         showNotification(`WebLN payment failed: ${error.message}`, 'error');
                     }
                 };
             }
+
             currentSendPaymentHash = response.payment_hash;
             sendCheckInterval = setInterval(checkSendPaymentStatus, 3000);
         } catch (error) {
@@ -394,13 +450,14 @@ document.addEventListener('DOMContentLoaded', function() {
             showNotification(`Failed to send email: ${error.message}`, 'error');
             sendEmailBtn.disabled = false;
             sendEmailBtn.textContent = 'Send Email';
-            sendPaymentPendingDiv.classList.add('hidden'); // Hide payment section on error
-            sendStatusText.textContent = ''; // Clear status text on error
+            sendPaymentPendingDiv.classList.add('hidden');
+            sendStatusText.textContent = '';
             sendLoader.classList.add('hidden');
         }
     }
+
     function displaySendPaymentScreen(paymentData) {
-        sendEmailBtn.classList.add('hidden'); // Hide send button
+        sendEmailBtn.classList.add('hidden');
         sendPaymentPendingDiv.classList.remove('hidden');
         sendBolt11Invoice.textContent = paymentData.payment_request;
         sendInvoiceAmount.textContent = `Amount: ${paymentData.price_sats} sats`;
@@ -417,6 +474,7 @@ document.addEventListener('DOMContentLoaded', function() {
             level: 'H'
         });
     }
+
     async function checkSendPaymentStatus() {
         if (!currentSendPaymentHash) return;
         try {
@@ -434,17 +492,15 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) {
             console.error('Error checking send payment status:', error);
-            // Keep retrying on error
         }
     }
+
     function handleSendPaymentSuccess() {
-        showNotification('Email sent successfully!', 'success');
         sendLoader.classList.add('hidden');
         sendWeblnPayBtn.classList.add('hidden');
         sendStatusText.textContent = 'Email sent successfully! Redirecting to inbox...';
         sendStatusText.classList.remove('status-error');
         sendStatusText.classList.add('status-success');
-        // Hide invoice, QR, and copy button after successful payment
         sendBolt11Invoice.parentElement.classList.add('hidden');
         sendInvoiceAmount.classList.add('hidden');
         sendQrContainer.classList.add('hidden');
@@ -452,9 +508,8 @@ document.addEventListener('DOMContentLoaded', function() {
         cancelSendPaymentBtn.classList.add('hidden');
 
         setTimeout(() => {
-            sendPaymentPendingDiv.classList.add('hidden'); // Hide payment section
-            showEmailList(); // Go back to inbox
-            // Reset status text and styles for next use
+            sendPaymentPendingDiv.classList.add('hidden');
+            showEmailList();
             sendStatusText.textContent = '';
             sendStatusText.classList.remove('status-success', 'status-error');
             sendBolt11Invoice.parentElement.classList.remove('hidden');
@@ -462,7 +517,7 @@ document.addEventListener('DOMContentLoaded', function() {
             sendQrContainer.classList.remove('hidden');
             sendCopyInvoiceBtn.classList.remove('hidden');
             cancelSendPaymentBtn.classList.remove('hidden');
-        }, 2000); // 2-second delay
+        }, 2000);
     }
 
     function handleSendPaymentFailure(status) {
@@ -472,15 +527,13 @@ document.addEventListener('DOMContentLoaded', function() {
         sendStatusText.textContent = `Email payment ${status}. Please try again.`;
         sendStatusText.classList.remove('status-success');
         sendStatusText.classList.add('status-error');
-        // Re-enable send button on failure to allow retry
         sendEmailBtn.disabled = false;
         sendEmailBtn.textContent = 'Send Email';
-
         setTimeout(() => {
-            cancelSendPayment(); // Reset UI to compose form
+            cancelSendPayment();
             sendStatusText.classList.remove('status-error');
-            sendStatusText.textContent = ''; // Clear status text after returning to compose
-        }, 3000); // 3-second delay
+            sendStatusText.textContent = '';
+        }, 3000);
     }
 
     function cancelSendPayment() {
@@ -493,42 +546,174 @@ document.addEventListener('DOMContentLoaded', function() {
         sendEmailBtn.classList.remove('hidden');
         sendEmailBtn.disabled = false;
         sendEmailBtn.textContent = 'Send Email';
-        // Go back to the compose form or inbox
-        showComposeForm(); // Show compose form, which also resets its state
+        showComposeForm();
     }
+
+    // Email deletion functionality
+    function handleEmailSelection(emailId, isSelected) {
+        if (isSelected) {
+            selectedEmailIds.add(emailId);
+        } else {
+            selectedEmailIds.delete(emailId);
+        }
+        updateBulkDeleteButton();
+        updateSelectAllCheckbox();
+    }
+
+    function handleSelectAll() {
+        const isChecked = selectAllCheckbox.checked;
+        const checkboxes = document.querySelectorAll('.email-checkbox');
+        selectedEmailIds.clear();
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = isChecked;
+            if (isChecked) {
+                selectedEmailIds.add(checkbox.dataset.emailId);
+            }
+        });
+        updateBulkDeleteButton();
+    }
+
+    function updateSelectAllCheckbox() {
+        if (!selectAllCheckbox) return;
+        const allCheckboxes = document.querySelectorAll('.email-checkbox');
+        const checkedCheckboxes = document.querySelectorAll('.email-checkbox:checked');
+        if (allCheckboxes.length === 0) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        } else if (checkedCheckboxes.length === allCheckboxes.length) {
+            selectAllCheckbox.checked = true;
+            selectAllCheckbox.indeterminate = false;
+        } else if (checkedCheckboxes.length > 0) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = true;
+        } else {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        }
+    }
+
+    function updateBulkDeleteButton() {
+        if (!bulkDeleteBtn) return;
+        if (selectedEmailIds.size > 0) {
+            bulkDeleteBtn.disabled = false;
+            bulkDeleteBtn.textContent = `Delete Selected (${selectedEmailIds.size})`;
+        } else {
+            bulkDeleteBtn.disabled = true;
+            bulkDeleteBtn.textContent = 'Delete Selected';
+        }
+    }
+
+    async function handleDeleteEmail(emailId) {
+        if (!confirm('Are you sure you want to delete this email? This action cannot be undone.')) {
+            return;
+        }
+        try {
+            const response = await apiRequest(ENDPOINTS.deleteEmail(emailId), {
+                method: 'DELETE'
+            });
+            if (response.success) {
+                showNotification('Email deleted successfully!', 'success');
+                removeEmailFromUI(emailId);
+                removeEmailFromData(emailId);
+                selectedEmailIds.delete(emailId);
+                updateBulkDeleteButton();
+                updateSelectAllCheckbox();
+            } else {
+                showNotification('Failed to delete email', 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting email:', error);
+            showNotification(`Failed to delete email: ${error.message}`, 'error');
+        }
+    }
+
+    async function handleBulkDelete() {
+        if (selectedEmailIds.size === 0) {
+            showNotification('No emails selected for deletion', 'error');
+            return;
+        }
+        const emailCount = selectedEmailIds.size;
+        if (!confirm(`Are you sure you want to delete ${emailCount} email${emailCount > 1 ? 's' : ''}? This action cannot be undone.`)) {
+            return;
+        }
+        try {
+            bulkDeleteBtn.disabled = true;
+            bulkDeleteBtn.textContent = 'Deleting...';
+            const response = await apiRequest(ENDPOINTS.deleteEmailsBulk, {
+                method: 'DELETE',
+                body: JSON.stringify({
+                    email_ids: Array.from(selectedEmailIds)
+                })
+            });
+            if (response.success || response.deleted_count > 0) {
+                const deletedIds = Array.from(selectedEmailIds).filter(id => !response.failed_ids.includes(id));
+                deletedIds.forEach(emailId => {
+                    removeEmailFromUI(emailId);
+                    removeEmailFromData(emailId);
+                });
+                selectedEmailIds.clear();
+                updateBulkDeleteButton();
+                updateSelectAllCheckbox();
+                showNotification(response.message, response.success ? 'success' : 'info');
+                if (response.failed_ids.length > 0) {
+                    console.warn('Failed to delete some emails:', response.failed_ids);
+                }
+            } else {
+                showNotification('Failed to delete emails', 'error');
+            }
+        } catch (error) {
+            console.error('Error during bulk delete:', error);
+            showNotification(`Failed to delete emails: ${error.message}`, 'error');
+        } finally {
+            updateBulkDeleteButton();
+        }
+    }
+
+    function removeEmailFromUI(emailId) {
+        const emailElement = document.querySelector(`[data-email-id="${emailId}"]`);
+        if (emailElement) {
+            emailElement.remove();
+        }
+        const remainingEmails = document.querySelectorAll('.email-list-item');
+        if (remainingEmails.length === 0) {
+            noEmailsDiv.classList.remove('hidden');
+        }
+    }
+
+    function removeEmailFromData(emailId) {
+        const index = emailsData.findIndex(email => email.id === emailId);
+        if (index !== -1) {
+            emailsData.splice(index, 1);
+        }
+    }
+
     // Utility functions
     function updateEmailReadStatus(emailId, isRead) {
-        // Update in stored data
         const emailIndex = emailsData.findIndex(email => email.id === emailId);
         if (emailIndex !== -1) {
             emailsData[emailIndex].read = isRead;
         }
-        // Update UI - find the email item and update its class
-        const emailItems = document.querySelectorAll('.email-list-item');
-        emailItems.forEach(item => {
-            // Check if this is the right email item by looking for the email ID
-            // Since we don't store the ID directly, we'll refresh the list
-        });
-        // For now, just refresh the email list to reflect the updated read status
-        // In a more sophisticated implementation, we could store the email ID as a data attribute
         setTimeout(() => {
             renderEmails(emailsData);
         }, 100);
     }
+
     function truncateText(text, maxLength) {
         if (!text) return '';
         return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
     }
+
     function escapeHtml(text) {
         if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
     }
+
     function isValidEmail(email) {
-        // Basic email validation regex
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     }
+
     function formatDate(dateStr) {
         if (!dateStr) return 'Unknown';
         try {
@@ -549,6 +734,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return 'Invalid Date';
         }
     }
+
     function formatFullDate(dateStr) {
         if (!dateStr) return 'Unknown';
         try {
@@ -565,20 +751,22 @@ document.addEventListener('DOMContentLoaded', function() {
             return 'Invalid Date';
         }
     }
+
     // Navigation and state management
     function showEmailList() {
         emailContentSection.classList.add('hidden');
-        composeEmailSection.classList.add('hidden'); // Hide compose section
+        composeEmailSection.classList.add('hidden');
         emailListContainer.classList.remove('hidden');
-        // Refresh emails to show updated read statuses
         fetchEmails();
     }
+
     function handleLogout() {
         localStorage.removeItem(STORAGE_KEYS.accessToken);
         localStorage.removeItem(STORAGE_KEYS.emailAddress);
-        sessionStorage.removeItem(STORAGE_KEYS.sendPaymentData); // Clear send payment data on logout
+        sessionStorage.removeItem(STORAGE_KEYS.sendPaymentData);
         window.location.href = '/';
     }
+
     function showLoadingState() {
         loadingDiv.classList.remove('hidden');
         noEmailsDiv.classList.add('hidden');
@@ -586,23 +774,26 @@ document.addEventListener('DOMContentLoaded', function() {
             emailList.innerHTML = '';
         }
     }
+
     function handleEmailFetchError(error) {
         console.error('Email fetch error:', error);
         showNotification('Failed to load emails', 'error');
         loadingDiv.classList.add('hidden');
         noEmailsDiv.classList.remove('hidden');
     }
+
     function startAutoRefresh() {
         if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-        autoRefreshInterval = setInterval(fetchEmails, 30000); // Refresh every 30 seconds
+        autoRefreshInterval = setInterval(fetchEmails, 30000);
     }
+
     // Initialize
     addResetButton();
+
     // Cleanup
     window.addEventListener('beforeunload', () => {
         if (autoRefreshInterval) clearInterval(autoRefreshInterval);
         if (sendCheckInterval) clearInterval(sendCheckInterval);
-        // Clean up any blob URLs
         document.querySelectorAll('.download-btn').forEach(btn => {
             if (btn.href && btn.href.startsWith('blob:')) {
                 URL.revokeObjectURL(btn.href);

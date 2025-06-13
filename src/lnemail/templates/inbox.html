@@ -33,10 +33,17 @@
 <section id="inbox-section" class="card hidden">
     <div id="email-list-container">
         <div class="email-list-header">
+            <div class="email-col checkbox">
+                <input type="checkbox" id="select-all-checkbox" title="Select all emails">
+            </div>
             <div class="email-col status">Status</div>
             <div class="email-col from">From</div>
             <div class="email-col subject">Subject</div>
             <div class="email-col date">Date</div>
+            <div class="email-col actions">Actions</div>
+        </div>
+        <div class="email-actions-bar">
+            <button id="bulk-delete-btn" class="btn danger" disabled>Delete Selected</button>
         </div>
         <div id="email-list">
             <div class="loading-emails">

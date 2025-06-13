@@ -17,6 +17,8 @@ from ..core.models import EmailAccount, PaymentStatus, PendingOutgoingEmail
 from ..core.schemas import (
     AccountResponse,
     EmailContent,
+    EmailDeleteRequest,
+    EmailDeleteResponse,
     EmailHeader,
     EmailListResponse,
     EmailCreateRequest,
@@ -468,6 +470,123 @@ async def get_email(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get email content",
+        )
+
+
+@router.delete(
+    "/emails/{email_id}",
+    response_model=EmailDeleteResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Account not paid or expired"},
+        404: {"model": ErrorResponse, "description": "Email not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def delete_email(
+    email_id: str, account: EmailAccount = Depends(get_current_account)
+) -> EmailDeleteResponse:
+    """Delete a specific email.
+
+    Args:
+        email_id: ID of the email to delete
+        account: Authenticated EmailAccount from token validation
+
+    Returns:
+        EmailDeleteResponse: Result of the deletion operation
+    """
+    try:
+        if not account.email_password:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Email password not found for account",
+            )
+
+        success = email_service.delete_email(
+            account.email_address, account.email_password, email_id
+        )
+
+        if success:
+            return EmailDeleteResponse(
+                success=True,
+                deleted_count=1,
+                failed_ids=[],
+                message="Email deleted successfully",
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Email not found or could not be deleted",
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting email {email_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete email",
+        )
+
+
+@router.delete(
+    "/emails",
+    response_model=EmailDeleteResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Account not paid or expired"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def delete_emails_bulk(
+    delete_request: EmailDeleteRequest,
+    account: EmailAccount = Depends(get_current_account),
+) -> EmailDeleteResponse:
+    """Delete multiple emails in bulk.
+
+    Args:
+        delete_request: List of email IDs to delete
+        account: Authenticated EmailAccount from token validation
+
+    Returns:
+        EmailDeleteResponse: Result of the bulk deletion operation
+    """
+    try:
+        if not account.email_password:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Email password not found for account",
+            )
+
+        success, failed_ids = email_service.delete_emails_bulk(
+            account.email_address, account.email_password, delete_request.email_ids
+        )
+
+        deleted_count = len(delete_request.email_ids) - len(failed_ids)
+
+        if deleted_count == 0:
+            message = "No emails were deleted"
+        elif failed_ids:
+            message = (
+                f"Deleted {deleted_count} out of {len(delete_request.email_ids)} emails"
+            )
+        else:
+            message = f"Successfully deleted {deleted_count} emails"
+
+        return EmailDeleteResponse(
+            success=success,
+            deleted_count=deleted_count,
+            failed_ids=failed_ids,
+            message=message,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error during bulk email deletion: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete emails",
         )
 
 

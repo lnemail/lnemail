@@ -836,6 +836,97 @@ class EmailService:
             )
             return False
 
+    def delete_email(self, email_address: str, password: str, email_id: str) -> bool:
+        """Delete a specific email via IMAP.
+
+        Args:
+            email_address: Email address to access
+            password: Password for the email account
+            email_id: ID of the email to delete
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Connect to IMAP server with TLS
+            mail = self._create_imap_connection()
+            mail.login(email_address, password)
+            mail.select("INBOX")
+
+            # Mark email for deletion
+            status, _ = mail.store(email_id, "+FLAGS", "\\Deleted")
+            if status != "OK":
+                logger.error(f"Failed to mark email {email_id} for deletion")
+                mail.close()
+                mail.logout()
+                return False
+
+            # Expunge to permanently delete
+            mail.expunge()
+
+            mail.close()
+            mail.logout()
+
+            logger.info(f"Successfully deleted email {email_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error deleting email {email_id}: {str(e)}")
+            return False
+
+    def delete_emails_bulk(
+        self, email_address: str, password: str, email_ids: List[str]
+    ) -> Tuple[bool, List[str]]:
+        """Delete multiple emails via IMAP.
+
+        Args:
+            email_address: Email address to access
+            password: Password for the email account
+            email_ids: List of email IDs to delete
+
+        Returns:
+            Tuple of (success, list of failed email IDs)
+        """
+        failed_ids: list[str] = []
+
+        if not email_ids:
+            return True, failed_ids
+
+        try:
+            # Connect to IMAP server with TLS
+            mail = self._create_imap_connection()
+            mail.login(email_address, password)
+            mail.select("INBOX")
+
+            # Mark all emails for deletion
+            for email_id in email_ids:
+                try:
+                    status, _ = mail.store(email_id, "+FLAGS", "\\Deleted")
+                    if status != "OK":
+                        logger.error(f"Failed to mark email {email_id} for deletion")
+                        failed_ids.append(email_id)
+                except Exception as e:
+                    logger.error(
+                        f"Error marking email {email_id} for deletion: {str(e)}"
+                    )
+                    failed_ids.append(email_id)
+
+            # Expunge to permanently delete all marked emails
+            mail.expunge()
+
+            mail.close()
+            mail.logout()
+
+            successful_count = len(email_ids) - len(failed_ids)
+            logger.info(
+                f"Successfully deleted {successful_count} out of {len(email_ids)} emails"
+            )
+            return len(failed_ids) == 0, failed_ids
+
+        except Exception as e:
+            logger.error(f"Error during bulk email deletion: {str(e)}")
+            return False, email_ids
+
     def delete_account(self, email_address: str) -> bool:
         """Delete an email account from the mail server.
 
