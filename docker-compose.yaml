@@ -500,6 +500,11 @@ services:
         apt install -y python3-inotify python3-filelock
         echo "Starting mail agent..."
         exec python3 /var/mail-agent/mail-agent.py
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./scripts/mail-agent.py
+          target: /var/mail-agent/mail-agent.py
 
   # LNEmail services
   lnemail-redis:
@@ -577,6 +582,17 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./src
+          target: /app/src
+        - action: rebuild
+          path: ./requirements.txt
+        - action: rebuild
+          path: ./Dockerfile
+        - action: rebuild
+          path: ./pyproject.toml
 
   lnemail-worker:
     build:
@@ -624,6 +640,17 @@ services:
         echo 'Certificates found, starting worker...'
         rq worker lnemail
       "
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./src
+          target: /app/src
+        - action: rebuild
+          path: ./requirements.txt
+        - action: rebuild
+          path: ./Dockerfile
+        - action: rebuild
+          path: ./pyproject.toml
 
 networks:
   lnd:
