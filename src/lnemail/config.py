@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # Application settings
     APP_NAME: str = "LNemail"
-    APP_VERSION: str = "0.1.0"
+    APP_VERSION: str = "0.2.0"
     DEBUG: bool = False
 
     # Server settings

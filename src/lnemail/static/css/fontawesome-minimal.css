@@ -1,0 +1,68 @@
+/* Minimal FontAwesome substitute using Unicode symbols */
+.fas {
+    font-family: Arial, sans-serif;
+    font-weight: normal;
+    font-style: normal;
+    display: inline-block;
+    text-rendering: auto;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Core Icons */
+.fa-envelope::before { content: "✉"; }
+.fa-user::before { content: "👤"; }
+.fa-clock::before { content: "🕐"; }
+.fa-key::before { content: "🔑"; }
+.fa-bolt::before { content: "⚡"; }
+.fa-user-plus::before { content: "👤+"; }
+.fa-inbox::before { content: "📥"; }
+.fa-edit::before { content: "✏"; }
+.fa-plus::before { content: "+"; }
+.fa-sync-alt::before { content: "🔄"; }
+.fa-sign-out-alt::before { content: "🚪"; }
+.fa-sign-in-alt::before { content: "🚪"; }
+.fa-heartbeat::before { content: "💓"; }
+.fa-arrow-left::before { content: "←"; }
+.fa-paper-plane::before { content: "✈"; }
+.fa-eraser::before { content: "🗑"; }
+.fa-times::before { content: "×"; }
+.fa-copy::before { content: "📋"; }
+.fa-trash::before { content: "🗑"; }
+.fa-info-circle::before { content: "ℹ"; }
+.fa-exclamation-circle::before { content: "⚠"; }
+.fa-check-circle::before { content: "✓"; }
+.fa-circle::before { content: "●"; }
+.fa-circle-notch::before { content: "◐"; }
+.fa-spinner::before { content: "◐"; }
+.fa-envelope-open::before { content: "📤"; }
+.fa-chevron-left::before { content: "‹"; }
+.fa-chevron-right::before { content: "›"; }
+.fa-qrcode::before { content: "▦"; }
+.fa-download::before { content: "↓"; }
+.fa-eye::before { content: "👁"; }
+.fa-paperclip::before { content: "📎"; }
+
+/* File type icons */
+.fa-file::before { content: "📄"; }
+.fa-file-alt::before { content: "📄"; }
+.fa-file-pdf::before { content: "📄"; }
+.fa-file-word::before { content: "📄"; }
+.fa-file-excel::before { content: "📊"; }
+.fa-file-powerpoint::before { content: "📊"; }
+.fa-file-image::before { content: "🖼"; }
+.fa-file-video::before { content: "🎬"; }
+.fa-file-audio::before { content: "🎵"; }
+.fa-file-archive::before { content: "📦"; }
+.fa-file-code::before { content: "📝"; }
+.fa-file-csv::before { content: "📊"; }
+
+/* Animation */
+.fa-spin {
+    animation: fa-spin 1s infinite linear;
+}
+
+@keyframes fa-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

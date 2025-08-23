@@ -11,120 +11,318 @@
 <!-- Simple navigation for inbox -->
 {% endblock %}
 {% block content %}
-<section class="inbox-header">
-    <h2>Your Anonymous Inbox</h2>
-    <div class="inbox-controls">
-        <div id="email-display"></div>
-        <div class="btn-group">
-            <button id="compose-btn" class="btn primary">Compose</button> {# New Compose button #}
-            <button id="refresh-btn" class="btn">Refresh</button>
-            <button id="logout-btn" class="btn">Logout</button>
-        </div>
-    </div>
-</section>
-<section id="auth-section" class="card">
-    <h3>Enter Access Token</h3>
-    <p>Please enter the access token you received when creating your Bitcoin Lightning email account.</p>
-    <div class="form-group">
-        <input type="text" id="access-token-input" placeholder="Your access token">
-        <button id="auth-btn" class="btn primary">Access Inbox</button>
-    </div>
-</section>
-<section id="inbox-section" class="card hidden">
-    <div id="email-list-container">
-        <div class="email-list-header">
-            <div class="email-col checkbox">
-                <input type="checkbox" id="select-all-checkbox" title="Select all emails">
+<div class="container">
+    <!-- Token Input Modal -->
+    <div id="tokenModal" class="modal active">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-key"></i> LNemail Access</h2>
+                <p>Enter your access token to get started</p>
             </div>
-            <div class="email-col status">Status</div>
-            <div class="email-col from">From</div>
-            <div class="email-col subject">Subject</div>
-            <div class="email-col date">Date</div>
-            <div class="email-col actions">Actions</div>
-        </div>
-        <div class="email-actions-bar">
-            <button id="bulk-delete-btn" class="btn danger" disabled>Delete Selected</button>
-        </div>
-        <div id="email-list">
-            <div class="loading-emails">
-                <div class="loader"></div>
-                <p>Loading emails...</p>
-            </div>
-            <div class="no-emails hidden">
-                <p>No emails yet. Waiting for new messages...</p>
-            </div>
-        </div>
-    </div>
-    <div id="email-content" class="hidden">
-        <div class="email-content-header">
-            <button id="back-to-list" class="btn small">« Back to list</button>
-            <h3 id="email-subject"></h3>
-            <div class="email-meta">
-                <p>From: <span id="email-from"></span></p>
-                <p>To: <span id="email-to"></span></p>
-                <p>Date: <span id="email-date"></span></p>
-                <p id="email-attachments-count" class="hidden">Attachments: <span id="attachment-count"></span></p>
-            </div>
-        </div>
-        <div class="email-body">
-            <div id="email-text"></div>
-            <div id="email-html" class="hidden"></div>
-            <div id="email-attachments" class="hidden">
-                <h4>Attachments</h4>
-                <div id="attachments-list"></div>
-            </div>
-        </div>
-    </div>
-    {# New Compose Email Section #}
-    <div id="compose-email-section" class="hidden">
-        <h3>Compose New Email</h3>
-        <div class="compose-form">
-            <div class="form-group">
-                <label for="compose-to">To:</label>
-                <input type="email" id="compose-to" placeholder="recipient@example.com" required>
-            </div>
-            <div class="form-group">
-                <label for="compose-subject">Subject:</label>
-                <input type="text" id="compose-subject" placeholder="Email subject">
-            </div>
-            <div class="form-group">
-                <label for="compose-body">Body (Plain Text Only):</label>
-                <textarea id="compose-body" rows="10" placeholder="Your message here..." required></textarea>
-            </div>
-            <div class="form-actions">
-                <button id="send-email-btn" class="btn primary">Send Email</button>
-                <button id="cancel-compose-btn" class="btn secondary">Cancel</button>
-            </div>
-        </div>
-        {# Payment pending section for sending an email #}
-        <div id="send-payment-pending" class="hidden payment-section card"> {# Added 'card' class #}
-            <h4>Pay Lightning Invoice to Send Email</h4>
-            <div class="payment-content">
-                <div id="send-qr-container">
-                    <div id="send-qrcode"></div>
+            <div class="modal-body">
+                <!-- API Health Status in Login -->
+                <div class="login-health-status">
+                    <div class="login-health-indicator">
+                        <i id="loginHealthIcon" class="fas fa-circle" style="color: #ccc;"></i>
+                        <span id="loginHealthStatus">API Status: Checking...</span>
+                        <button id="loginRefreshHealthBtn" class="btn-small login-health-refresh">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div id="loginHealthDetails" class="login-health-details hidden">
+                        <div class="health-info-item">
+                            <span>Status: </span><span id="loginHealthStatusValue">-</span>
+                        </div>
+                        <div class="health-info-item">
+                            <span>Version: </span><span id="loginHealthVersionValue">-</span>
+                        </div>
+                        <div class="health-info-item">
+                            <span>Last Check: </span><span id="loginHealthTimestampValue">-</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="payment-details">
-                    <p id="send-invoice-amount"></p>
-                    <div class="copy-wrapper">
-                        <span id="send-bolt11-invoice" class="copy-text"></span>
-                        <button id="send-copy-invoice" class="btn small">Copy</button>
-                    </div>
-                    <button id="send-webln-pay-btn" class="btn primary hidden">Pay with Lightning Extension</button>
-                    <div class="status-container">
-                        <div id="send-loader" class="loader"></div>
-                        <p id="send-status-text" class="status-text"></p>
-                    </div>
-                    <button id="cancel-send-payment-btn" class="btn secondary">Cancel Send</button>
+
+                <div class="input-group">
+                    <input type="password" id="accessToken" placeholder="Enter your access token" />
+                    <button id="connectBtn" class="btn-primary" disabled title="API health check must pass before authentication">
+                        <i class="fas fa-sign-in-alt"></i> Connect
+                    </button>
+                </div>
+                <div class="help-text">
+                    <i class="fas fa-info-circle"></i>
+                    Don't have an access token?
+                    <span id="createAccountLink" class="create-account-link">Create an email account first here.</span>
+                </div>
+                <div class="health-requirement-notice">
+                    <i class="fas fa-heartbeat"></i>
+                    <strong>Note:</strong> API health check must pass before you are authenticated.
                 </div>
             </div>
         </div>
     </div>
-</section>
-{# Global Notification Container #}
-<div id="notification-container"></div>
+
+    <!-- Payment Invoice Modal -->
+    <div id="paymentModal" class="modal">
+        <div class="modal-content payment-modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-bolt"></i> Lightning Payment Required</h2>
+                <p>Scan the QR code below to pay for sending this email</p>
+            </div>
+            <div class="modal-body">
+                <div class="payment-info">
+                    <div class="payment-details">
+                        <div class="payment-detail-item">
+                            <span class="payment-label">To:</span>
+                            <span id="paymentRecipient" class="payment-value">-</span>
+                        </div>
+                        <div class="payment-detail-item">
+                            <span class="payment-label">Subject:</span>
+                            <span id="paymentSubject" class="payment-value">-</span>
+                        </div>
+                        <div class="payment-detail-item">
+                            <span class="payment-label">Amount:</span>
+                            <span id="paymentAmount" class="payment-value">-</span>
+                        </div>
+                    </div>
+
+                    <div class="qr-code-container">
+                        <canvas id="qrCodeCanvas"></canvas>
+                    </div>
+
+                    <div class="payment-status">
+                        <div class="payment-status-indicator">
+                            <i id="paymentStatusIcon" class="fas fa-circle-notch fa-spin" style="color: #ffc107;"></i>
+                            <span id="paymentStatusText">Waiting for payment...</span>
+                        </div>
+                        <div class="payment-hash">
+                            <span class="payment-label">Payment Hash:</span>
+                            <span id="paymentHashValue" class="payment-hash-value">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="payment-actions">
+                    <button id="cancelPaymentBtn" class="btn-secondary">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button id="copyInvoiceBtn" class="btn-secondary">
+                        <i class="fas fa-copy"></i> Copy Invoice
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Account Creation Modal -->
+    <div id="accountCreationModal" class="modal">
+        <div class="modal-content payment-modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-user-plus"></i> Create LNemail Account</h2>
+                <p>Pay with Lightning to create your new email account</p>
+            </div>
+            <div class="modal-body">
+                <div class="payment-info">
+                    <div class="payment-details">
+                        <div class="payment-detail-item">
+                            <span class="payment-label">Service:</span>
+                            <span class="payment-value">New Email Account</span>
+                        </div>
+                        <div class="payment-detail-item">
+                            <span class="payment-label">Email Address:</span>
+                            <span id="accountEmailAddress" class="payment-value">-</span>
+                        </div>
+                        <div class="payment-detail-item">
+                            <span class="payment-label">Access Token:</span>
+                            <div id="accountAccessToken" class="payment-value clickable-token" title="Click to copy access token">
+                                <span id="accountAccessTokenText">-</span>
+                                <i class="fas fa-copy copy-icon"></i>
+                            </div>
+                        </div>
+                        <div class="payment-detail-item">
+                            <span class="payment-label">Amount:</span>
+                            <span id="accountAmount" class="payment-value">-</span>
+                        </div>
+                    </div>
+
+                    <div class="qr-code-container">
+                        <canvas id="accountQrCodeCanvas"></canvas>
+                    </div>
+
+                    <div class="payment-status">
+                        <div class="payment-status-indicator">
+                            <i id="accountPaymentStatusIcon" class="fas fa-circle-notch fa-spin" style="color: #ffc107;"></i>
+                            <span id="accountPaymentStatusText">Waiting for payment...</span>
+                        </div>
+                        <div class="payment-hash">
+                            <span class="payment-label">Payment Hash:</span>
+                            <span id="accountPaymentHashValue" class="payment-hash-value">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="payment-actions">
+                    <button id="cancelAccountCreationBtn" class="btn-secondary">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button id="copyAccountInvoiceBtn" class="btn-secondary">
+                        <i class="fas fa-copy"></i> Copy Invoice
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="mainApp" class="main-app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1><i class="fas fa-envelope"></i> LNemail Client</h1>
+                <div class="account-info">
+                    <div class="account-email clickable" id="accountEmailContainer" title="Click to copy email address">
+                        <i class="fas fa-user"></i>
+                        <span id="accountEmail">Loading...</span>
+                        <i class="fas fa-copy copy-icon"></i>
+                    </div>
+                    <div class="account-expiry">
+                        <i class="fas fa-clock"></i>
+                        <span id="accountExpiry">Loading...</span>
+                    </div>
+                    <div class="api-health">
+                        <i id="healthIcon" class="fas fa-circle" style="color: #ccc;"></i>
+                        <span id="healthStatus">API Status: Checking...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="header-right">
+                <button id="refreshBtn" class="btn-secondary">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+                <button id="composeBtn" class="btn-primary">
+                    <i class="fas fa-plus"></i> Compose
+                </button>
+                <button id="disconnectBtn" class="btn-danger">
+                    <i class="fas fa-sign-out-alt"></i> Disconnect
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <nav class="nav-menu">
+                    <button class="nav-item active" data-view="inbox">
+                        <i class="fas fa-inbox"></i> Inbox
+                        <span id="inboxCount" class="count">0</span>
+                    </button>
+                    <button class="nav-item" data-view="compose">
+                        <i class="fas fa-edit"></i> Compose
+                    </button>
+                </nav>
+
+                <!-- API Health Status Section -->
+                <div class="health-status-section">
+                    <h3><i class="fas fa-heartbeat"></i> API Health</h3>
+                    <div id="healthDetails" class="health-details">
+                        <div class="health-item">
+                            <span class="health-label">Status:</span>
+                            <span id="healthStatusValue" class="health-value">Checking...</span>
+                        </div>
+                        <div class="health-item">
+                            <span class="health-label">Version:</span>
+                            <span id="healthVersionValue" class="health-value">-</span>
+                        </div>
+                        <div class="health-item">
+                            <span class="health-label">Last Check:</span>
+                            <span id="healthTimestampValue" class="health-value">-</span>
+                        </div>
+                    </div>
+                    <button id="refreshHealthBtn" class="btn-secondary health-refresh-btn">
+                        <i class="fas fa-sync-alt"></i> Check Health
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Content Area -->
+            <section class="content-area">
+                <!-- Inbox View -->
+                <div id="inboxView" class="view active">
+                    <div class="view-header">
+                        <h2><i class="fas fa-inbox"></i> Inbox</h2>
+                        <div class="loading" id="inboxLoading">
+                            <i class="fas fa-spinner fa-spin"></i> Loading emails...
+                        </div>
+                    </div>
+                    <div id="emailList" class="email-list">
+                        <!-- Emails will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Compose View -->
+                <div id="composeView" class="view">
+                    <div class="view-header">
+                        <h2><i class="fas fa-edit"></i> Compose Email</h2>
+                    </div>
+                    <form id="composeForm" class="compose-form">
+                        <div class="form-group">
+                            <label for="recipient">To:</label>
+                            <input type="email" id="recipient" placeholder="recipient@example.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="subject">Subject:</label>
+                            <input type="text" id="subject" placeholder="Email subject" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="body">Message:</label>
+                            <textarea id="body" rows="10" placeholder="Write your message here..." required></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary">
+                                <i class="fas fa-paper-plane"></i> Send Email
+                            </button>
+                            <button type="button" id="clearForm" class="btn-secondary">
+                                <i class="fas fa-eraser"></i> Clear
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Email Detail View -->
+                <div id="emailDetailView" class="view">
+                    <div class="view-header">
+                        <button id="backToInbox" class="btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to Inbox
+                        </button>
+                        <h2 id="emailSubject"></h2>
+                    </div>
+                    <div class="email-detail">
+                        <div class="email-meta">
+                            <div class="email-from">
+                                <strong>From:</strong> <span id="emailFrom"></span>
+                            </div>
+                            <div class="email-date">
+                                <strong>Date:</strong> <span id="emailDate"></span>
+                            </div>
+                        </div>
+                        <div class="email-content">
+                            <div id="emailBody"></div>
+                            <div id="emailAttachments" class="email-attachments"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Status Messages -->
+    <div id="statusContainer" class="status-container"></div>
+</div>
 {% endblock %}
 {% block extra_js %}
-<script src="/static/js/qrious.min.js"></script> {# Required for QR codes #}
-<script src="/static/js/inbox.js"></script>
+<link rel="stylesheet" href="/static/css/fontawesome-minimal.css">
+<link rel="stylesheet" href="/static/css/inbox-style.css">
+<script src="/static/js/qrious.min.js"></script>
+<script type="module" src="/static/js/improved/main.js"></script>
 {% endblock %}
 > src/lnemail/static/css/style.css <

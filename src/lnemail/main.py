@@ -62,6 +62,7 @@ templates = Jinja2Templates(directory=str(templates_dir))
 # Include API routers
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(health_router, prefix="/api")
+app.include_router(health_router, prefix="/api/v1")
 
 
 # Frontend routes with caching using custom PickleCoder
