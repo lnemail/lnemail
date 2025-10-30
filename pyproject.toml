@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lnemail"
-version = "0.2.0"
+version = "0.3.0"
 description = "Privacy-focused disposable email service using Lightning Network payments"
 authors = ["LNemail Team <lnemail@lnemail.net>"]
 readme = "README.md"

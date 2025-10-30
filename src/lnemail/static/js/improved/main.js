@@ -67,6 +67,8 @@ async function handleSendEmail(e) {
     const recipient = document.getElementById('recipient').value.trim();
     const subject = document.getElementById('subject').value.trim();
     const body = document.getElementById('body').value.trim();
+    const inReplyTo = document.getElementById('recipient').dataset.inReplyTo || null;
+    const references = document.getElementById('recipient').dataset.references || null;
 
     if (!recipient || !subject || !body) {
         showStatus('Please fill in all fields', 'error');
@@ -84,10 +86,8 @@ async function handleSendEmail(e) {
     submitBtn.disabled = true;
 
     try {
-        // Get the Lightning invoice
-        const invoiceResponse = await sendEmail(recipient, subject, body);
+        const invoiceResponse = await sendEmail(recipient, subject, body, inReplyTo, references);
 
-        // Store payment data in state
         state.currentPayment = {
             payment_hash: invoiceResponse.payment_hash,
             payment_request: invoiceResponse.payment_request,
@@ -98,11 +98,9 @@ async function handleSendEmail(e) {
             originalFormData: { recipient, subject, body }
         };
 
-        // Show payment modal with invoice details
         updatePaymentModal(invoiceResponse);
         showPaymentModal();
 
-        // Start polling for payment status
         startPaymentPolling();
 
         showStatus('Lightning invoice created! Please scan the QR code to pay.', 'info');
@@ -113,6 +111,37 @@ async function handleSendEmail(e) {
         submitBtn.innerHTML = originalText;
         submitBtn.disabled = false;
     }
+}
+
+function handleReply() {
+    if (!state.currentEmail) {
+        showStatus('No email selected to reply to', 'error');
+        return;
+    }
+
+    const email = state.currentEmail;
+    const senderEmail = email.sender || email.from || '';
+    const senderMatch = senderEmail.match(/<(.+?)>/) || senderEmail.match(/([^\s]+@[^\s]+)/);
+    const replyTo = senderMatch ? senderMatch[1] : senderEmail;
+
+    const originalSubject = email.subject || 'No Subject';
+    const replySubject = originalSubject.startsWith('Re: ') ? originalSubject : `Re: ${originalSubject}`;
+
+    const messageId = email.message_id;
+    const existingReferences = email.references;
+    const newReferences = existingReferences ? `${existingReferences} ${messageId}` : messageId;
+
+    document.getElementById('recipient').value = replyTo;
+    document.getElementById('subject').value = replySubject;
+    document.getElementById('body').value = '';
+
+    if (messageId) {
+        document.getElementById('recipient').dataset.inReplyTo = messageId;
+        document.getElementById('recipient').dataset.references = newReferences;
+    }
+
+    showView('compose');
+    showStatus(`Replying to ${replyTo}`, 'info');
 }
 
 function startPaymentPolling() {
@@ -334,6 +363,7 @@ function bindEvents() {
     // Email list events
     document.getElementById('refreshBtn').addEventListener('click', handleRefreshClick);
     document.getElementById('backToInbox').addEventListener('click', () => showView('inbox'));
+    document.getElementById('replyBtn').addEventListener('click', handleReply);
 
     // Health check events
     document.getElementById('refreshHealthBtn').addEventListener('click', handleHealthCheck);

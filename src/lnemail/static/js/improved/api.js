@@ -77,10 +77,14 @@ export async function fetchEmailContent(emailId) {
     return await makeRequest(`/emails/${emailId}`);
 }
 
-export async function sendEmail(recipient, subject, body) {
+export async function sendEmail(recipient, subject, body, inReplyTo = null, references = null) {
+    const payload = { recipient, subject, body };
+    if (inReplyTo) payload.in_reply_to = inReplyTo;
+    if (references) payload.references = references;
+
     return await makeRequest('/email/send', {
         method: 'POST',
-        body: JSON.stringify({ recipient, subject, body })
+        body: JSON.stringify(payload)
     });
 }
 

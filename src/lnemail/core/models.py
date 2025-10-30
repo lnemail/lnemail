@@ -314,7 +314,8 @@ class PendingOutgoingEmail(SQLModel, table=True):
     price_sats: int
     status: PaymentStatus = Field(default=PaymentStatus.PENDING)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    # TTL for pending emails, e.g., 1 hour to prevent stale invoices
     expires_at: datetime = Field(
         default_factory=lambda: datetime.utcnow() + timedelta(hours=1)
     )
+    in_reply_to: str | None = Field(default=None)
+    references: str | None = Field(default=None)

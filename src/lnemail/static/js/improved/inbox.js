@@ -68,6 +68,8 @@ export async function openEmail(emailId) {
         }
     }
 
+    state.currentEmail = fullEmail;
+
     document.getElementById('emailSubject').textContent = fullEmail.subject || 'No Subject';
     document.getElementById('emailFrom').textContent = fullEmail.from || fullEmail.sender || 'Unknown Sender';
     document.getElementById('emailDate').textContent = new Date(fullEmail.date || fullEmail.timestamp || Date.now()).toLocaleString();

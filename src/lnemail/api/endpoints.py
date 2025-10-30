@@ -267,6 +267,8 @@ async def send_email(
             payment_request=invoice["payment_request"],
             price_sats=settings.EMAIL_SEND_PRICE,
             status=PaymentStatus.PENDING,
+            in_reply_to=send_request.in_reply_to,
+            references=send_request.references,
         )
 
         db.add(pending_email)

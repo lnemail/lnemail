@@ -60,6 +60,8 @@ class EmailContent(BaseModel):
     content_type: str
     attachments: list[dict[str, str]]
     read: bool
+    message_id: str | None = None
+    references: str | None = None
 
 
 class EmailSendRequest(BaseModel):
@@ -68,6 +70,8 @@ class EmailSendRequest(BaseModel):
     recipient: str
     subject: str
     body: str
+    in_reply_to: str | None = None
+    references: str | None = None
 
 
 class EmailSendInvoiceResponse(BaseModel):

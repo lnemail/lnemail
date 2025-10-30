@@ -300,7 +300,14 @@ class EmailService:
             return False, ""
 
     def send_email_with_auth(
-        self, sender: str, sender_password: str, recipient: str, subject: str, body: str
+        self,
+        sender: str,
+        sender_password: str,
+        recipient: str,
+        subject: str,
+        body: str,
+        in_reply_to: str | None = None,
+        references: str | None = None,
     ) -> Tuple[bool, str]:
         """Send an email via SMTP with authentication.
 
@@ -310,6 +317,8 @@ class EmailService:
             recipient: The email address to send to
             subject: The subject of the email
             body: The plain text body of the email
+            in_reply_to: Message-ID of the email being replied to
+            references: References header for email threading
 
         Returns:
             Tuple containing success status and an optional error message or confirmation
@@ -323,8 +332,12 @@ class EmailService:
             msg["From"] = sender
             msg["To"] = recipient
             msg["Subject"] = subject
-            # Set the Date header with current UTC timestamp
             msg["Date"] = utc_timestamp.strftime("%a, %d %b %Y %H:%M:%S %z")
+
+            if in_reply_to:
+                msg["In-Reply-To"] = in_reply_to
+            if references:
+                msg["References"] = references
 
             msg.attach(MIMEText(body, "plain"))
 
@@ -388,8 +401,8 @@ class EmailService:
         return decoded_value
 
     def _safe_get_header(
-        self, msg: email_lib.message.Message, header_name: str, default: str = ""
-    ) -> str:
+        self, msg: email_lib.message.Message, header_name: str, default: str | None = ""
+    ) -> str | None:
         """Safely extract email header with fallback to default value.
 
         Args:
@@ -720,6 +733,8 @@ class EmailService:
                 self._safe_get_header(msg, "From", "(Unknown Sender)")
             )
             date = self._safe_get_header(msg, "Date", "Thu, 01 Jan 1970 00:00:00 +0000")
+            message_id = self._safe_get_header(msg, "Message-ID", None)
+            references = self._safe_get_header(msg, "References", None)
 
             # Extract body content
             content_type = "text/plain"
@@ -786,6 +801,8 @@ class EmailService:
                 "content_type": content_type,
                 "attachments": attachments,
                 "read": final_read_status,
+                "message_id": message_id,
+                "references": references,
             }
 
         except Exception as e:

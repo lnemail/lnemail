@@ -7,6 +7,7 @@ export const state = {
     autoRefreshTimer: null,
     currentAttachments: [],
     selectedEmailIds: new Set(),
+    currentEmail: null,
     // Payment tracking
     currentPayment: null,
     paymentPollTimer: null,

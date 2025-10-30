@@ -123,6 +123,8 @@ def process_send_email_payment(payment_hash: str) -> None:
                         recipient=pending_email.recipient,
                         subject=pending_email.subject,
                         body=pending_email.body,
+                        in_reply_to=pending_email.in_reply_to,
+                        references=pending_email.references,
                     )
 
                     if success:
