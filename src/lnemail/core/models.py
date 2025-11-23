@@ -309,13 +309,36 @@ class PendingOutgoingEmail(SQLModel, table=True):
     recipient: str
     subject: str
     body: str
+    in_reply_to: str | None = Field(default=None)
+    references: str | None = Field(default=None)
+    # Payment and status tracking
     payment_hash: str = Field(unique=True, index=True)
     payment_request: str
     price_sats: int
-    status: PaymentStatus = Field(default=PaymentStatus.PENDING)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    status: PaymentStatus = Field(default=PaymentStatus.PENDING, index=True)
+    # Retry tracking
+    retry_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
+    last_retry_at: datetime | None = Field(default=None)
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
     expires_at: datetime = Field(
         default_factory=lambda: datetime.utcnow() + timedelta(hours=1)
     )
-    in_reply_to: str | None = Field(default=None)
-    references: str | None = Field(default=None)
+    sent_at: datetime | None = Field(default=None)
+
+
+class EmailSendStatistics(SQLModel, table=True):
+    """Model for tracking email send statistics by month."""
+
+    __tablename__: ClassVar[str] = "email_send_statistics"
+    id: int | None = Field(default=None, primary_key=True)
+    year_month: str = Field(index=True, unique=True)  # Format: "YYYY-MM"
+    total_sent: int = Field(default=0)
+    total_failed: int = Field(default=0)
+    total_revenue_sats: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @classmethod
+    def get_current_year_month(cls) -> str:
+        """Get the current year-month string."""
+        return datetime.utcnow().strftime("%Y-%m")
