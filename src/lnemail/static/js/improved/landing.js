@@ -1,5 +1,12 @@
+import { createEmailAccount, checkAccountPaymentStatus } from './api.js';
+import { payWithWebLN } from './webln.js';
+import { showStatus, initMobileMenu } from './ui.js';
+import { copyToClipboard } from './utils.js';
+
 document.addEventListener('DOMContentLoaded', () => {
-    // Local storage keys definition for payment.js
+    initMobileMenu();
+
+    // Local storage keys definition
     const STORAGE_KEYS = {
         accessToken: 'lnemail_access_token',
         emailAddress: 'lnemail_email_address',
@@ -10,54 +17,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const prePaymentDiv = document.getElementById('pre-payment');
     const paymentPendingDiv = document.getElementById('payment-pending');
     const paymentSuccessDiv = document.getElementById('payment-success');
-    const statusText = document.querySelector('.status-text');
-    const loader = document.querySelector('.loader');
     const copyInvoiceBtn = document.getElementById('copy-invoice');
     const bolt11Invoice = document.getElementById('bolt11-invoice');
     const invoiceAmount = document.getElementById('invoice-amount');
     const qrContainer = document.getElementById('qrcode');
     let paymentHash = '';
     let checkInterval = null;
-
-    // Utility functions
-    async function apiRequest(url, options = {}) {
-        const headers = {
-            'Content-Type': 'application/json',
-            ...(options.headers || {})
-        };
-        const response = await fetch(url, { ...options, headers });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || `API request failed with status ${response.status}`);
-        }
-        return response.json();
-    }
-
-    function showNotification(message, type = 'info', duration = 3000) {
-        const notificationContainer = document.getElementById('notification-container');
-        if (!notificationContainer) {
-            // Fallback for pages without the notification container
-            alert(message);
-            return;
-        }
-        const notification = document.createElement('div');
-        notification.className = `notification ${type}`;
-        notification.textContent = message;
-        notificationContainer.appendChild(notification);
-        setTimeout(() => {
-            notification.classList.add('hide');
-            notification.addEventListener('transitionend', () => notification.remove());
-        }, duration);
-    }
-
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text).then(() => {
-            showNotification('Copied to clipboard!', 'success');
-        }).catch(err => {
-            console.error('Failed to copy text: ', err);
-            showNotification('Failed to copy text.', 'error');
-        });
-    }
 
     // Create invoice when button is clicked
     if (createInvoiceBtn) {
@@ -66,17 +31,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Copy invoice to clipboard
     if (copyInvoiceBtn) {
-        copyInvoiceBtn.addEventListener('click', () => {
-            copyToClipboard(bolt11Invoice.textContent);
+        copyInvoiceBtn.addEventListener('click', async () => {
+            try {
+                await copyToClipboard(bolt11Invoice.textContent);
+                showStatus('Copied to clipboard!', 'success');
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+                showStatus('Failed to copy text.', 'error');
+            }
         });
     }
 
     // Add event listeners to all copy buttons in success view
     document.querySelectorAll('.copy-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', async (e) => {
             const parentWrapper = e.target.closest('.copy-wrapper');
             const textEl = parentWrapper.querySelector('.copy-text');
-            copyToClipboard(textEl.textContent);
+            try {
+                await copyToClipboard(textEl.textContent);
+                showStatus('Copied to clipboard!', 'success');
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+                showStatus('Failed to copy text.', 'error');
+            }
         });
     });
 
@@ -92,9 +69,13 @@ document.addEventListener('DOMContentLoaded', () => {
         cancelBtn.textContent = 'Cancel Payment';
         cancelBtn.addEventListener('click', cancelPayment);
         // Add the button after the status container
-        const statusContainer = document.querySelector('.status-container');
+        const statusContainer = document.querySelector('.status-container-local');
         if (statusContainer) {
             statusContainer.insertAdjacentElement('afterend', cancelBtn);
+        } else {
+            // Fallback if status container class is different or missing
+            const paymentDetails = document.querySelector('.payment-details');
+            if (paymentDetails) paymentDetails.appendChild(cancelBtn);
         }
     }
 
@@ -126,16 +107,16 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             createInvoiceBtn.disabled = true;
             createInvoiceBtn.textContent = 'Creating...';
-            const response = await apiRequest('/api/v1/email', {
-                method: 'POST',
-                body: JSON.stringify({
-                    include_email: includeEmail,
-                    include_token: includeToken
-                })
+
+            const response = await createEmailAccount({
+                include_email: includeEmail,
+                include_token: includeToken
             });
+
             if (!response) {
                 throw new Error('Failed to create invoice');
             }
+
             // Store invoice data in session storage
             const paymentData = {
                 payment_hash: response.payment_hash,
@@ -147,29 +128,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 created_at: new Date().toISOString()
             };
             sessionStorage.setItem(STORAGE_KEYS.paymentData, JSON.stringify(paymentData));
+
             // Display payment pending screen
             displayPaymentScreen(paymentData);
+
             const weblnBtn = document.getElementById('webln-pay-btn');
             if (window.webln) {
                 weblnBtn.classList.remove('hidden');
                 weblnBtn.addEventListener('click', async () => {
-                    try {
-                        await window.webln.enable();
-                        await window.webln.sendPayment(bolt11Invoice.textContent);
-                        checkPaymentStatus();
-                    } catch (error) {
-                        showNotification(`Payment failed: ${error.message}`, 'error');
-                    }
+                    await payWithWebLN(bolt11Invoice.textContent);
+                    // checkPaymentStatus will pick up the payment
                 });
             }
+
             // Start checking payment status
             paymentHash = response.payment_hash;
             checkInterval = setInterval(checkPaymentStatus, 3000);
+
         } catch (error) {
             console.error('Error creating invoice:', error);
             createInvoiceBtn.disabled = false;
             createInvoiceBtn.textContent = 'Create Lightning Invoice';
-            showNotification('Error creating invoice. Please try again.', 'error');
+            showStatus('Error creating invoice. Please try again.', 'error');
         }
     }
 
@@ -178,29 +158,41 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show payment screen
         prePaymentDiv.classList.add('hidden');
         paymentPendingDiv.classList.remove('hidden');
+
         // Set payment details
         bolt11Invoice.textContent = paymentData.payment_request;
         invoiceAmount.textContent = `Amount: ${paymentData.price_sats} sats`;
+
         const paymentEmailEl = document.getElementById('payment-email');
         const paymentTokenEl = document.getElementById('payment-token');
+
         if (paymentEmailEl && paymentData.email_address) {
             paymentEmailEl.textContent = paymentData.email_address;
         }
         if (paymentTokenEl && paymentData.access_token) {
             paymentTokenEl.textContent = paymentData.access_token;
         }
+
         // Clear any previous QR code
         qrContainer.innerHTML = '';
+
         // Create a canvas element for QRious
         const canvas = document.createElement('canvas');
         qrContainer.appendChild(canvas);
+
         // Generate QR code
-        new QRious({
-            element: canvas,
-            value: paymentData.payment_request,
-            size: 250,
-            level: 'H'
-        });
+        if (typeof QRious !== 'undefined') {
+            new QRious({
+                element: canvas,
+                value: paymentData.payment_request,
+                size: 250,
+                level: 'H'
+            });
+        } else {
+             // Fallback if QRious is not loaded yet (should be loaded in index.html)
+             console.warn("QRious not loaded");
+        }
+
         // Add cancel button
         addCancelButton();
     }
@@ -208,13 +200,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check if payment has been received
     async function checkPaymentStatus() {
         try {
-            const response = await apiRequest(`/api/v1/payment/${paymentHash}`);
+            const response = await checkAccountPaymentStatus(paymentHash);
+
             if (!response) {
                 throw new Error('Failed to check payment status');
             }
+
             // Handle payment status
             if (response.payment_status === 'paid') {
-                clearInterval(checkInterval);
+                if (checkInterval) {
+                    clearInterval(checkInterval);
+                    checkInterval = null;
+                }
                 // Clear stored payment data
                 sessionStorage.removeItem(STORAGE_KEYS.paymentData);
                 handlePaidInvoice(response);
@@ -229,10 +226,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Hide payment pending, show success
         paymentPendingDiv.classList.add('hidden');
         paymentSuccessDiv.classList.remove('hidden');
+
         // Set email data
         const emailAddressEl = document.querySelector('#email-address .copy-text');
         const accessTokenEl = document.querySelector('#access-token .copy-text');
         const expiresAtEl = document.getElementById('expires-at');
+
         // Fill in the payment success details
         if (emailAddressEl) {
             emailAddressEl.textContent = data.email_address;
@@ -240,6 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (accessTokenEl) {
             accessTokenEl.textContent = data.access_token;
         }
+
         // Format expiry date if available
         if (expiresAtEl && data.expires_at) {
             const expiryDate = new Date(data.expires_at);
@@ -250,9 +250,12 @@ document.addEventListener('DOMContentLoaded', () => {
             expiryDate.setFullYear(expiryDate.getFullYear() + 1);
             expiresAtEl.textContent = expiryDate.toLocaleDateString();
         }
+
         // Save to local storage (for inbox access)
         localStorage.setItem(STORAGE_KEYS.accessToken, data.access_token);
         localStorage.setItem(STORAGE_KEYS.emailAddress, data.email_address);
+
+        showStatus('Payment successful! Account created.', 'success');
     }
 
     // Check for stored payment data on page load (for refreshes during payment)

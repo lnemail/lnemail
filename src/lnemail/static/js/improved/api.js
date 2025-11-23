@@ -129,9 +129,10 @@ export async function deleteEmails(emailIds) {
     }
 }
 
-export async function createEmailAccount() {
+export async function createEmailAccount(options = {}) {
     return await makeRequest('/email', {
-        method: 'POST'
+        method: 'POST',
+        body: JSON.stringify(options)
     });
 }
 

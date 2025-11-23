@@ -17,7 +17,8 @@ import {
     hideAccountCreationModal,
     updateAccountCreationModal,
     updateAccountPaymentStatus,
-    updatePaymentModalWithDelivery
+    updatePaymentModalWithDelivery,
+    initMobileMenu
 } from './ui.js';
 import { handleConnect, handleDisconnect, tryAutoConnect, performLoginHealthCheck } from './auth.js';
 import { isValidEmail } from './utils.js';
@@ -437,6 +438,7 @@ function bindEvents() {
 }
 
 function init() {
+    initMobileMenu();
     bindEvents();
     tryAutoConnect();
 

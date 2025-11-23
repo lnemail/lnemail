@@ -923,3 +923,33 @@ export function renderRecentSends() {
 
     container.innerHTML = html;
 }
+
+export function initMobileMenu() {
+    // Mobile menu toggle functionality
+    const mobileToggle = document.querySelector('.mobile-menu-toggle');
+    if (mobileToggle) {
+        mobileToggle.addEventListener('click', function() {
+            const nav = document.querySelector('.header-nav');
+            nav.classList.toggle('active');
+
+            // Change toggle icon based on menu state
+            if (nav.classList.contains('active')) {
+                mobileToggle.innerHTML = '&times;';  // × symbol
+            } else {
+                mobileToggle.innerHTML = '&#9776;';  // ≡ symbol
+            }
+        });
+    }
+
+    // Mark active page in navigation
+    const currentPath = window.location.pathname;
+    const navLinks = document.querySelectorAll('.header-nav .nav-link');
+
+    navLinks.forEach(link => {
+        const href = link.getAttribute('href');
+        if (href === currentPath ||
+            (href !== '/' && currentPath.startsWith(href))) {
+            link.classList.add('active');
+        }
+    });
+}
