@@ -4,7 +4,7 @@ These Pydantic models define the structure of data accepted and returned by the 
 providing validation, serialization, and documentation.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
@@ -127,7 +127,7 @@ class HealthResponse(BaseModel):
 
     status: str
     version: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AccountResponse(BaseModel):
