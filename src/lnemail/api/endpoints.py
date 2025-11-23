@@ -9,7 +9,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlmodel import Session, select
+from sqlmodel import Session, select, desc
 from loguru import logger
 
 from ..config import settings
@@ -29,11 +29,17 @@ from ..core.schemas import (
     HealthResponse,
     InvoiceResponse,
     PaymentStatusResponse,
+    RecentSendItem,
+    RecentSendsResponse,
 )
 from ..db import get_db
 from ..services.email_service import EmailService
 from ..services.lnd_service import LNDService
-from ..services.tasks import check_payment_status, process_send_email_payment, queue
+from ..services.tasks import (
+    check_payment_status,
+    process_send_email_payment,
+    queue,
+)
 
 # Create routers
 router = APIRouter()
@@ -310,15 +316,7 @@ async def send_email(
 async def check_send_email_payment_status(
     payment_hash: str, db: Session = Depends(get_db)
 ) -> EmailSendStatusResponse:
-    """Check payment status for an outgoing email send.
-
-    Args:
-        payment_hash: The Lightning payment hash for the email send.
-        db: Database session dependency.
-
-    Returns:
-        EmailSendStatusResponse: The status of the payment for the outgoing email.
-    """
+    """Check payment and delivery status for an outgoing email send."""
     try:
         statement = select(PendingOutgoingEmail).where(
             PendingOutgoingEmail.payment_hash == payment_hash
@@ -331,19 +329,28 @@ async def check_send_email_payment_status(
                 detail="Outgoing email payment not found",
             )
 
-        # If still pending, check with LND
         if pending_email.status == PaymentStatus.PENDING:
             paid = lnd_service.check_invoice(payment_hash)
             if paid:
-                # Payment just received, trigger the email sending process
-                # This will be picked up by the RQ worker
                 queue.enqueue(process_send_email_payment, payment_hash, job_timeout=600)
+
+        # Sanitize delivery error for security
+        delivery_error = pending_email.delivery_error
+        if delivery_error:
+            # Return a generic error message to avoid leaking internal details
+            delivery_error = (
+                "Email delivery failed. The system will retry automatically."
+            )
 
         return EmailSendStatusResponse(
             payment_status=pending_email.status,
+            delivery_status=str(pending_email.delivery_status).lower(),
+            delivery_error=delivery_error,
             sender_email=pending_email.sender_email,
             recipient=pending_email.recipient,
             subject=pending_email.subject,
+            sent_at=pending_email.sent_at,
+            retry_count=pending_email.retry_count,
         )
 
     except HTTPException:
@@ -353,6 +360,51 @@ async def check_send_email_payment_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to check outgoing email payment status",
+        )
+
+
+@router.get(
+    "/email/sends/recent",
+    response_model=RecentSendsResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Account not paid or expired"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def get_recent_sends(
+    account: EmailAccount = Depends(get_current_account),
+    db: Session = Depends(get_db),
+) -> RecentSendsResponse:
+    """Get recent email sends for the authenticated account."""
+    try:
+        statement = (
+            select(PendingOutgoingEmail)
+            .where(PendingOutgoingEmail.sender_email == account.email_address)
+            .order_by(desc(PendingOutgoingEmail.created_at))
+            .limit(10)
+        )
+        recent_sends = db.exec(statement).all()
+
+        return RecentSendsResponse(
+            sends=[
+                RecentSendItem(
+                    payment_hash=email.payment_hash,
+                    recipient=email.recipient,
+                    subject=email.subject,
+                    payment_status=email.status,
+                    delivery_status=str(email.delivery_status).lower(),
+                    created_at=email.created_at,
+                    sent_at=email.sent_at,
+                )
+                for email in recent_sends
+            ]
+        )
+    except Exception as e:
+        logger.error(f"Error getting recent sends: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get recent sends",
         )
 
 

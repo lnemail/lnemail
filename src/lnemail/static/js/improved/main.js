@@ -1,8 +1,27 @@
 import { sendEmail, checkApiHealth, deleteEmails, checkPaymentStatus, createEmailAccount, checkAccountPaymentStatus } from './api.js';
-import { showStatus, showView, clearComposeForm, updateHealthStatus, updateHealthStatusLoading, getSelectedEmailIds, clearSelectedEmails, renderEmailList, updateConnectButtonState, showPaymentModal, hidePaymentModal, updatePaymentModal, updatePaymentStatus, showAccountCreationModal, hideAccountCreationModal, updateAccountCreationModal, updateAccountPaymentStatus } from './ui.js';
+import {
+    showStatus,
+    showView,
+    clearComposeForm,
+    updateHealthStatus,
+    updateHealthStatusLoading,
+    getSelectedEmailIds,
+    clearSelectedEmails,
+    renderEmailList,
+    updateConnectButtonState,
+    showPaymentModal,
+    hidePaymentModal,
+    updatePaymentModal,
+    updatePaymentStatus,
+    showAccountCreationModal,
+    hideAccountCreationModal,
+    updateAccountCreationModal,
+    updateAccountPaymentStatus,
+    updatePaymentModalWithDelivery
+} from './ui.js';
 import { handleConnect, handleDisconnect, tryAutoConnect, performLoginHealthCheck } from './auth.js';
 import { isValidEmail } from './utils.js';
-import { refreshInbox } from './inbox.js';
+import { refreshInbox, startAutoRefresh, stopAutoRefresh } from './inbox.js';
 import { HEALTH_CHECK_INTERVAL, PAYMENT_POLL_INTERVAL } from './config.js';
 import { state } from './state.js';
 
@@ -156,32 +175,28 @@ function startPaymentPolling() {
 
         try {
             const statusResponse = await checkPaymentStatus(state.currentPayment.payment_hash);
+            updatePaymentModalWithDelivery(statusResponse);
 
-            if (statusResponse.payment_status === 'paid') {
-                // Payment successful
-                updatePaymentStatus('success', 'Payment confirmed! Email sent successfully!');
-
-                setTimeout(() => {
-                    hidePaymentModal();
-                    clearComposeForm();
-                    showView('inbox');
-                    showStatus('Email sent successfully!', 'success');
-
-                    // Refresh inbox to show any new emails
-                    refreshInbox();
-                }, 2000);
-
+            if (statusResponse.delivery_status === 'sent') {
                 stopPaymentPolling();
+                refreshInbox();
+
+                // Update UI to show success state and allow closing
+                const cancelBtn = document.getElementById('cancelPaymentBtn');
+                const copyBtn = document.getElementById('copyInvoiceBtn');
+
+                if (cancelBtn) {
+                    cancelBtn.innerHTML = '<i class="fas fa-check"></i> Close';
+                    cancelBtn.className = 'btn-primary';
+                }
+                if (copyBtn) {
+                    copyBtn.style.display = 'none';
+                }
             } else if (statusResponse.payment_status === 'expired') {
-                // Payment expired
                 updatePaymentStatus('error', 'Payment expired. Please try again.');
                 stopPaymentPolling();
-            } else {
-                // Still pending
-                updatePaymentStatus('pending', 'Waiting for payment...');
             }
         } catch (error) {
-            // console.error('Payment status check failed:', error);
             updatePaymentStatus('error', 'Failed to check payment status');
         }
     };
@@ -201,8 +216,37 @@ function stopPaymentPolling() {
 function handleCancelPayment() {
     stopPaymentPolling();
     hidePaymentModal();
+
+    const statusText = document.getElementById('paymentStatusText');
+    const isSuccess = statusText && (
+        statusText.textContent.includes('Payment confirmed') ||
+        statusText.textContent.includes('Email delivered')
+    );
+
     state.currentPayment = null;
-    showStatus('Payment cancelled', 'info');
+
+    if (isSuccess) {
+        clearComposeForm();
+        showView('inbox');
+    } else {
+        showStatus('Payment cancelled', 'info');
+    }
+
+    // Reset modal buttons for next time
+    setTimeout(() => {
+        const cancelBtn = document.getElementById('cancelPaymentBtn');
+        const copyBtn = document.getElementById('copyInvoiceBtn');
+
+        if (cancelBtn) {
+            cancelBtn.innerHTML = '<i class="fas fa-times"></i> Cancel';
+            cancelBtn.className = 'btn-secondary';
+        }
+        if (copyBtn) {
+            copyBtn.style.display = '';
+        }
+        // Reset status
+        updatePaymentStatus('pending', 'Waiting for payment...');
+    }, 300);
 }
 
 async function handleCopyInvoice() {

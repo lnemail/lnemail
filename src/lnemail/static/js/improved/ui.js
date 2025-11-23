@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { ITEMS_PER_PAGE } from './config.js';
 import { fetchEmailContent } from './api.js';
-import { escapeHtml, formatEmailBody, getFileIcon, isTextFile, isValidBase64 } from './utils.js';
+import { escapeHtml, getFileIcon, isTextFile, isValidBase64 } from './utils.js';
 import { openEmail } from './inbox.js';
 
 export function showStatus(message, type = 'info') {
@@ -824,4 +824,82 @@ export function updateAccountPaymentStatus(status, message) {
             statusIcon.style.color = '#dc3545';
             break;
     }
+}
+
+export function updatePaymentModalWithDelivery(statusResponse) {
+    // First handle the basic payment status
+    if (statusResponse.payment_status === 'pending') {
+        updatePaymentStatus('pending', 'Waiting for payment...');
+        return;
+    } else if (statusResponse.payment_status === 'expired') {
+        updatePaymentStatus('error', 'Payment expired. Please try again.');
+        return;
+    } else if (statusResponse.payment_status === 'failed') {
+        updatePaymentStatus('error', 'Payment failed.');
+        return;
+    }
+
+    // Payment is paid, check delivery status
+    if (statusResponse.payment_status === 'paid') {
+        if (statusResponse.delivery_status === 'sent') {
+            updatePaymentStatus('success', 'Payment confirmed! Email delivered.');
+        } else if (statusResponse.delivery_status === 'failed') {
+            const errorMsg = statusResponse.delivery_error ? `Delivery failed: ${statusResponse.delivery_error}` : 'Delivery failed';
+            updatePaymentStatus('error', errorMsg);
+        } else {
+            // Delivery pending
+            const retryCount = statusResponse.retry_count || 0;
+            const msg = retryCount > 0 ? `Sending email (Retry ${retryCount})...` : 'Payment confirmed! Sending email...';
+            // We use 'success' style for the payment confirmation, but maybe with a spinner for delivery?
+            updatePaymentStatus('success', msg);
+
+            // Optionally override the icon to be a spinner if we want to show it's still working
+            const statusIcon = document.getElementById('paymentStatusIcon');
+            if (statusIcon) {
+                statusIcon.className = 'fas fa-spinner fa-spin';
+                statusIcon.style.color = '#28a745';
+            }
+        }
+    }
+}
+
+export function renderRecentSends() {
+    const container = document.getElementById('recentSendsList');
+    if (!container) return;
+
+    if (!state.recentSends || state.recentSends.length === 0) {
+        container.innerHTML = '<div class="empty-state-small">No recent emails sent</div>';
+        return;
+    }
+
+    const html = state.recentSends.map(send => {
+        const date = new Date(send.created_at).toLocaleDateString();
+        let statusIcon = 'clock';
+        let statusClass = 'pending';
+
+        if (send.delivery_status === 'sent') {
+            statusIcon = 'check-circle';
+            statusClass = 'success';
+        } else if (send.delivery_status === 'failed') {
+            statusIcon = 'exclamation-circle';
+            statusClass = 'error';
+        }
+
+        return `
+            <div class="recent-send-item">
+                <div class="send-details">
+                    <span class="send-recipient">${escapeHtml(send.recipient)}</span>
+                    <span class="send-subject">${escapeHtml(send.subject)}</span>
+                </div>
+                <div class="send-meta">
+                    <span class="send-date">${date}</span>
+                    <span class="send-status ${statusClass}" title="${send.delivery_status}">
+                        <i class="fas fa-${statusIcon}"></i>
+                    </span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
 }

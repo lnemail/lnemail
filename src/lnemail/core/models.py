@@ -9,7 +9,8 @@ import string
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import ClassVar
-from sqlmodel import Field, SQLModel
+from sqlalchemy import Column
+from sqlmodel import AutoString, Field, SQLModel
 
 
 class PaymentStatus(str, Enum):
@@ -19,6 +20,15 @@ class PaymentStatus(str, Enum):
     PAID = "paid"
     EXPIRED = "expired"
     FAILED = "failed"
+
+
+class DeliveryStatus(str, Enum):
+    """Enum for delivery status values."""
+
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"
+    EXPIRED = "expired"
 
 
 class EmailAccount(SQLModel, table=True):
@@ -316,6 +326,14 @@ class PendingOutgoingEmail(SQLModel, table=True):
     payment_request: str
     price_sats: int
     status: PaymentStatus = Field(default=PaymentStatus.PENDING, index=True)
+    delivery_status: DeliveryStatus = Field(
+        default=DeliveryStatus.PENDING,
+        # Use AutoString to avoid SQLAlchemy Enum lookup issues with lowercase/uppercase values
+        sa_column=Column(
+            AutoString, nullable=False, server_default="pending", index=True
+        ),
+    )
+    delivery_error: str | None = Field(default=None)
     # Retry tracking
     retry_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
     last_retry_at: datetime | None = Field(default=None)

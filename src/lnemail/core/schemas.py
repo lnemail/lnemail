@@ -86,12 +86,34 @@ class EmailSendInvoiceResponse(BaseModel):
 
 
 class EmailSendStatusResponse(BaseModel):
-    """Response schema for checking the status of an email send payment."""
+    """Response schema for checking payment and delivery status."""
 
     payment_status: str
+    delivery_status: str
+    delivery_error: Optional[str] = None
     sender_email: Optional[str] = None
     recipient: Optional[str] = None
     subject: Optional[str] = None
+    sent_at: Optional[datetime] = None
+    retry_count: int = 0
+
+
+class RecentSendItem(BaseModel):
+    """Schema for recent send history items."""
+
+    payment_hash: str
+    recipient: str
+    subject: str
+    payment_status: str
+    delivery_status: str
+    created_at: datetime
+    sent_at: Optional[datetime] = None
+
+
+class RecentSendsResponse(BaseModel):
+    """Response schema for recent send history."""
+
+    sends: List[RecentSendItem]
 
 
 class ErrorResponse(BaseModel):

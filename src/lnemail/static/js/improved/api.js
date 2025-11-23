@@ -140,3 +140,7 @@ export async function checkAccountPaymentStatus(paymentHash) {
         method: 'GET'
     });
 }
+
+export async function fetchRecentSends() {
+    return await makeRequest('/email/sends/recent');
+}

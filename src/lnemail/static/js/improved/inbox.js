@@ -1,8 +1,29 @@
 import { state } from './state.js';
 import { AUTO_REFRESH_INTERVAL } from './config.js';
-import { fetchEmails, fetchEmailContent } from './api.js';
-import { showStatus, renderEmailList, updateInboxCount, displayEmailAttachments, showView } from './ui.js';
+import { fetchEmails, fetchEmailContent, fetchRecentSends } from './api.js';
+import {
+    showStatus,
+    renderEmailList,
+    updateInboxCount,
+    displayEmailAttachments,
+    showView,
+    renderRecentSends,
+} from './ui.js';
 import { formatEmailBody } from './utils.js';
+
+export async function refreshRecentSends() {
+    if (!state.accessToken) return;
+
+    try {
+        const response = await fetchRecentSends();
+        if (response && response.sends) {
+            state.recentSends = response.sends;
+            renderRecentSends();
+        }
+    } catch (error) {
+        // console.error('Failed to load recent sends:', error);
+    }
+}
 
 export async function refreshInbox() {
     if (!state.accessToken) {
@@ -14,7 +35,13 @@ export async function refreshInbox() {
     loadingElement.classList.remove('hidden');
 
     try {
-        state.emails = await fetchEmails();
+        // Load emails and recent sends in parallel
+        const [emails] = await Promise.all([
+            fetchEmails(),
+            refreshRecentSends()
+        ]);
+
+        state.emails = emails;
         renderEmailList();
         updateInboxCount();
     } catch (error) {

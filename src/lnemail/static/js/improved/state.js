@@ -13,5 +13,7 @@ export const state = {
     paymentPollTimer: null,
     // Account creation payment tracking
     currentAccountCreation: null,
-    accountCreationPollTimer: null
+    accountCreationPollTimer: null,
+    recentSends: [],
+    recentSendsRefreshTimer: null
 };

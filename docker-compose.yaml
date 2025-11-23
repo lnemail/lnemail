@@ -638,7 +638,7 @@ services:
           sleep 5
         done
         echo 'Certificates found, starting worker...'
-        rq worker lnemail
+        rq worker lnemail --with-scheduler
       "
     develop:
       watch:

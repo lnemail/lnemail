@@ -12,11 +12,13 @@ from sqlmodel import Session, select, func
 
 from ..config import settings
 from ..core.models import (
+    DeliveryStatus,
     EmailAccount,
     PaymentStatus,
     PendingOutgoingEmail,
     EmailSendStatistics,
 )
+
 from ..db import engine
 from .email_service import EmailService
 from .lnd_service import LNDService
@@ -155,7 +157,10 @@ def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> Non
                 return
 
             # Skip if already processed successfully
-            if pending_email.status == PaymentStatus.PAID:
+            if (
+                pending_email.status == PaymentStatus.PAID
+                and pending_email.delivery_status == DeliveryStatus.SENT
+            ):
                 logger.info(
                     f"Outgoing email already sent successfully for hash: {payment_hash}"
                 )
@@ -190,7 +195,11 @@ def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> Non
             # Payment received, validate we have email content
             if not pending_email.recipient or not pending_email.body:
                 logger.error(f"Email content missing for paid invoice: {payment_hash}")
-                pending_email.status = PaymentStatus.FAILED
+                pending_email.status = (
+                    PaymentStatus.PAID
+                )  # Payment was received but we can't process
+                pending_email.delivery_status = DeliveryStatus.FAILED
+                pending_email.delivery_error = "Invalid email content"
                 session.add(pending_email)
                 session.commit()
                 return
@@ -206,10 +215,15 @@ def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> Non
                     f"Sender account not found or missing password: "
                     f"{pending_email.sender_email}"
                 )
-                pending_email.status = PaymentStatus.FAILED
+                pending_email.status = PaymentStatus.PAID  # Payment received
+                pending_email.delivery_status = DeliveryStatus.FAILED
+                pending_email.delivery_error = "Sender authentication failed"
                 session.add(pending_email)
                 session.commit()
                 return
+
+            # Mark as paid immediately since we confirmed payment
+            pending_email.status = PaymentStatus.PAID
 
             # Send email using SMTP with authentication
             success, message = email_service.send_email_with_auth(
@@ -223,7 +237,8 @@ def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> Non
             )
 
             if success:
-                pending_email.status = PaymentStatus.PAID
+                pending_email.delivery_status = DeliveryStatus.SENT
+                pending_email.delivery_error = None
                 pending_email.sent_at = datetime.utcnow()
 
                 # Update statistics
@@ -236,6 +251,12 @@ def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> Non
                 )
             else:
                 # Email send failed, increment retry count
+                pending_email.delivery_error = message
+                # Keep status as PAID (payment successful), but delivery pending/failed
+                # The delivery_status remains PENDING until we exhaust retries or succeed,
+                # or we can explicitly set it if needed, but usually PENDING is fine for retries.
+                # However, the task logic below continues to retry.
+
                 pending_email.retry_count += 1
                 pending_email.last_retry_at = datetime.utcnow()
 
@@ -281,8 +302,8 @@ def retry_failed_emails() -> None:
             # Find failed emails that have content (no max retry limit)
             statement = select(PendingOutgoingEmail).where(
                 (PendingOutgoingEmail.status == PaymentStatus.FAILED)
-                & (PendingOutgoingEmail.recipient.isnot(None))  # type: ignore
-                & (PendingOutgoingEmail.body.isnot(None))  # type: ignore
+                & (PendingOutgoingEmail.recipient != None)  # noqa: E711
+                & (PendingOutgoingEmail.body != None)  # noqa: E711
                 & (
                     PendingOutgoingEmail.created_at
                     > datetime.utcnow() - timedelta(days=7)  # Keep trying for 7 days
@@ -465,29 +486,29 @@ def schedule_regular_tasks() -> None:
     """
     # Schedule cleanup tasks
     queue.enqueue_in(
-        timedelta=timedelta(days=1),
-        func=cleanup_expired_accounts,
+        timedelta(days=1),
+        cleanup_expired_accounts,
         job_id="daily_account_cleanup",
         job_timeout=3600,  # 1 hour timeout
     )
 
     queue.enqueue_in(
-        timedelta=timedelta(hours=1),
-        func=cleanup_expired_pending_emails,
+        timedelta(hours=1),
+        cleanup_expired_pending_emails,
         job_id="hourly_pending_email_cleanup",
         job_timeout=600,  # 10 minute timeout
     )
 
     queue.enqueue_in(
-        timedelta=timedelta(days=1),
-        func=cleanup_old_pending_accounts,
+        timedelta(days=1),
+        cleanup_old_pending_accounts,
         job_id="daily_old_pending_accounts_cleanup",
         job_timeout=600,  # 10 minute timeout
     )
 
     queue.enqueue_in(
-        timedelta=timedelta(days=1),
-        func=cleanup_old_outgoing_emails,
+        timedelta(days=1),
+        cleanup_old_outgoing_emails,
         job_id="daily_old_outgoing_emails_cleanup",
         job_timeout=3600,  # 1 hour timeout
     )
