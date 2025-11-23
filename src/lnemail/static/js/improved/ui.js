@@ -616,6 +616,16 @@ export function updatePaymentModal(invoiceData) {
     document.getElementById('paymentAmount').textContent = `${invoiceData.price_sats} sats`;
     document.getElementById('paymentHashValue').textContent = invoiceData.payment_hash;
 
+    // Check for WebLN availability
+    const weblnBtn = document.getElementById('weblnPayBtn');
+    if (weblnBtn) {
+        if (window.webln) {
+            weblnBtn.style.display = '';
+        } else {
+            weblnBtn.style.display = 'none';
+        }
+    }
+
     // Set loading state for QR code
     const qrContainer = document.querySelector('.qr-code-container');
     qrContainer.innerHTML = `
@@ -743,6 +753,16 @@ export function updateAccountCreationModal(accountData) {
     document.getElementById('accountAccessTokenText').textContent = accountData.access_token;
     document.getElementById('accountAmount').textContent = `${accountData.price_sats} sats`;
     document.getElementById('accountPaymentHashValue').textContent = accountData.payment_hash;
+
+    // Check for WebLN availability
+    const weblnBtn = document.getElementById('accountWeblnPayBtn');
+    if (weblnBtn) {
+        if (window.webln) {
+            weblnBtn.style.display = '';
+        } else {
+            weblnBtn.style.display = 'none';
+        }
+    }
 
     // Set loading state for QR code
     const qrContainer = document.querySelector('#accountCreationModal .qr-code-container');

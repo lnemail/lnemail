@@ -22,6 +22,7 @@ import {
 import { handleConnect, handleDisconnect, tryAutoConnect, performLoginHealthCheck } from './auth.js';
 import { isValidEmail } from './utils.js';
 import { refreshInbox, startAutoRefresh, stopAutoRefresh } from './inbox.js';
+import { payWithWebLN } from './webln.js';
 import { HEALTH_CHECK_INTERVAL, PAYMENT_POLL_INTERVAL } from './config.js';
 import { state } from './state.js';
 
@@ -425,11 +426,13 @@ function bindEvents() {
     // Payment modal events
     document.getElementById('cancelPaymentBtn').addEventListener('click', handleCancelPayment);
     document.getElementById('copyInvoiceBtn').addEventListener('click', handleCopyInvoice);
+    document.getElementById('weblnPayBtn').addEventListener('click', handleWebLNPayment);
 
     // Account creation events
     document.getElementById('createAccountLink').addEventListener('click', handleCreateAccount);
     document.getElementById('cancelAccountCreationBtn').addEventListener('click', handleCancelAccountCreation);
     document.getElementById('copyAccountInvoiceBtn').addEventListener('click', handleCopyAccountInvoice);
+    document.getElementById('accountWeblnPayBtn').addEventListener('click', handleAccountWebLNPayment);
     document.getElementById('accountAccessToken').addEventListener('click', handleCopyAccessToken);
 }
 
@@ -622,4 +625,14 @@ async function handleCopyAccessToken() {
         // console.error('Failed to copy access token:', error);
         showStatus('Failed to copy access token to clipboard', 'error');
     }
+}
+
+async function handleWebLNPayment() {
+    if (!state.currentPayment || !state.currentPayment.payment_request) return;
+    await payWithWebLN(state.currentPayment.payment_request);
+}
+
+async function handleAccountWebLNPayment() {
+    if (!state.currentAccountCreation || !state.currentAccountCreation.payment_request) return;
+    await payWithWebLN(state.currentAccountCreation.payment_request);
 }
