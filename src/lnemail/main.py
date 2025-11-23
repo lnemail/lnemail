@@ -21,6 +21,7 @@ from fastapi_cache.coder import Coder
 
 from .api.endpoints import router as api_router, health_router
 from .config import settings
+from .services.tasks import schedule_regular_tasks
 
 
 class PickleCoder(Coder):
@@ -43,6 +44,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # Initialize FastAPI Cache with InMemory backend
     # Since templates don't change during runtime, we can cache indefinitely
     FastAPICache.init(InMemoryBackend(), prefix="lnemail-cache")
+
+    # Schedule regular maintenance tasks
+    schedule_regular_tasks()
+
     yield
 
 
