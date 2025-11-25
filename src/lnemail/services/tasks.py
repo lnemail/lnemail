@@ -341,31 +341,43 @@ def retry_failed_emails() -> None:
 def cleanup_expired_accounts() -> None:
     """Find and clean up expired accounts.
 
-    This task finds accounts that have expired and marks them as expired,
-    optionally cleaning up resources.
+    This task finds accounts that have expired AND passed the 1-year grace period,
+    then marks them as expired and cleans up resources.
+
+    Timeline:
+    - Account created: 2025-05-16
+    - Account expires: 2026-05-16 (1 year validity)
+    - Grace period ends: 2027-05-16 (1 year after expiration)
+    - This task runs: Should only mark as EXPIRED after 2027-05-16
     """
     logger.info("Running expired accounts cleanup task")
 
     try:
-        # Initialize email service
         email_service = EmailService()
 
         with Session(engine) as session:
-            # Find expired accounts that are still marked as paid
             now = datetime.utcnow()
+
+            # Find accounts that expired more than 1 year ago
+            # Grace period: Allow 1 year AFTER expiration for renewal
+            grace_period_cutoff = now - timedelta(days=365)
+
             statement = select(EmailAccount).where(
-                (
-                    EmailAccount.expires_at < now + timedelta(days=365)
-                )  # 1 year grace period
+                (EmailAccount.expires_at < grace_period_cutoff)
                 & (EmailAccount.payment_status == PaymentStatus.PAID)
             )
             expired_accounts = session.exec(statement).all()
 
-            logger.info(f"Found {len(expired_accounts)} expired accounts")
+            logger.info(
+                f"Found {len(expired_accounts)} accounts past grace period "
+                f"(expired before {grace_period_cutoff.isoformat()})"
+            )
 
-            # Process each expired account
             for account in expired_accounts:
-                logger.info(f"Processing expired account: {account.email_address}")
+                logger.info(
+                    f"Processing account past grace period: {account.email_address} "
+                    f"(expired: {account.expires_at.isoformat()})"
+                )
 
                 # Update status to expired
                 account.payment_status = PaymentStatus.EXPIRED
