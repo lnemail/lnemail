@@ -100,7 +100,10 @@ export async function openEmail(emailId) {
     document.getElementById('emailSubject').textContent = fullEmail.subject || 'No Subject';
     document.getElementById('emailFrom').textContent = fullEmail.from || fullEmail.sender || 'Unknown Sender';
     document.getElementById('emailDate').textContent = new Date(fullEmail.date || fullEmail.timestamp || Date.now()).toLocaleString();
-    document.getElementById('emailBody').innerHTML = formatEmailBody(fullEmail.body || fullEmail.content || 'No content available');
+    document.getElementById('emailBody').innerHTML = formatEmailBody(
+        fullEmail.body || fullEmail.content || 'No content available',
+        fullEmail.content_type || 'text/plain'
+    );
 
     displayEmailAttachments(fullEmail.attachments);
     showView('emailDetail');

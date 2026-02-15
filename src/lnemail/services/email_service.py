@@ -737,6 +737,10 @@ class EmailService:
             references = self._safe_get_header(msg, "References", None)
 
             # Extract body content
+            # Prefer text/html over text/plain so the frontend can render
+            # sanitised HTML (clickable links, basic formatting). In standard
+            # multipart/alternative messages the plain part comes first and the
+            # HTML part second, so we iterate all parts and keep the richest.
             content_type = "text/plain"
             body = ""
 
@@ -750,9 +754,18 @@ class EmailService:
                                 continue
                             payload_bytes = cast(bytes, payload)
                             charset = part.get_content_charset() or "utf-8"
-                            body = payload_bytes.decode(charset, errors="replace")
-                            content_type = part_content_type
-                            break
+                            decoded = payload_bytes.decode(charset, errors="replace")
+                            # Always accept text/html; accept text/plain only
+                            # when we haven't found an HTML part yet.
+                            if (
+                                part_content_type == "text/html"
+                                or content_type != "text/html"
+                            ):
+                                body = decoded
+                                content_type = part_content_type
+                            # If we already have HTML, stop looking
+                            if content_type == "text/html":
+                                break
                         except Exception as e:
                             logger.error(f"Error decoding email part: {str(e)}")
             else:

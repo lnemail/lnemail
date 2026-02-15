@@ -847,6 +847,77 @@ body > main > .container {
     text-align: left !important;
 }
 
+/* Scoped styles for sanitised HTML email bodies.
+   Constrain layout so email HTML cannot break the app. */
+#emailBody a {
+    color: #667eea;
+    text-decoration: underline;
+    word-break: break-all;
+}
+
+#emailBody a:hover {
+    color: #764ba2;
+}
+
+#emailBody img {
+    max-width: 100%;
+    height: auto;
+}
+
+#emailBody table {
+    border-collapse: collapse;
+    max-width: 100%;
+    overflow-x: auto;
+    display: block;
+}
+
+#emailBody td,
+#emailBody th {
+    padding: 4px 8px;
+    border: 1px solid #dee2e6;
+}
+
+#emailBody blockquote {
+    border-left: 3px solid #dee2e6;
+    margin: 0.5em 0;
+    padding: 0.25em 1em;
+    color: #6c757d;
+}
+
+#emailBody pre {
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+#emailBody h1,
+#emailBody h2,
+#emailBody h3,
+#emailBody h4,
+#emailBody h5,
+#emailBody h6 {
+    margin: 0.75em 0 0.25em;
+    line-height: 1.3;
+}
+
+#emailBody p {
+    margin: 0.5em 0;
+}
+
+#emailBody ul,
+#emailBody ol {
+    padding-left: 1.5em;
+    margin: 0.5em 0;
+}
+
+#emailBody hr {
+    border: none;
+    border-top: 1px solid #dee2e6;
+    margin: 1em 0;
+}
+
 /* Attachments in Email List Preview */
 .attachments-preview {
     margin-top: 10px;

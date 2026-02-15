@@ -4,8 +4,54 @@ export function escapeHtml(text) {
     return div.innerHTML;
 }
 
-export function formatEmailBody(body) {
-    // Basic formatting - convert line breaks to <br>
+// Configure DOMPurify: force all links to open in new tab safely.
+// This hook runs on every sanitize() call, rewriting anchor attributes.
+if (typeof DOMPurify !== 'undefined') {
+    DOMPurify.addHook('afterSanitizeAttributes', function (node) {
+        if (node.tagName === 'A') {
+            node.setAttribute('target', '_blank');
+            node.setAttribute('rel', 'noopener noreferrer');
+        }
+    });
+}
+
+/**
+ * Format email body for display. Plain text is escaped and line-broken.
+ * HTML content is sanitized with DOMPurify to prevent XSS while preserving
+ * safe structure (links, paragraphs, lists, basic formatting).
+ *
+ * @param {string} body - The raw email body text.
+ * @param {string} contentType - MIME type: "text/plain" or "text/html".
+ * @returns {string} Safe HTML string ready for innerHTML assignment.
+ */
+export function formatEmailBody(body, contentType) {
+    if (contentType === 'text/html' && typeof DOMPurify !== 'undefined') {
+        return DOMPurify.sanitize(body, {
+            // Allow only safe structural and formatting tags
+            ALLOWED_TAGS: [
+                'a', 'b', 'i', 'u', 'em', 'strong', 'p', 'br', 'hr',
+                'ul', 'ol', 'li', 'blockquote', 'pre', 'code',
+                'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                'table', 'thead', 'tbody', 'tr', 'th', 'td',
+                'div', 'span', 'img', 'sub', 'sup', 'dl', 'dt', 'dd',
+            ],
+            // Allow only safe attributes -- no event handlers, no JS URIs
+            ALLOWED_ATTR: [
+                'href', 'src', 'alt', 'title', 'width', 'height',
+                'colspan', 'rowspan', 'style',
+            ],
+            // Only allow http(s) and mailto links -- block javascript: URIs
+            ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
+            // Force all links to open in new tab for safety
+            ADD_ATTR: ['target'],
+            // Remove any tags not in the allow list (don't just strip attributes)
+            KEEP_CONTENT: true,
+            // After sanitization, force target="_blank" and rel="noopener noreferrer"
+            // on all anchor tags via a DOMPurify hook
+            RETURN_DOM: false,
+        });
+    }
+    // Plain text fallback: escape HTML entities and convert newlines
     return escapeHtml(body).replace(/\n/g, '<br>');
 }
 
