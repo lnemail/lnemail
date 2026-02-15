@@ -1,8 +1,8 @@
 import { state } from './state.js';
 import { ITEMS_PER_PAGE } from './config.js';
 import { fetchEmailContent } from './api.js';
-import { escapeHtml, getFileIcon, isTextFile, isValidBase64 } from './utils.js';
-import { openEmail } from './inbox.js';
+import { escapeHtml, getFileIcon, isTextFile, formatFileSize } from './utils.js';
+import { openEmail, renderEmailBodyContent } from './inbox.js';
 
 export function showStatus(message, type = 'info') {
     const statusContainer = document.getElementById('statusContainer');
@@ -324,6 +324,50 @@ export function updateInboxCount() {
     document.getElementById('inboxCount').textContent = count;
 }
 
+/**
+ * Render a toggle bar above the email body so the user can switch between
+ * HTML and plain text views.  Hidden when only one format is available.
+ *
+ * @param {boolean} hasPlain - Whether the email has a text/plain body.
+ * @param {boolean} hasHtml  - Whether the email has a text/html body.
+ * @param {string}  activeFormat - Currently active format ('html' or 'plain').
+ */
+export function renderBodyFormatToggle(hasPlain, hasHtml, activeFormat) {
+    const container = document.getElementById('bodyFormatToggle');
+    if (!container) return;
+
+    // Only show toggle when both formats exist
+    if (!hasPlain || !hasHtml) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="body-format-toggle">
+            <button class="body-format-btn ${activeFormat === 'html' ? 'active' : ''}" data-format="html">
+                <i class="fas fa-code"></i> HTML
+            </button>
+            <button class="body-format-btn ${activeFormat === 'plain' ? 'active' : ''}" data-format="plain">
+                <i class="fas fa-align-left"></i> Plain Text
+            </button>
+        </div>
+    `;
+
+    container.querySelectorAll('.body-format-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const format = btn.dataset.format;
+            if (format === state.currentBodyFormat) return;
+
+            state.currentBodyFormat = format;
+            renderEmailBodyContent(state.currentEmail, format);
+
+            // Update active button state
+            container.querySelectorAll('.body-format-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        });
+    });
+}
+
 export function displayEmailAttachments(attachments) {
     const attachmentsContainer = document.getElementById('emailAttachments');
 
@@ -337,22 +381,23 @@ export function displayEmailAttachments(attachments) {
     const attachmentsList = attachments.map((attachment, index) => {
         const filename = attachment.filename || `Attachment ${index + 1}`;
         const hasContent = attachment.content && attachment.content.length > 0;
-        const contentSize = hasContent ? Math.round(attachment.content.length / 1024) : 0;
-        const contentType = getFileIcon(filename);
-        const isText = isTextFile(filename);
+        const sizeDisplay = attachment.size ? formatFileSize(attachment.size) : '';
+        const fileIcon = getFileIcon(filename);
+        const isText = attachment.encoding === 'text' || isTextFile(filename);
 
         return `
             <div class="attachment-detail" data-attachment-index="${index}">
                 <div class="attachment-info">
-                    <i class="fas ${contentType.icon}"></i>
+                    <i class="fas ${fileIcon.icon}"></i>
                     <span class="attachment-name">${escapeHtml(filename)}</span>
-                    ${hasContent ? `<span class="attachment-size">(${contentSize}KB)</span>` : ''}
+                    ${sizeDisplay ? `<span class="attachment-size">(${sizeDisplay})</span>` : ''}
+                    <span class="attachment-type">${escapeHtml(attachment.content_type || '')}</span>
                 </div>
                 <div class="attachment-actions">
                     ${hasContent ? `
                         <button class="btn-small attachment-download-btn"><i class="fas fa-download"></i> Download</button>
-                        ${isText ? `<button class="btn-small attachment-preview-btn"><i class="fas fa-eye"></i> Preview</button>` : `<span class="attachment-note">Preview not available</span>`}
-                    ` : ''}
+                        ${isText ? `<button class="btn-small attachment-preview-btn"><i class="fas fa-eye"></i> Preview</button>` : ''}
+                    ` : '<span class="attachment-note">No content available</span>'}
                 </div>
             </div>
         `;
@@ -391,15 +436,17 @@ function downloadAttachment(index) {
         }
 
         let blob;
-        if (isTextFile(attachment.filename) && !isValidBase64(attachment.content)) {
-            blob = new Blob([attachment.content], { type: 'text/plain' });
-        } else {
+        if (attachment.encoding === 'base64') {
+            // Binary attachment: decode base64 to bytes
             const binaryString = atob(attachment.content);
             const bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) {
                 bytes[i] = binaryString.charCodeAt(i);
             }
-            blob = new Blob([bytes]);
+            blob = new Blob([bytes], { type: attachment.content_type || 'application/octet-stream' });
+        } else {
+            // Text attachment: use content directly
+            blob = new Blob([attachment.content], { type: attachment.content_type || 'text/plain' });
         }
 
         const url = URL.createObjectURL(blob);
@@ -407,13 +454,12 @@ function downloadAttachment(index) {
         a.href = url;
         a.download = attachment.filename;
         document.body.appendChild(a);
-a.click();
+        a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
         showStatus(`Downloaded ${attachment.filename}`, 'success');
     } catch (error) {
-        // console.error('Failed to download attachment:', error);
         showStatus(`Failed to download ${attachment.filename}: ${error.message}`, 'error');
     }
 }
@@ -428,7 +474,10 @@ function previewAttachment(index) {
             return;
         }
 
-        const textContent = isValidBase64(attachment.content) ? atob(attachment.content) : attachment.content;
+        // For text attachments, content is already plain text
+        const textContent = attachment.encoding === 'base64'
+            ? atob(attachment.content)
+            : attachment.content;
         const modalContent = `<textarea disabled class="preview-textarea">${escapeHtml(textContent)}</textarea>`;
 
         const modal = document.createElement('div');

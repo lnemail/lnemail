@@ -847,6 +847,39 @@ body > main > .container {
     text-align: left !important;
 }
 
+/* Body Format Toggle (HTML / Plain Text switch) */
+.body-format-toggle {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+}
+
+.body-format-btn {
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: #f8f9fa;
+    color: #495057;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.body-format-btn:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+}
+
+.body-format-btn.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-color: transparent;
+}
+
 /* Scoped styles for sanitised HTML email bodies.
    Constrain layout so email HTML cannot break the app. */
 #emailBody a {

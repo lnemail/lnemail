@@ -8,6 +8,7 @@ export const state = {
     currentAttachments: [],
     selectedEmailIds: new Set(),
     currentEmail: null,
+    currentBodyFormat: 'html',  // 'html' or 'plain'
     // Payment tracking
     currentPayment: null,
     paymentPollTimer: null,

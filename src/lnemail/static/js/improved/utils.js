@@ -120,6 +120,21 @@ export function getFileIcon(filename) {
     return iconMap[extension] || { icon: 'fa-file', color: '#6c757d' };
 }
 
+/**
+ * Format a byte count into a human-readable string (e.g. "1.2 KB").
+ *
+ * @param {number} bytes - Size in bytes.
+ * @returns {string} Formatted size string.
+ */
+export function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const k = 1024;
+    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), units.length - 1);
+    const value = bytes / Math.pow(k, i);
+    return `${i === 0 ? value : value.toFixed(1)} ${units[i]}`;
+}
+
 export async function copyToClipboard(text) {
     if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);

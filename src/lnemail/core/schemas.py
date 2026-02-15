@@ -49,6 +49,16 @@ class EmailListResponse(BaseModel):
     emails: List[EmailHeader]
 
 
+class EmailAttachment(BaseModel):
+    """Schema for an email attachment."""
+
+    filename: str
+    content_type: str
+    size: int
+    content: str
+    encoding: str  # "text" or "base64"
+
+
 class EmailContent(BaseModel):
     """Response schema for detailed email content."""
 
@@ -57,8 +67,10 @@ class EmailContent(BaseModel):
     sender: str
     date: str
     body: str
+    body_plain: str | None = None
+    body_html: str | None = None
     content_type: str
-    attachments: list[dict[str, str]]
+    attachments: list[EmailAttachment]
     read: bool
     message_id: str | None = None
     references: str | None = None

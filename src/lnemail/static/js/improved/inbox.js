@@ -8,6 +8,7 @@ import {
     displayEmailAttachments,
     showView,
     renderRecentSends,
+    renderBodyFormatToggle,
 } from './ui.js';
 import { formatEmailBody } from './utils.js';
 
@@ -100,16 +101,41 @@ export async function openEmail(emailId) {
     document.getElementById('emailSubject').textContent = fullEmail.subject || 'No Subject';
     document.getElementById('emailFrom').textContent = fullEmail.from || fullEmail.sender || 'Unknown Sender';
     document.getElementById('emailDate').textContent = new Date(fullEmail.date || fullEmail.timestamp || Date.now()).toLocaleString();
-    document.getElementById('emailBody').innerHTML = formatEmailBody(
-        fullEmail.body || fullEmail.content || 'No content available',
-        fullEmail.content_type || 'text/plain'
-    );
 
+    // Determine which body format to show and render toggle
+    const hasPlain = !!fullEmail.body_plain;
+    const hasHtml = !!fullEmail.body_html;
+
+    // Default to HTML if available, otherwise plain
+    const defaultFormat = hasHtml ? 'html' : 'plain';
+    state.currentBodyFormat = defaultFormat;
+
+    renderEmailBodyContent(fullEmail, defaultFormat);
+    renderBodyFormatToggle(hasPlain, hasHtml, defaultFormat);
     displayEmailAttachments(fullEmail.attachments);
     showView('emailDetail');
 
     if (wasUnread) {
         updateInboxCount();
         renderEmailList();
+    }
+}
+
+/**
+ * Render the email body in the specified format.
+ */
+export function renderEmailBodyContent(email, format) {
+    const bodyEl = document.getElementById('emailBody');
+
+    if (format === 'html' && email.body_html) {
+        bodyEl.innerHTML = formatEmailBody(email.body_html, 'text/html');
+    } else if (format === 'plain' && email.body_plain) {
+        bodyEl.innerHTML = formatEmailBody(email.body_plain, 'text/plain');
+    } else {
+        // Fallback to primary body field
+        bodyEl.innerHTML = formatEmailBody(
+            email.body || email.content || 'No content available',
+            email.content_type || 'text/plain'
+        );
     }
 }

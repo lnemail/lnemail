@@ -3,6 +3,7 @@ This module provides methods for creating email accounts,
 listing, sending, and retrieving email content via IMAP.
 """
 
+import base64
 import email as email_lib
 import imaplib
 import json
@@ -527,63 +528,79 @@ class EmailService:
             logger.error(f"Error marking email {email_id} as unread: {e}")
             return False
 
-    def _extract_text_attachments(
+    def _extract_attachments(
         self, msg: email_lib.message.Message
-    ) -> List[Dict[str, str]]:
-        """Extract plain text attachments from email message.
+    ) -> List[Dict[str, Any]]:
+        """Extract all attachments from email message.
+
+        Extracts both text and binary attachments. Binary content is
+        base64-encoded so it can be serialised in JSON responses.
 
         Args:
             msg: Email message object
 
         Returns:
-            List of attachment dictionaries with filename and content
+            List of attachment dicts with keys: filename, content_type,
+            size, content (base64-encoded bytes or plain text for text files),
+            encoding ("base64" or "text").
         """
-        attachments = []
+        attachments: List[Dict[str, Any]] = []
 
         for part in msg.walk():
-            if part.get_content_disposition() == "attachment":
-                filename = part.get_filename()
-                if not filename:
+            disposition = part.get_content_disposition()
+            if disposition not in ("attachment", "inline"):
+                continue
+            # Skip inline text parts that are the email body itself
+            if disposition == "inline" and part.get_content_type() in (
+                "text/plain",
+                "text/html",
+            ):
+                continue
+
+            filename = part.get_filename()
+            if not filename:
+                # Generate a fallback name from content type
+                ext = part.get_content_type().split("/")[-1]
+                filename = f"attachment.{ext}"
+
+            filename = self._decode_header_value(filename)
+            content_type = part.get_content_type()
+
+            try:
+                payload = part.get_payload(decode=True)
+                if payload is None:
                     continue
 
-                # Decode filename if needed
-                filename = self._decode_header_value(filename)
+                raw_bytes = cast(bytes, payload)
+                size = len(raw_bytes)
 
-                # Only process text files and files without extension (common for GPG)
-                is_text_file = (
-                    filename.lower().endswith((".txt", ".asc", ".gpg", ".pgp"))
-                    or "." not in filename
-                    or part.get_content_type().startswith("text/")
+                # For text-like files, provide plain text content
+                is_text = content_type.startswith("text/") or filename.lower().endswith(
+                    (".txt", ".asc", ".gpg", ".pgp", ".csv", ".json", ".xml", ".log")
                 )
 
-                if is_text_file:
+                if is_text:
+                    charset = part.get_content_charset() or "utf-8"
                     try:
-                        payload = part.get_payload(decode=True)
-                        if payload:
-                            # Handle payload type properly
-                            if isinstance(payload, bytes):
-                                # Try to decode as text
-                                charset = part.get_content_charset() or "utf-8"
-                                try:
-                                    content = payload.decode(charset, errors="replace")
-                                except (UnicodeDecodeError, LookupError):
-                                    # Fallback to latin-1 which can decode any byte sequence
-                                    content = payload.decode(
-                                        "latin-1", errors="replace"
-                                    )
-                            else:
-                                # Already a string or other type
-                                content = str(payload)
+                        content = raw_bytes.decode(charset, errors="replace")
+                    except (UnicodeDecodeError, LookupError):
+                        content = raw_bytes.decode("latin-1", errors="replace")
+                    encoding = "text"
+                else:
+                    content = base64.b64encode(raw_bytes).decode("ascii")
+                    encoding = "base64"
 
-                            attachments.append(
-                                {
-                                    "filename": filename,
-                                    "content": content,
-                                    "content_type": part.get_content_type(),
-                                }
-                            )
-                    except Exception as e:
-                        logger.error(f"Error extracting attachment {filename}: {e}")
+                attachments.append(
+                    {
+                        "filename": filename,
+                        "content_type": content_type,
+                        "size": size,
+                        "content": content,
+                        "encoding": encoding,
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error extracting attachment {filename}: {e}")
 
         return attachments
 
@@ -736,16 +753,27 @@ class EmailService:
             message_id = self._safe_get_header(msg, "Message-ID", None)
             references = self._safe_get_header(msg, "References", None)
 
-            # Extract body content
-            # Prefer text/html over text/plain so the frontend can render
-            # sanitised HTML (clickable links, basic formatting). In standard
-            # multipart/alternative messages the plain part comes first and the
-            # HTML part second, so we iterate all parts and keep the richest.
-            content_type = "text/plain"
-            body = ""
+            # Extract body content - capture both plain and HTML versions
+            # so the frontend can offer a toggle between formats.
+            body_plain = ""
+            body_html = ""
 
             if msg.is_multipart():
                 for part in msg.walk():
+                    # Skip attachment parts
+                    if part.get_content_disposition() in ("attachment", "inline"):
+                        if (
+                            part.get_content_disposition() == "inline"
+                            and part.get_content_type()
+                            in (
+                                "text/plain",
+                                "text/html",
+                            )
+                        ):
+                            pass  # inline body parts are fine
+                        else:
+                            continue
+
                     part_content_type = part.get_content_type()
                     if part_content_type in {"text/plain", "text/html"}:
                         try:
@@ -755,32 +783,41 @@ class EmailService:
                             payload_bytes = cast(bytes, payload)
                             charset = part.get_content_charset() or "utf-8"
                             decoded = payload_bytes.decode(charset, errors="replace")
-                            # Always accept text/html; accept text/plain only
-                            # when we haven't found an HTML part yet.
-                            if (
-                                part_content_type == "text/html"
-                                or content_type != "text/html"
-                            ):
-                                body = decoded
-                                content_type = part_content_type
-                            # If we already have HTML, stop looking
-                            if content_type == "text/html":
-                                break
+
+                            if part_content_type == "text/plain" and not body_plain:
+                                body_plain = decoded
+                            elif part_content_type == "text/html" and not body_html:
+                                body_html = decoded
                         except Exception as e:
                             logger.error(f"Error decoding email part: {str(e)}")
+
+                    # Stop early if we have both
+                    if body_plain and body_html:
+                        break
             else:
                 try:
                     payload = msg.get_payload(decode=True)
                     if payload is not None:
                         payload_bytes = cast(bytes, payload)
                         charset = msg.get_content_charset() or "utf-8"
-                        body = payload_bytes.decode(charset, errors="replace")
-                        content_type = msg.get_content_type()
+                        decoded = payload_bytes.decode(charset, errors="replace")
+                        if msg.get_content_type() == "text/html":
+                            body_html = decoded
+                        else:
+                            body_plain = decoded
                 except Exception as e:
                     logger.error(f"Error decoding email: {str(e)}")
 
-            # Extract text attachments
-            attachments = self._extract_text_attachments(msg)
+            # Determine the primary body and content_type for backward compat
+            if body_html:
+                body = body_html
+                content_type = "text/html"
+            else:
+                body = body_plain
+                content_type = "text/plain"
+
+            # Extract all attachments (text + binary)
+            attachments = self._extract_attachments(msg)
 
             # Handle read status based on parameters and initial state
             final_read_status = True  # Default assumption after RFC822 fetch
@@ -811,6 +848,8 @@ class EmailService:
                 "sender": sender,
                 "date": date,
                 "body": body,
+                "body_plain": body_plain or None,
+                "body_html": body_html or None,
                 "content_type": content_type,
                 "attachments": attachments,
                 "read": final_read_status,
