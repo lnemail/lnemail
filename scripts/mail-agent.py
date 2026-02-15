@@ -14,7 +14,14 @@ import sys
 import time
 import stat
 from typing import Dict, Any
-import inotify.adapters
+
+try:
+    import inotify.adapters
+
+    HAS_INOTIFY = True
+except ImportError:
+    HAS_INOTIFY = False
+
 from filelock import FileLock
 
 # Configure logging
@@ -243,26 +250,54 @@ def main() -> None:
             request_path = os.path.join(REQUESTS_DIR, filename)
             process_request(request_path)
 
-    # Setup inotify to watch for new request files
-    i = inotify.adapters.Inotify()
-    i.add_watch(REQUESTS_DIR)
+    # Try inotify first, fall back to polling (rootless Docker compat)
+    inotify_adapter = None
+    if HAS_INOTIFY:
+        try:
+            inotify_adapter = inotify.adapters.Inotify()
+            inotify_adapter.add_watch(REQUESTS_DIR)
+            logger.info(f"Watching directory {REQUESTS_DIR} with inotify...")
+        except Exception as e:
+            logger.warning(f"inotify failed ({e}), falling back to polling")
+            inotify_adapter = None
 
-    logger.info(f"Watching directory {REQUESTS_DIR} for new requests...")
+    if inotify_adapter is not None:
+        try:
+            for event in inotify_adapter.event_gen(yield_nones=False):
+                (_, type_names, path, filename) = event
 
-    try:
-        for event in i.event_gen(yield_nones=False):
-            (_, type_names, path, filename) = event
+                # We're only interested in new files
+                if "IN_CLOSE_WRITE" in type_names and filename.endswith(".json"):
+                    request_path = os.path.join(path, filename)
+                    process_request(request_path)
 
-            # We're only interested in new files
-            if "IN_CLOSE_WRITE" in type_names and filename.endswith(".json"):
-                request_path = os.path.join(path, filename)
-                process_request(request_path)
-
-    except KeyboardInterrupt:
-        logger.info("Mail agent stopping...")
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        sys.exit(1)
+        except KeyboardInterrupt:
+            logger.info("Mail agent stopping...")
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
+            sys.exit(1)
+    else:
+        logger.info(f"Polling directory {REQUESTS_DIR} for new requests...")
+        seen_files: set[str] = set()
+        for filename in os.listdir(REQUESTS_DIR):
+            if filename.endswith(".json"):
+                seen_files.add(filename)
+        try:
+            while True:
+                time.sleep(2)
+                try:
+                    current_files = {
+                        f for f in os.listdir(REQUESTS_DIR) if f.endswith(".json")
+                    }
+                except OSError:
+                    continue
+                new_files = current_files - seen_files
+                for filename in sorted(new_files):
+                    request_path = os.path.join(REQUESTS_DIR, filename)
+                    process_request(request_path)
+                seen_files = current_files
+        except KeyboardInterrupt:
+            logger.info("Mail agent stopping...")
 
 
 if __name__ == "__main__":

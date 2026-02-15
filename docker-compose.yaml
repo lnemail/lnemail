@@ -312,7 +312,7 @@ services:
     restart: unless-stopped
     command: daemon --docker
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/docker.sock:/var/run/docker.sock:ro
     depends_on:
       - bitcoin
       - lnd
@@ -449,7 +449,8 @@ services:
       - MAIL_DOMAIN=lnemail.test
       - OVERRIDE_HOSTNAME=mail.lnemail.test
       - POSTMASTER_ADDRESS=postmaster@lnemail.test
-      - PERMIT_DOCKER=host
+      - PERMIT_DOCKER=connected-networks
+      - NETWORK_INTERFACE=
       - LOG_LEVEL=debug
       - ENABLE_FAIL2BAN=0
       - ENABLE_CLAMAV=0
@@ -511,6 +512,7 @@ services:
     image: redis:7-alpine
     container_name: lnemail-redis
     restart: unless-stopped
+    user: root
     volumes:
       - ./dev-data/redis-data:/data
     networks:
@@ -577,7 +579,7 @@ services:
         uvicorn src.lnemail.main:app --host 0.0.0.0 --port 8000 --reload --proxy-headers
       "
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 10s
       timeout: 5s
       retries: 3
