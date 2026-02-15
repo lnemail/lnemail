@@ -32,25 +32,16 @@ RUN poetry install --no-root
 # Create necessary directories
 RUN mkdir -p /data/lnemail/mail-data
 
-# Create a non-root user and change ownership of directories
-RUN useradd -m -d /app appuser \
-    && chown -R appuser:appuser /app /data
-
-# Switch to non-root user
-USER appuser
-
 #######################
 # Development stage
 #######################
 FROM base AS development
 
 # Install development dependencies
-USER root
 RUN poetry install --no-root --with dev
-USER appuser
 
 # Copy application code (this will be overridden by volume mount in dev)
-COPY --chown=appuser:appuser . /app/
+COPY . /app/
 
 # Install the application itself
 RUN poetry install --only-root
@@ -65,7 +56,7 @@ FROM base AS production
 
 # Copy application code AFTER installing dependencies
 # This is the key optimization - code changes won't invalidate dependency layers
-COPY --chown=appuser:appuser . /app/
+COPY . /app/
 
 # Install the application itself (after dependencies are installed)
 RUN poetry install --only-root
