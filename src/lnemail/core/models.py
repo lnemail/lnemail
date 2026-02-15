@@ -321,6 +321,7 @@ class PendingOutgoingEmail(SQLModel, table=True):
     body: str
     in_reply_to: str | None = Field(default=None)
     references: str | None = Field(default=None)
+    attachments_json: str | None = Field(default=None)
     # Payment and status tracking
     payment_hash: str = Field(unique=True, index=True)
     payment_request: str

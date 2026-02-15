@@ -50,3 +50,4 @@ multi_line_output = 3
 
 [tool.pytest.ini_options]
 norecursedirs = ["dev-data", "data", "migrations", "node_modules"]
+pythonpath = ["src"]

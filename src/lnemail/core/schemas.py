@@ -76,6 +76,19 @@ class EmailContent(BaseModel):
     references: str | None = None
 
 
+class SendAttachment(BaseModel):
+    """Schema for an attachment to be sent with an outgoing email."""
+
+    filename: str
+    content_type: str
+    content: str  # base64-encoded file content
+
+
+# 8 MB total attachment size limit (leaves room for base64 overhead + headers
+# within the 10 MB SMTP server limit)
+MAX_TOTAL_ATTACHMENT_SIZE_BYTES: int = 8 * 1024 * 1024
+
+
 class EmailSendRequest(BaseModel):
     """Request schema for sending an email."""
 
@@ -84,6 +97,7 @@ class EmailSendRequest(BaseModel):
     body: str
     in_reply_to: str | None = None
     references: str | None = None
+    attachments: list[SendAttachment] = Field(default_factory=list)
 
 
 class EmailSendInvoiceResponse(BaseModel):

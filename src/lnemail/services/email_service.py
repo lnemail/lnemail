@@ -15,7 +15,9 @@ import stat
 import time
 import uuid
 from datetime import datetime, timezone
+from email import encoders
 from email.header import decode_header
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
@@ -309,6 +311,7 @@ class EmailService:
         body: str,
         in_reply_to: str | None = None,
         references: str | None = None,
+        attachments: list[Dict[str, str]] | None = None,
     ) -> Tuple[bool, str]:
         """Send an email via SMTP with authentication.
 
@@ -320,6 +323,8 @@ class EmailService:
             body: The plain text body of the email
             in_reply_to: Message-ID of the email being replied to
             references: References header for email threading
+            attachments: List of attachment dicts with keys: filename,
+                content_type, content (base64-encoded string)
 
         Returns:
             Tuple containing success status and an optional error message or confirmation
@@ -341,6 +346,24 @@ class EmailService:
                 msg["References"] = references
 
             msg.attach(MIMEText(body, "plain"))
+
+            # Attach files if provided
+            if attachments:
+                for att in attachments:
+                    maintype, _, subtype = att["content_type"].partition("/")
+                    if not subtype:
+                        maintype = "application"
+                        subtype = "octet-stream"
+
+                    mime_part = MIMEBase(maintype, subtype)
+                    mime_part.set_payload(base64.b64decode(att["content"]))
+                    encoders.encode_base64(mime_part)
+                    mime_part.add_header(
+                        "Content-Disposition",
+                        "attachment",
+                        filename=att["filename"],
+                    )
+                    msg.attach(mime_part)
 
             # Create SMTP connection
             smtp = self._create_smtp_connection()

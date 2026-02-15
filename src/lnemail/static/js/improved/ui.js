@@ -514,6 +514,12 @@ export function clearComposeForm() {
     document.getElementById('recipient').value = '';
     document.getElementById('subject').value = '';
     document.getElementById('body').value = '';
+
+    // Clear attachment file input and list
+    const attachmentInput = document.getElementById('attachmentInput');
+    if (attachmentInput) attachmentInput.value = '';
+    const attachmentList = document.getElementById('attachmentList');
+    if (attachmentList) attachmentList.innerHTML = '';
 }
 
 export function updateHealthStatus(healthData) {

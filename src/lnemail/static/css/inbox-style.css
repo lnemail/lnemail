@@ -795,6 +795,97 @@ body > main > .container {
     min-height: 200px;
 }
 
+/* Compose Attachments */
+.attachment-group {
+    margin-bottom: 15px;
+}
+
+.attachment-group label {
+    margin-bottom: 8px;
+}
+
+.btn-sm {
+    padding: 6px 14px;
+    font-size: 13px;
+    border-radius: 6px;
+}
+
+.attachment-size-limit {
+    font-size: 12px;
+    color: #8a94a6;
+    margin-left: 10px;
+}
+
+.attachment-list {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.attachment-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border: 1px solid #e1e5e9;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.attachment-item-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.attachment-item-info i {
+    color: #667eea;
+    flex-shrink: 0;
+}
+
+.attachment-item-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #333;
+}
+
+.attachment-item-size {
+    color: #8a94a6;
+    font-size: 12px;
+    flex-shrink: 0;
+    margin-left: 4px;
+}
+
+.attachment-item-remove {
+    background: none;
+    border: none;
+    color: #dc3545;
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 14px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.attachment-item-remove:hover {
+    background: #fee;
+}
+
+.attachment-total-size {
+    font-size: 12px;
+    color: #8a94a6;
+    margin-top: 6px;
+}
+
+.attachment-total-size.over-limit {
+    color: #dc3545;
+    font-weight: 600;
+}
+
 .form-actions {
     display: flex;
     gap: 15px;

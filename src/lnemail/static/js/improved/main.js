@@ -21,11 +21,110 @@ import {
     initMobileMenu
 } from './ui.js';
 import { handleConnect, handleDisconnect, tryAutoConnect, performLoginHealthCheck } from './auth.js';
-import { isValidEmail } from './utils.js';
+import { isValidEmail, formatFileSize } from './utils.js';
 import { refreshInbox, startAutoRefresh, stopAutoRefresh } from './inbox.js';
 import { payWithWebLN } from './webln.js';
 import { HEALTH_CHECK_INTERVAL, PAYMENT_POLL_INTERVAL } from './config.js';
 import { state } from './state.js';
+
+const MAX_TOTAL_ATTACHMENT_SIZE = 8 * 1024 * 1024; // 8 MB
+let pendingAttachments = []; // Array of { file, filename, content_type, content (base64), size }
+
+function getTotalAttachmentSize() {
+    return pendingAttachments.reduce((sum, att) => sum + att.size, 0);
+}
+
+function renderAttachmentList() {
+    const list = document.getElementById('attachmentList');
+    if (!list) return;
+    list.innerHTML = '';
+
+    pendingAttachments.forEach((att, index) => {
+        const item = document.createElement('div');
+        item.className = 'attachment-item';
+        item.innerHTML = `
+            <div class="attachment-item-info">
+                <i class="fas fa-file"></i>
+                <span class="attachment-item-name" title="${att.filename}">${att.filename}</span>
+                <span class="attachment-item-size">(${formatFileSize(att.size)})</span>
+            </div>
+            <button type="button" class="attachment-item-remove" data-index="${index}" title="Remove">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        list.appendChild(item);
+    });
+
+    // Show total size if there are attachments
+    if (pendingAttachments.length > 0) {
+        const total = getTotalAttachmentSize();
+        const totalDiv = document.createElement('div');
+        totalDiv.className = 'attachment-total-size' + (total > MAX_TOTAL_ATTACHMENT_SIZE ? ' over-limit' : '');
+        totalDiv.textContent = `Total: ${formatFileSize(total)} / ${formatFileSize(MAX_TOTAL_ATTACHMENT_SIZE)}`;
+        list.appendChild(totalDiv);
+    }
+}
+
+function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            // result is "data:<mime>;base64,<data>" -- extract just the base64 part
+            const base64 = reader.result.split(',')[1];
+            resolve(base64);
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+    });
+}
+
+async function handleAttachmentInput(e) {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    for (const file of files) {
+        // Check if adding this file would exceed the limit
+        if (getTotalAttachmentSize() + file.size > MAX_TOTAL_ATTACHMENT_SIZE) {
+            showStatus(`Cannot add "${file.name}" -- total size would exceed 8 MB limit`, 'error');
+            continue;
+        }
+
+        try {
+            const base64Content = await readFileAsBase64(file);
+            pendingAttachments.push({
+                file,
+                filename: file.name,
+                content_type: file.type || 'application/octet-stream',
+                content: base64Content,
+                size: file.size,
+            });
+        } catch (err) {
+            showStatus(`Failed to read file "${file.name}"`, 'error');
+        }
+    }
+
+    renderAttachmentList();
+    // Reset the input so the same file can be re-added if removed
+    e.target.value = '';
+}
+
+function handleAttachmentRemove(e) {
+    const removeBtn = e.target.closest('.attachment-item-remove');
+    if (!removeBtn) return;
+    const index = parseInt(removeBtn.dataset.index, 10);
+    if (!isNaN(index) && index >= 0 && index < pendingAttachments.length) {
+        pendingAttachments.splice(index, 1);
+        renderAttachmentList();
+    }
+}
+
+function clearAttachments() {
+    pendingAttachments = [];
+    const list = document.getElementById('attachmentList');
+    if (list) list.innerHTML = '';
+    const input = document.getElementById('attachmentInput');
+    if (input) input.value = '';
+}
 
 async function handleRefreshClick() {
     const refreshBtn = document.getElementById('refreshBtn');
@@ -101,13 +200,26 @@ async function handleSendEmail(e) {
         return;
     }
 
+    // Validate attachment total size
+    if (getTotalAttachmentSize() > MAX_TOTAL_ATTACHMENT_SIZE) {
+        showStatus('Total attachment size exceeds the 8 MB limit', 'error');
+        return;
+    }
+
+    // Build attachments payload (only filename, content_type, content)
+    const attachments = pendingAttachments.map(att => ({
+        filename: att.filename,
+        content_type: att.content_type,
+        content: att.content,
+    }));
+
     const submitBtn = e.target.querySelector('button[type="submit"]');
     const originalText = submitBtn.innerHTML;
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating Invoice...';
     submitBtn.disabled = true;
 
     try {
-        const invoiceResponse = await sendEmail(recipient, subject, body, inReplyTo, references);
+        const invoiceResponse = await sendEmail(recipient, subject, body, inReplyTo, references, attachments);
 
         state.currentPayment = {
             payment_hash: invoiceResponse.payment_hash,
@@ -229,6 +341,7 @@ function handleCancelPayment() {
 
     if (isSuccess) {
         clearComposeForm();
+        clearAttachments();
         showView('inbox');
     } else {
         showStatus('Payment cancelled', 'info');
@@ -404,7 +517,17 @@ function bindEvents() {
     // Compose events
     document.getElementById('composeBtn').addEventListener('click', () => showView('compose'));
     document.getElementById('composeForm').addEventListener('submit', handleSendEmail);
-    document.getElementById('clearForm').addEventListener('click', clearComposeForm);
+    document.getElementById('clearForm').addEventListener('click', () => {
+        clearComposeForm();
+        clearAttachments();
+    });
+
+    // Attachment events
+    document.getElementById('addAttachmentBtn').addEventListener('click', () => {
+        document.getElementById('attachmentInput').click();
+    });
+    document.getElementById('attachmentInput').addEventListener('change', handleAttachmentInput);
+    document.getElementById('attachmentList').addEventListener('click', handleAttachmentRemove);
 
     // Email list events
     document.getElementById('refreshBtn').addEventListener('click', handleRefreshClick);

@@ -5,6 +5,8 @@ This module contains the FastAPI route definitions and handlers
 for all the LNemail API endpoints.
 """
 
+import base64
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -28,6 +30,7 @@ from ..core.schemas import (
     ErrorResponse,
     HealthResponse,
     InvoiceResponse,
+    MAX_TOTAL_ATTACHMENT_SIZE_BYTES,
     PaymentStatusResponse,
     RecentSendItem,
     RecentSendsResponse,
@@ -259,10 +262,36 @@ async def send_email(
         EmailSendInvoiceResponse: Details of the Lightning invoice to pay.
     """
     try:
+        # Validate total attachment size
+        if send_request.attachments:
+            total_size = 0
+            for attachment in send_request.attachments:
+                try:
+                    decoded = base64.b64decode(attachment.content)
+                    total_size += len(decoded)
+                except Exception:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Invalid base64 content for attachment: {attachment.filename}",
+                    )
+            if total_size > MAX_TOTAL_ATTACHMENT_SIZE_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Total attachment size ({total_size} bytes) exceeds "
+                    f"the {MAX_TOTAL_ATTACHMENT_SIZE_BYTES // (1024 * 1024)} MB limit",
+                )
+
         sender_email = account.email_address
         memo = f"Send email from {sender_email} to {send_request.recipient}"
 
         invoice = lnd_service.create_invoice(settings.EMAIL_SEND_PRICE, memo)
+
+        # Serialize attachments to JSON for storage
+        attachments_json: str | None = None
+        if send_request.attachments:
+            attachments_json = json.dumps(
+                [att.model_dump() for att in send_request.attachments]
+            )
 
         pending_email = PendingOutgoingEmail(
             sender_email=sender_email,
@@ -275,6 +304,7 @@ async def send_email(
             status=PaymentStatus.PENDING,
             in_reply_to=send_request.in_reply_to,
             references=send_request.references,
+            attachments_json=attachments_json,
         )
 
         db.add(pending_email)
@@ -297,6 +327,8 @@ async def send_email(
             subject=send_request.subject,
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error initiating email send: {str(e)}")
         raise HTTPException(

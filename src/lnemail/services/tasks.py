@@ -5,6 +5,7 @@ handling asynchronous operations like payment verification and cleanup.
 """
 
 from datetime import datetime, timedelta
+import json
 from loguru import logger
 from redis import Redis
 from rq import Queue
@@ -225,6 +226,16 @@ def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> Non
             # Mark as paid immediately since we confirmed payment
             pending_email.status = PaymentStatus.PAID
 
+            # Deserialize attachments from JSON storage
+            attachments = None
+            if pending_email.attachments_json:
+                try:
+                    attachments = json.loads(pending_email.attachments_json)
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.error(
+                        f"Failed to deserialize attachments for {payment_hash}: {e}"
+                    )
+
             # Send email using SMTP with authentication
             success, message = email_service.send_email_with_auth(
                 sender=pending_email.sender_email,
@@ -234,6 +245,7 @@ def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> Non
                 body=pending_email.body,
                 in_reply_to=pending_email.in_reply_to,
                 references=pending_email.references,
+                attachments=attachments,
             )
 
             if success:
