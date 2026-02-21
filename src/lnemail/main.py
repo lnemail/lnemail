@@ -150,6 +150,14 @@ async def robots_txt() -> FileResponse:
     return FileResponse(os.path.join(static_dir, "robots.txt"), media_type="text/plain")
 
 
+@app.get("/pgp-key.asc", include_in_schema=False)
+async def pgp_key() -> FileResponse:
+    """Serve PGP public key for lnemail@lnemail.net."""
+    return FileResponse(
+        os.path.join(static_dir, "pgp-key.asc"), media_type="application/pgp-keys"
+    )
+
+
 # NIP-05
 @app.get(
     "/.well-known/nostr.json", response_class=JSONResponse, include_in_schema=False
