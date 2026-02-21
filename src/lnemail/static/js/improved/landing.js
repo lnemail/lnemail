@@ -172,15 +172,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Create a canvas element for QRious
         const canvas = document.createElement('canvas');
+        canvas.style.maxWidth = '250px';
+        canvas.style.height = 'auto';
         qrContainer.appendChild(canvas);
 
-        // Generate QR code
+        // Generate QR code with size scaled to data length.
+        // Use level 'L' since LN invoices have their own checksums and
+        // high error correction inflates the module count, causing the QR
+        // to render at a fraction of the canvas for long invoices.
+        // Uppercase the invoice: bech32 is case-insensitive and uppercase
+        // enables QR alphanumeric mode (~40% more compact).
         if (typeof QRious !== 'undefined') {
+            const qrValue = paymentData.payment_request.toUpperCase();
+            const dataLength = qrValue.length;
+            const minModulePixels = 3;
+            let estimatedModules;
+            if (dataLength < 200) {
+                estimatedModules = 57;
+            } else if (dataLength < 400) {
+                estimatedModules = 77;
+            } else if (dataLength < 700) {
+                estimatedModules = 97;
+            } else if (dataLength < 1100) {
+                estimatedModules = 117;
+            } else if (dataLength < 1500) {
+                estimatedModules = 137;
+            } else {
+                estimatedModules = 177;
+            }
+            const size = Math.max(250, estimatedModules * minModulePixels);
             new QRious({
                 element: canvas,
-                value: paymentData.payment_request,
-                size: 250,
-                level: 'H'
+                value: qrValue,
+                size: size,
+                level: 'L'
             });
         } else {
              // Fallback if QRious is not loaded yet (should be loaded in index.html)

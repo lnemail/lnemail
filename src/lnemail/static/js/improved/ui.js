@@ -734,6 +734,48 @@ async function waitForQRCodeLibrary() {
     });
 }
 
+/**
+ * Calculate QR code rendering options that scale with data length.
+ *
+ * QRious renders each QR module as floor(size / moduleCount) pixels.
+ * When the data is long enough to push the QR version up (more modules),
+ * the module pixel size can drop to 1px, causing the QR code to occupy
+ * only a fraction of the canvas. To avoid this:
+ *   - Use error correction level 'L' (LN invoices have their own checksums).
+ *   - Scale the internal canvas size so each module is always >= 3px.
+ *
+ * The canvas is then scaled down visually via CSS max-width so the
+ * displayed size stays consistent regardless of the internal resolution.
+ */
+function getQRCodeSize(dataLength) {
+    // Approximate module count per side for alphanumeric data at level L.
+    // QR versions jump at certain data lengths; this is a conservative
+    // estimate that ensures enough canvas pixels.
+    //   Version 10: 57 modules, ~174 alphanumeric chars
+    //   Version 15: 77 modules, ~412 alphanumeric chars
+    //   Version 20: 97 modules, ~666 alphanumeric chars
+    //   Version 25: 117 modules, ~1000 alphanumeric chars
+    //   Version 30: 137 modules, ~1370 alphanumeric chars
+    //   Version 40: 177 modules, ~2520 alphanumeric chars
+    // We want at least 3 pixels per module for crisp rendering.
+    const minModulePixels = 3;
+    let estimatedModules;
+    if (dataLength < 200) {
+        estimatedModules = 57;
+    } else if (dataLength < 400) {
+        estimatedModules = 77;
+    } else if (dataLength < 700) {
+        estimatedModules = 97;
+    } else if (dataLength < 1100) {
+        estimatedModules = 117;
+    } else if (dataLength < 1500) {
+        estimatedModules = 137;
+    } else {
+        estimatedModules = 177;
+    }
+    return Math.max(250, estimatedModules * minModulePixels);
+}
+
 async function generateQRCode(paymentRequest) {
     try {
         await waitForQRCodeLibrary();
@@ -747,14 +789,20 @@ async function generateQRCode(paymentRequest) {
 
         // Create canvas for QRious
         const canvas = document.createElement('canvas');
+        canvas.style.maxWidth = '200px';
+        canvas.style.height = 'auto';
         qrContainer.appendChild(canvas);
 
+        // Uppercase the invoice for QR encoding. BOLT11 invoices use bech32
+        // which is case-insensitive, and uppercase enables QR alphanumeric
+        // mode (~40% more compact than byte mode for lowercase).
+        const qrValue = paymentRequest.toUpperCase();
+        const size = getQRCodeSize(qrValue.length);
         new QRious({
             element: canvas,
-            value: paymentRequest,
-            size: 200,
-            level: 'H',
-            padding: 0
+            value: qrValue,
+            size: size,
+            level: 'L',
         });
 
     } catch (error) {
@@ -1025,14 +1073,17 @@ async function generateRenewalQRCode(paymentRequest) {
         qrContainer.innerHTML = '';
 
         const canvas = document.createElement('canvas');
+        canvas.style.maxWidth = '200px';
+        canvas.style.height = 'auto';
         qrContainer.appendChild(canvas);
 
+        const qrValue = paymentRequest.toUpperCase();
+        const size = getQRCodeSize(qrValue.length);
         new QRious({
             element: canvas,
-            value: paymentRequest,
-            size: 200,
-            level: 'H',
-            padding: 0
+            value: qrValue,
+            size: size,
+            level: 'L',
         });
 
     } catch (error) {

@@ -1813,6 +1813,8 @@ body > main > .container {
 
 .qr-code-container canvas {
     display: block;
+    max-width: 200px;
+    height: auto;
 }
 
 .qr-loader {
@@ -1825,10 +1827,6 @@ body > main > .container {
     margin-bottom: 15px;
 }
 
-#qrCodeCanvas {
-    max-width: 200px;
-    height: auto;
-}
 
 .payment-status {
     text-align: center;
