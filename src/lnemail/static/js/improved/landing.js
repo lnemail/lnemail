@@ -1,5 +1,5 @@
 import { createEmailAccount, checkAccountPaymentStatus } from './api.js';
-import { payWithWebLN } from './webln.js';
+import { tryAutoPayWebLN } from './webln.js';
 import { showStatus, initMobileMenu } from './ui.js';
 import { copyToClipboard } from './utils.js';
 
@@ -132,14 +132,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Display payment pending screen
             displayPaymentScreen(paymentData);
 
-            const weblnBtn = document.getElementById('webln-pay-btn');
-            if (window.webln) {
-                weblnBtn.classList.remove('hidden');
-                weblnBtn.addEventListener('click', async () => {
-                    await payWithWebLN(bolt11Invoice.textContent);
-                    // checkPaymentStatus will pick up the payment
-                });
-            }
+            // Silently attempt WebLN auto-pay; QR code is the fallback
+            tryAutoPayWebLN(paymentData.payment_request);
 
             // Start checking payment status
             paymentHash = response.payment_hash;

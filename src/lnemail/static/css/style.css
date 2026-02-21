@@ -224,13 +224,13 @@ main {
 }
 
 .btn.primary {
-    background-color: var(--primary-color);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     border: none;
 }
 
 .btn.primary:hover {
-    background-color: var(--primary-dark);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
 }
 
 .btn.secondary {
@@ -668,8 +668,8 @@ textarea:focus {
     word-break: break-all;
 }
 
-/* Status Messages */
-.status-container {
+/* Status Messages (toast notification container) */
+#statusContainer {
     position: fixed;
     top: 20px;
     right: 20px;
@@ -683,6 +683,14 @@ textarea:focus {
     margin: 0;
     width: auto;
     height: auto;
+}
+
+/* Inline payment status (landing page) */
+.status-container-local {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 15px;
 }
 
 .status-message {
@@ -868,7 +876,7 @@ textarea:focus {
         padding: 20px;
     }
 
-    .status-container {
+    #statusContainer {
         left: 10px;
         right: 10px;
     }

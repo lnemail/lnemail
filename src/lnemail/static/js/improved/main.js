@@ -1,4 +1,4 @@
-import { sendEmail, checkApiHealth, deleteEmails, checkPaymentStatus, createEmailAccount, checkAccountPaymentStatus, renewAccount, checkRenewalStatus } from './api.js';
+import { sendEmail, checkApiHealth, deleteEmails, checkPaymentStatus, renewAccount, checkRenewalStatus } from './api.js';
 import {
     showStatus,
     showView,
@@ -13,10 +13,6 @@ import {
     hidePaymentModal,
     updatePaymentModal,
     updatePaymentStatus,
-    showAccountCreationModal,
-    hideAccountCreationModal,
-    updateAccountCreationModal,
-    updateAccountPaymentStatus,
     updatePaymentModalWithDelivery,
     initMobileMenu,
     showRenewalModal,
@@ -32,7 +28,7 @@ import {
 import { handleConnect, handleDisconnect, tryAutoConnect, performLoginHealthCheck } from './auth.js';
 import { isValidEmail, formatFileSize } from './utils.js';
 import { refreshInbox, startAutoRefresh, stopAutoRefresh } from './inbox.js';
-import { payWithWebLN } from './webln.js';
+import { tryAutoPayWebLN } from './webln.js';
 import { HEALTH_CHECK_INTERVAL, PAYMENT_POLL_INTERVAL, RENEWAL_PRICE_PER_YEAR } from './config.js';
 import { state } from './state.js';
 
@@ -244,6 +240,9 @@ async function handleSendEmail(e) {
         showPaymentModal();
 
         startPaymentPolling();
+
+        // Silently attempt WebLN auto-pay; QR code is the fallback
+        tryAutoPayWebLN(invoiceResponse.payment_request);
 
         showStatus('Lightning invoice created! Please scan the QR code to pay.', 'info');
 
@@ -559,27 +558,27 @@ function bindEvents() {
     // Payment modal events
     document.getElementById('cancelPaymentBtn').addEventListener('click', handleCancelPayment);
     document.getElementById('copyInvoiceBtn').addEventListener('click', handleCopyInvoice);
-    document.getElementById('weblnPayBtn').addEventListener('click', handleWebLNPayment);
-
-    // Account creation events
-    document.getElementById('createAccountLink').addEventListener('click', handleCreateAccount);
-    document.getElementById('cancelAccountCreationBtn').addEventListener('click', handleCancelAccountCreation);
-    document.getElementById('copyAccountInvoiceBtn').addEventListener('click', handleCopyAccountInvoice);
-    document.getElementById('accountWeblnPayBtn').addEventListener('click', handleAccountWebLNPayment);
-    document.getElementById('accountAccessToken').addEventListener('click', handleCopyAccessToken);
 
     // Renewal events
     document.getElementById('renewBtn').addEventListener('click', () => showRenewalModal());
     document.getElementById('renewalPayBtn').addEventListener('click', handleRenewAccount);
     document.getElementById('cancelRenewalOptionsBtn').addEventListener('click', handleCancelRenewalOptions);
     document.getElementById('cancelRenewalBtn').addEventListener('click', handleCancelRenewal);
-    document.getElementById('renewalWeblnPayBtn').addEventListener('click', handleRenewalWebLNPayment);
     document.getElementById('copyRenewalInvoiceBtn').addEventListener('click', handleCopyRenewalInvoice);
     document.getElementById('renewalYears').addEventListener('change', handleRenewalYearsChange);
     document.getElementById('renewalBannerBtn').addEventListener('click', handleRenewalBannerClick);
 }
 
 function init() {
+    // Synchronously hide the login modal if a saved token exists to prevent FOUC
+    const savedToken = localStorage.getItem('lnemail_access_token');
+    if (savedToken) {
+        const tokenModal = document.getElementById('tokenModal');
+        if (tokenModal) {
+            tokenModal.classList.remove('active');
+        }
+    }
+
     initMobileMenu();
     bindEvents();
     tryAutoConnect();
@@ -594,192 +593,6 @@ function init() {
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', init);
-
-async function handleCreateAccount() {
-    const createBtn = document.getElementById('createAccountLink');
-    const originalText = createBtn.textContent;
-    createBtn.textContent = 'Creating account...';
-    createBtn.style.pointerEvents = 'none';
-
-    try {
-        // Call the API to create email account
-        const accountResponse = await createEmailAccount();
-
-        // Store account creation data in state
-        state.currentAccountCreation = {
-            payment_hash: accountResponse.payment_hash,
-            payment_request: accountResponse.payment_request,
-            price_sats: accountResponse.price_sats,
-            email_address: accountResponse.email_address,
-            access_token: accountResponse.access_token,
-            expires_at: accountResponse.expires_at
-        };
-
-        // Show account creation modal with invoice details
-        updateAccountCreationModal(accountResponse);
-        showAccountCreationModal();
-
-        // Start polling for payment status
-        startAccountCreationPolling();
-
-        showStatus('Lightning invoice created for account! Please scan the QR code to pay.', 'info');
-
-    } catch (error) {
-        showStatus(`Failed to create account invoice: ${error.message}`, 'error');
-    } finally {
-        createBtn.textContent = originalText;
-        createBtn.style.pointerEvents = 'auto';
-    }
-}
-
-function startAccountCreationPolling() {
-    if (state.accountCreationPollTimer) {
-        clearInterval(state.accountCreationPollTimer);
-    }
-
-    // Check immediately
-    checkAccountCreationPaymentStatus();
-
-    // Then poll every 3 seconds
-    state.accountCreationPollTimer = setInterval(() => {
-        checkAccountCreationPaymentStatus();
-    }, PAYMENT_POLL_INTERVAL);
-}
-
-function stopAccountCreationPolling() {
-    if (state.accountCreationPollTimer) {
-        clearInterval(state.accountCreationPollTimer);
-        state.accountCreationPollTimer = null;
-    }
-}
-
-async function checkAccountCreationPaymentStatus() {
-    if (!state.currentAccountCreation) {
-        stopAccountCreationPolling();
-        return;
-    }
-
-    try {
-        const statusResponse = await checkAccountPaymentStatus(state.currentAccountCreation.payment_hash);
-
-        if (statusResponse.payment_status === 'paid') {
-            // Payment successful - account created!
-            updateAccountPaymentStatus('success', 'Payment confirmed! Account created successfully!');
-
-            // Auto-fill the access token and proceed with authentication
-            setTimeout(async () => {
-                hideAccountCreationModal();
-
-                // Fill in the access token
-                document.getElementById('accessToken').value = state.currentAccountCreation.access_token;
-
-                // Clear account creation state
-                state.currentAccountCreation = null;
-
-                // Show success message with email address
-                showStatus(`Account created! Email: ${statusResponse.email_address}. Connecting...`, 'success');
-
-                // Automatically connect with the new token
-                await handleConnect();
-
-            }, 2000);
-
-            stopAccountCreationPolling();
-
-        } else if (statusResponse.payment_status === 'expired') {
-            updateAccountPaymentStatus('error', 'Payment expired. Please try again.');
-            stopAccountCreationPolling();
-        } else {
-            // Still pending
-            updateAccountPaymentStatus('pending', 'Waiting for payment...');
-        }
-
-    } catch (error) {
-        // console.error('Failed to check account payment status:', error);
-        updateAccountPaymentStatus('error', `Payment check failed: ${error.message}`);
-    }
-}
-
-async function handleCancelAccountCreation() {
-    stopAccountCreationPolling();
-    state.currentAccountCreation = null;
-    hideAccountCreationModal();
-    showStatus('Account creation cancelled', 'info');
-}
-
-async function handleCopyAccountInvoice() {
-    if (!state.currentAccountCreation) {
-        showStatus('No invoice to copy', 'error');
-        return;
-    }
-
-    try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(state.currentAccountCreation.payment_request);
-        } else {
-            // Fallback for older browsers
-            const textArea = document.createElement('textarea');
-            textArea.value = state.currentAccountCreation.payment_request;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            textArea.style.top = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            document.execCommand('copy');
-            textArea.remove();
-        }
-
-        showStatus('Lightning invoice copied to clipboard!', 'success');
-    } catch (error) {
-        // console.error('Failed to copy account invoice:', error);
-        showStatus('Failed to copy invoice to clipboard', 'error');
-    }
-}
-
-async function handleCopyAccessToken() {
-    const tokenText = document.getElementById('accountAccessTokenText').textContent;
-
-    // Check if the token is loaded (not "-")
-    if (!tokenText || tokenText === '-') {
-        showStatus('Access token not yet loaded', 'error');
-        return;
-    }
-
-    try {
-        // Use the modern Clipboard API if available
-        if (navigator.clipboard && window.isSecureContext) {
-            await navigator.clipboard.writeText(tokenText);
-        } else {
-            // Fallback for older browsers or non-secure contexts
-            const textArea = document.createElement('textarea');
-            textArea.value = tokenText;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            textArea.style.top = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
-        }
-
-        showStatus('Access token copied to clipboard!', 'success');
-    } catch (error) {
-        // console.error('Failed to copy access token:', error);
-        showStatus('Failed to copy access token to clipboard', 'error');
-    }
-}
-
-async function handleWebLNPayment() {
-    if (!state.currentPayment || !state.currentPayment.payment_request) return;
-    await payWithWebLN(state.currentPayment.payment_request);
-}
-
-async function handleAccountWebLNPayment() {
-    if (!state.currentAccountCreation || !state.currentAccountCreation.payment_request) return;
-    await payWithWebLN(state.currentAccountCreation.payment_request);
-}
 
 // ---- Renewal Handlers ----
 
@@ -805,6 +618,9 @@ async function handleRenewAccount() {
 
         updateRenewalModal(invoiceResponse);
         startRenewalPolling();
+
+        // Silently attempt WebLN auto-pay; QR code is the fallback
+        tryAutoPayWebLN(invoiceResponse.payment_request);
 
         showStatus('Lightning invoice created for renewal! Please scan the QR code to pay.', 'info');
 
@@ -940,11 +756,6 @@ async function handleCopyRenewalInvoice() {
     } catch (error) {
         showStatus('Failed to copy invoice to clipboard', 'error');
     }
-}
-
-async function handleRenewalWebLNPayment() {
-    if (!state.currentRenewal || !state.currentRenewal.payment_request) return;
-    await payWithWebLN(state.currentRenewal.payment_request);
 }
 
 function handleRenewalYearsChange() {

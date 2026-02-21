@@ -5,7 +5,7 @@ import {
     showStatus, showTokenModal, hideTokenModal, showMainApp, hideMainApp,
     updateAccountDisplay, clearComposeForm, updateLoginHealthStatus,
     updateLoginHealthStatusLoading, updateConnectButtonState,
-    hidePaymentModal, hideAccountCreationModal,
+    hidePaymentModal,
     showRenewalModal, hideRenewalModal, showRenewalBanner, hideRenewalBanner,
     setExpiredOverlay
 } from './ui.js';
@@ -115,12 +115,6 @@ export function handleDisconnect() {
         state.paymentPollTimer = null;
     }
 
-    // Clear account creation polling if active
-    if (state.accountCreationPollTimer) {
-        clearInterval(state.accountCreationPollTimer);
-        state.accountCreationPollTimer = null;
-    }
-
     // Clear renewal polling if active
     if (state.renewalPollTimer) {
         clearInterval(state.renewalPollTimer);
@@ -132,12 +126,10 @@ export function handleDisconnect() {
     state.emails = [];
     state.currentPage = 1;
     state.currentPayment = null;
-    state.currentAccountCreation = null;
     state.currentRenewal = null;
 
     hideMainApp();
     hidePaymentModal();
-    hideAccountCreationModal();
     hideRenewalModal();
     hideRenewalBanner();
     setExpiredOverlay(false);
@@ -151,7 +143,9 @@ export function handleDisconnect() {
 
 export async function tryAutoConnect() {
     // Perform initial health check first
-    showTokenModal();
+    // Note: Don't call showTokenModal() here -- init() already hides it
+    // if a saved token exists (to prevent FOUC). The modal starts as active
+    // in the HTML, so it's visible by default when no token is saved.
     await performLoginHealthCheck();
 
     const savedToken = getSavedToken();

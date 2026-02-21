@@ -697,16 +697,6 @@ export function updatePaymentModal(invoiceData) {
     document.getElementById('paymentAmount').textContent = `${invoiceData.price_sats} sats`;
     document.getElementById('paymentHashValue').textContent = invoiceData.payment_hash;
 
-    // Check for WebLN availability
-    const weblnBtn = document.getElementById('weblnPayBtn');
-    if (weblnBtn) {
-        if (window.webln) {
-            weblnBtn.style.display = '';
-        } else {
-            weblnBtn.style.display = 'none';
-        }
-    }
-
     // Set loading state for QR code
     const qrContainer = document.querySelector('.qr-code-container');
     qrContainer.innerHTML = `
@@ -818,112 +808,6 @@ export function updatePaymentStatus(status, message) {
             statusIcon.className = 'fas fa-circle-notch fa-spin';
             statusIcon.style.color = '#ffc107';
             statusText.textContent = message || 'Checking payment status...';
-    }
-}
-
-export function showAccountCreationModal() {
-    document.getElementById('accountCreationModal').classList.add('active');
-}
-
-export function hideAccountCreationModal() {
-    document.getElementById('accountCreationModal').classList.remove('active');
-}
-
-export function updateAccountCreationModal(accountData) {
-    document.getElementById('accountEmailAddress').textContent = accountData.email_address;
-    document.getElementById('accountAccessTokenText').textContent = accountData.access_token;
-    document.getElementById('accountAmount').textContent = `${accountData.price_sats} sats`;
-    document.getElementById('accountPaymentHashValue').textContent = accountData.payment_hash;
-
-    // Check for WebLN availability
-    const weblnBtn = document.getElementById('accountWeblnPayBtn');
-    if (weblnBtn) {
-        if (window.webln) {
-            weblnBtn.style.display = '';
-        } else {
-            weblnBtn.style.display = 'none';
-        }
-    }
-
-    // Set loading state for QR code
-    const qrContainer = document.querySelector('#accountCreationModal .qr-code-container');
-    qrContainer.innerHTML = `
-        <div class="qr-loader">
-            <i class="fas fa-spinner fa-spin"></i>
-            <p>Generating QR Code...</p>
-        </div>
-    `;
-
-    // Generate QR code with library availability check
-    generateAccountQRCode(accountData.payment_request);
-}
-
-async function generateAccountQRCode(paymentRequest) {
-    try {
-        await waitForQRCodeLibrary();
-
-        if (typeof QRious === 'undefined') {
-            throw new Error('QRious library failed to load');
-        }
-
-        const qrContainer = document.querySelector('#accountCreationModal .qr-code-container');
-
-        // Clear container
-        qrContainer.innerHTML = '';
-
-        // Create canvas for QRious
-        const canvas = document.createElement('canvas');
-        qrContainer.appendChild(canvas);
-
-        new QRious({
-            element: canvas,
-            value: paymentRequest,
-            size: 200,
-            level: 'H'
-        });
-
-    } catch (error) {
-        // console.error('Account QR Code library error:', error);
-        showStatus('QR code library unavailable, showing text invoice', 'warning');
-        showAccountFallbackQRCode(paymentRequest);
-    }
-}
-
-function showAccountFallbackQRCode(paymentRequest) {
-    // Fallback: show the invoice as text if QR code fails
-    const container = document.querySelector('#accountCreationModal .qr-code-container');
-    container.innerHTML = `
-        <div class="qr-fallback-box">
-            <i class="fas fa-qrcode qr-fallback-icon"></i>
-            <p class="qr-fallback-title">QR Code Unavailable</p>
-            <p class="qr-fallback-desc">Please copy the invoice manually:</p>
-            <textarea readonly class="qr-fallback-textarea">${paymentRequest}</textarea>
-        </div>
-    `;
-}
-
-export function updateAccountPaymentStatus(status, message) {
-    const statusIcon = document.getElementById('accountPaymentStatusIcon');
-    const statusText = document.getElementById('accountPaymentStatusText');
-
-    statusText.textContent = message;
-
-    // Remove existing status classes
-    statusIcon.className = statusIcon.className.replace(/fa-(check-circle|exclamation-circle|circle-notch|spin)/g, '');
-
-    switch (status) {
-        case 'pending':
-            statusIcon.classList.add('fa-circle-notch', 'fa-spin');
-            statusIcon.style.color = '#ffc107';
-            break;
-        case 'success':
-            statusIcon.classList.add('fa-check-circle');
-            statusIcon.style.color = '#28a745';
-            break;
-        case 'error':
-            statusIcon.classList.add('fa-exclamation-circle');
-            statusIcon.style.color = '#dc3545';
-            break;
     }
 }
 
@@ -1113,12 +997,6 @@ export function updateRenewalModal(invoiceData) {
             expiryDate.toLocaleDateString('en-US', {
                 year: 'numeric', month: 'short', day: 'numeric'
             });
-    }
-
-    // Check for WebLN availability
-    const weblnBtn = document.getElementById('renewalWeblnPayBtn');
-    if (weblnBtn) {
-        weblnBtn.style.display = window.webln ? '' : 'none';
     }
 
     // Set loading state for QR code
