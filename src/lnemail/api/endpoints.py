@@ -944,6 +944,18 @@ async def check_renewal_status(
         account = db.exec(statement).first()
 
         if not account:
+            # Account not found by renewal_payment_hash. This can happen when
+            # the background task already processed the payment and cleared the
+            # hash. Check with LND to distinguish from a truly invalid hash.
+            paid = lnd_service.check_invoice(payment_hash)
+            if paid:
+                # Payment was settled and the hash was already cleared by the
+                # background task — renewal was processed successfully.
+                return RenewalStatusResponse(
+                    payment_status="paid",
+                    new_expires_at=None,
+                )
+
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Renewal payment not found",

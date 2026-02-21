@@ -753,7 +753,8 @@ async function generateQRCode(paymentRequest) {
             element: canvas,
             value: paymentRequest,
             size: 200,
-            level: 'H'
+            level: 'H',
+            padding: 0
         });
 
     } catch (error) {
@@ -1030,7 +1031,8 @@ async function generateRenewalQRCode(paymentRequest) {
             element: canvas,
             value: paymentRequest,
             size: 200,
-            level: 'H'
+            level: 'H',
+            padding: 0
         });
 
     } catch (error) {

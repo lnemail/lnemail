@@ -1811,6 +1811,10 @@ body > main > .container {
     margin-bottom: 20px;
 }
 
+.qr-code-container canvas {
+    display: block;
+}
+
 .qr-loader {
     text-align: center;
     color: #6c757d;

@@ -158,38 +158,38 @@
                 </div>
 
                 <!-- Payment info (shown after invoice is created) -->
-                <div id="renewalPaymentInfo" class="payment-info" style="display: none;">
-                    <div class="payment-details">
-                        <div class="payment-detail-item">
-                            <span class="payment-label">Service:</span>
-                            <span class="payment-value">Account Renewal</span>
+                <div id="renewalPaymentInfo" style="display: none;">
+                    <div class="payment-info">
+                        <div class="payment-details">
+                            <div class="payment-detail-item">
+                                <span class="payment-label">Service:</span>
+                                <span class="payment-value">Account Renewal</span>
+                            </div>
+                            <div class="payment-detail-item">
+                                <span class="payment-label">Period:</span>
+                                <span id="renewalPeriodValue" class="payment-value">1 Year</span>
+                            </div>
+                            <div class="payment-detail-item">
+                                <span class="payment-label">Amount:</span>
+                                <span id="renewalAmountValue" class="payment-value">-</span>
+                            </div>
+                            <div class="payment-detail-item">
+                                <span class="payment-label">New Expiry:</span>
+                                <span id="renewalNewExpiry" class="payment-value">-</span>
+                            </div>
                         </div>
-                        <div class="payment-detail-item">
-                            <span class="payment-label">Period:</span>
-                            <span id="renewalPeriodValue" class="payment-value">1 Year</span>
-                        </div>
-                        <div class="payment-detail-item">
-                            <span class="payment-label">Amount:</span>
-                            <span id="renewalAmountValue" class="payment-value">-</span>
-                        </div>
-                        <div class="payment-detail-item">
-                            <span class="payment-label">New Expiry:</span>
-                            <span id="renewalNewExpiry" class="payment-value">-</span>
-                        </div>
-                    </div>
 
-                    <div class="qr-code-container" id="renewalQrContainer">
-                        <canvas id="renewalQrCodeCanvas"></canvas>
-                    </div>
+                        <div class="qr-code-container" id="renewalQrContainer"></div>
 
-                    <div class="payment-status">
-                        <div class="payment-status-indicator">
-                            <i id="renewalPaymentStatusIcon" class="fas fa-circle-notch fa-spin" style="color: #ffc107;"></i>
-                            <span id="renewalPaymentStatusText">Waiting for payment...</span>
-                        </div>
-                        <div class="payment-hash">
-                            <span class="payment-label">Payment Hash:</span>
-                            <span id="renewalPaymentHashValue" class="payment-hash-value">-</span>
+                        <div class="payment-status">
+                            <div class="payment-status-indicator">
+                                <i id="renewalPaymentStatusIcon" class="fas fa-circle-notch fa-spin" style="color: #ffc107;"></i>
+                                <span id="renewalPaymentStatusText">Waiting for payment...</span>
+                            </div>
+                            <div class="payment-hash">
+                                <span class="payment-label">Payment Hash:</span>
+                                <span id="renewalPaymentHashValue" class="payment-hash-value">-</span>
+                            </div>
                         </div>
                     </div>
 
