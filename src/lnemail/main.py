@@ -138,6 +138,12 @@ async def site_webmanifest() -> FileResponse:
     return FileResponse(os.path.join(static_dir, "site.webmanifest"))
 
 
+@app.get("/llms.txt", include_in_schema=False)
+async def llms_txt() -> FileResponse:
+    """Serve llms.txt for LLM-friendly site information."""
+    return FileResponse(os.path.join(static_dir, "llms.txt"), media_type="text/plain")
+
+
 # NIP-05
 @app.get(
     "/.well-known/nostr.json", response_class=JSONResponse, include_in_schema=False
