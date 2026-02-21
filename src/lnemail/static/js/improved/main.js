@@ -1,4 +1,4 @@
-import { sendEmail, checkApiHealth, deleteEmails, checkPaymentStatus, createEmailAccount, checkAccountPaymentStatus } from './api.js';
+import { sendEmail, checkApiHealth, deleteEmails, checkPaymentStatus, createEmailAccount, checkAccountPaymentStatus, renewAccount, checkRenewalStatus } from './api.js';
 import {
     showStatus,
     showView,
@@ -18,13 +18,22 @@ import {
     updateAccountCreationModal,
     updateAccountPaymentStatus,
     updatePaymentModalWithDelivery,
-    initMobileMenu
+    initMobileMenu,
+    showRenewalModal,
+    hideRenewalModal,
+    updateRenewalModal,
+    updateRenewalPaymentStatus,
+    updateRenewalPriceDisplay,
+    showRenewalBanner,
+    hideRenewalBanner,
+    setExpiredOverlay,
+    updateAccountDisplay
 } from './ui.js';
 import { handleConnect, handleDisconnect, tryAutoConnect, performLoginHealthCheck } from './auth.js';
 import { isValidEmail, formatFileSize } from './utils.js';
 import { refreshInbox, startAutoRefresh, stopAutoRefresh } from './inbox.js';
 import { payWithWebLN } from './webln.js';
-import { HEALTH_CHECK_INTERVAL, PAYMENT_POLL_INTERVAL } from './config.js';
+import { HEALTH_CHECK_INTERVAL, PAYMENT_POLL_INTERVAL, RENEWAL_PRICE_PER_YEAR } from './config.js';
 import { state } from './state.js';
 
 const MAX_TOTAL_ATTACHMENT_SIZE = 8 * 1024 * 1024; // 8 MB
@@ -558,6 +567,16 @@ function bindEvents() {
     document.getElementById('copyAccountInvoiceBtn').addEventListener('click', handleCopyAccountInvoice);
     document.getElementById('accountWeblnPayBtn').addEventListener('click', handleAccountWebLNPayment);
     document.getElementById('accountAccessToken').addEventListener('click', handleCopyAccessToken);
+
+    // Renewal events
+    document.getElementById('renewBtn').addEventListener('click', () => showRenewalModal());
+    document.getElementById('renewalPayBtn').addEventListener('click', handleRenewAccount);
+    document.getElementById('cancelRenewalOptionsBtn').addEventListener('click', handleCancelRenewalOptions);
+    document.getElementById('cancelRenewalBtn').addEventListener('click', handleCancelRenewal);
+    document.getElementById('renewalWeblnPayBtn').addEventListener('click', handleRenewalWebLNPayment);
+    document.getElementById('copyRenewalInvoiceBtn').addEventListener('click', handleCopyRenewalInvoice);
+    document.getElementById('renewalYears').addEventListener('change', handleRenewalYearsChange);
+    document.getElementById('renewalBannerBtn').addEventListener('click', handleRenewalBannerClick);
 }
 
 function init() {
@@ -760,4 +779,182 @@ async function handleWebLNPayment() {
 async function handleAccountWebLNPayment() {
     if (!state.currentAccountCreation || !state.currentAccountCreation.payment_request) return;
     await payWithWebLN(state.currentAccountCreation.payment_request);
+}
+
+// ---- Renewal Handlers ----
+
+async function handleRenewAccount() {
+    const yearSelect = document.getElementById('renewalYears');
+    const years = yearSelect ? parseInt(yearSelect.value, 10) : 1;
+
+    const payBtn = document.getElementById('renewalPayBtn');
+    const originalText = payBtn.innerHTML;
+    payBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating Invoice...';
+    payBtn.disabled = true;
+
+    try {
+        const invoiceResponse = await renewAccount(years);
+
+        state.currentRenewal = {
+            payment_hash: invoiceResponse.payment_hash,
+            payment_request: invoiceResponse.payment_request,
+            price_sats: invoiceResponse.price_sats,
+            years: invoiceResponse.years,
+            new_expires_at: invoiceResponse.new_expires_at
+        };
+
+        updateRenewalModal(invoiceResponse);
+        startRenewalPolling();
+
+        showStatus('Lightning invoice created for renewal! Please scan the QR code to pay.', 'info');
+
+    } catch (error) {
+        showStatus(`Failed to create renewal invoice: ${error.message}`, 'error');
+    } finally {
+        payBtn.innerHTML = originalText;
+        payBtn.disabled = false;
+    }
+}
+
+function startRenewalPolling() {
+    stopRenewalPolling();
+
+    checkRenewalPaymentStatusPoll();
+
+    state.renewalPollTimer = setInterval(() => {
+        checkRenewalPaymentStatusPoll();
+    }, PAYMENT_POLL_INTERVAL);
+}
+
+function stopRenewalPolling() {
+    if (state.renewalPollTimer) {
+        clearInterval(state.renewalPollTimer);
+        state.renewalPollTimer = null;
+    }
+}
+
+async function checkRenewalPaymentStatusPoll() {
+    if (!state.currentRenewal) {
+        stopRenewalPolling();
+        return;
+    }
+
+    try {
+        const statusResponse = await checkRenewalStatus(state.currentRenewal.payment_hash);
+
+        if (statusResponse.payment_status === 'paid') {
+            updateRenewalPaymentStatus('success', 'Payment confirmed! Account renewed successfully!');
+            stopRenewalPolling();
+
+            // Update UI to show success
+            const cancelBtn = document.getElementById('cancelRenewalBtn');
+            const copyBtn = document.getElementById('copyRenewalInvoiceBtn');
+            if (cancelBtn) {
+                cancelBtn.innerHTML = '<i class="fas fa-check"></i> Close';
+                cancelBtn.className = 'btn-primary';
+            }
+            if (copyBtn) copyBtn.style.display = 'none';
+
+            // After a short delay, refresh account info and unblock the UI
+            setTimeout(async () => {
+                hideRenewalModal();
+                hideRenewalBanner();
+                setExpiredOverlay(false);
+
+                // Re-fetch account info to get updated expiry
+                const { checkAccountAuthorization } = await import('./api.js');
+                await checkAccountAuthorization();
+                updateAccountDisplay();
+
+                // If account was expired, now start inbox refresh
+                await refreshInbox();
+                startAutoRefresh();
+
+                state.currentRenewal = null;
+
+                showStatus('Account renewed! Your inbox is ready.', 'success');
+            }, 2000);
+
+        } else if (statusResponse.payment_status === 'processing') {
+            updateRenewalPaymentStatus('pending', 'Payment detected, processing renewal...');
+        } else {
+            updateRenewalPaymentStatus('pending', 'Waiting for payment...');
+        }
+
+    } catch (error) {
+        updateRenewalPaymentStatus('error', `Payment check failed: ${error.message}`);
+    }
+}
+
+function handleCancelRenewal() {
+    stopRenewalPolling();
+
+    const statusText = document.getElementById('renewalPaymentStatusText');
+    const isSuccess = statusText && statusText.textContent.includes('renewed successfully');
+
+    state.currentRenewal = null;
+    hideRenewalModal();
+
+    if (!isSuccess) {
+        // If account is expired and user cancels renewal without paying,
+        // keep the expired overlay active
+        if (state.accountInfo && state.accountInfo.is_expired) {
+            showStatus('Renewal cancelled. Your account is still expired -- inbox access is blocked.', 'error');
+        } else {
+            showStatus('Renewal cancelled', 'info');
+        }
+    }
+}
+
+function handleCancelRenewalOptions() {
+    hideRenewalModal();
+
+    if (state.accountInfo && state.accountInfo.is_expired) {
+        showStatus('Renewal cancelled. Your account is still expired -- inbox access is blocked.', 'error');
+    }
+}
+
+async function handleCopyRenewalInvoice() {
+    if (!state.currentRenewal || !state.currentRenewal.payment_request) {
+        showStatus('No invoice to copy', 'error');
+        return;
+    }
+
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(state.currentRenewal.payment_request);
+        } else {
+            const textArea = document.createElement('textarea');
+            textArea.value = state.currentRenewal.payment_request;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+        }
+
+        showStatus('Lightning invoice copied to clipboard!', 'success');
+    } catch (error) {
+        showStatus('Failed to copy invoice to clipboard', 'error');
+    }
+}
+
+async function handleRenewalWebLNPayment() {
+    if (!state.currentRenewal || !state.currentRenewal.payment_request) return;
+    await payWithWebLN(state.currentRenewal.payment_request);
+}
+
+function handleRenewalYearsChange() {
+    const yearSelect = document.getElementById('renewalYears');
+    if (yearSelect) {
+        const years = parseInt(yearSelect.value, 10);
+        updateRenewalPriceDisplay(years);
+    }
+}
+
+function handleRenewalBannerClick() {
+    showRenewalModal();
 }

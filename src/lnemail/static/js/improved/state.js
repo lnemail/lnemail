@@ -15,6 +15,9 @@ export const state = {
     // Account creation payment tracking
     currentAccountCreation: null,
     accountCreationPollTimer: null,
+    // Renewal payment tracking
+    currentRenewal: null,
+    renewalPollTimer: null,
     recentSends: [],
     recentSendsRefreshTimer: null
 };

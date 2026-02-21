@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { ITEMS_PER_PAGE } from './config.js';
+import { ITEMS_PER_PAGE, RENEWAL_PRICE_PER_YEAR, RENEWAL_WARNING_DAYS } from './config.js';
 import { fetchEmailContent } from './api.js';
 import { escapeHtml, getFileIcon, isTextFile, formatFileSize } from './utils.js';
 import { openEmail, renderEmailBodyContent } from './inbox.js';
@@ -78,12 +78,20 @@ export function updateAccountDisplay() {
         const expiryDate = new Date(state.accountInfo.expires_at);
         const now = new Date();
         const daysUntilExpiry = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+        const isExpired = state.accountInfo.is_expired;
 
         let relativeText;
-        if (daysUntilExpiry > 1) relativeText = `Expires in ${daysUntilExpiry} days`;
-        else if (daysUntilExpiry === 1) relativeText = 'Expires tomorrow';
-        else if (daysUntilExpiry === 0) relativeText = 'Expires today';
-        else relativeText = 'Expired';
+        if (isExpired) {
+            relativeText = 'Expired';
+        } else if (daysUntilExpiry > 1) {
+            relativeText = `Expires in ${daysUntilExpiry} days`;
+        } else if (daysUntilExpiry === 1) {
+            relativeText = 'Expires tomorrow';
+        } else if (daysUntilExpiry === 0) {
+            relativeText = 'Expires today';
+        } else {
+            relativeText = 'Expired';
+        }
 
         const exactDate = expiryDate.toLocaleDateString('en-US', {
             year: 'numeric', month: 'short', day: 'numeric',
@@ -92,8 +100,26 @@ export function updateAccountDisplay() {
 
         const fullExpiryText = `${relativeText} (${exactDate})`;
 
-        document.getElementById('accountExpiry').textContent = fullExpiryText;
-        document.getElementById('accountExpiry').title = `Full expiry: ${expiryDate.toLocaleString()}`;
+        const expiryEl = document.getElementById('accountExpiry');
+        expiryEl.textContent = fullExpiryText;
+        expiryEl.title = `Full expiry: ${expiryDate.toLocaleString()}`;
+
+        // Add visual indicator for expired or near-expiry accounts
+        const expiryContainer = expiryEl.closest('.account-expiry');
+        if (expiryContainer) {
+            expiryContainer.classList.toggle('expired', isExpired);
+            expiryContainer.classList.toggle('expiring-soon', !isExpired && daysUntilExpiry <= RENEWAL_WARNING_DAYS);
+        }
+
+        // Show/hide renew button in header
+        const renewBtn = document.getElementById('renewBtn');
+        if (renewBtn) {
+            if (isExpired || daysUntilExpiry <= RENEWAL_WARNING_DAYS) {
+                renewBtn.style.display = '';
+            } else {
+                renewBtn.style.display = 'none';
+            }
+        }
     }
 }
 
@@ -1007,4 +1033,211 @@ export function initMobileMenu() {
             link.classList.add('active');
         }
     });
+}
+
+// ---- Renewal UI Functions ----
+
+export function showRenewalModal() {
+    document.getElementById('renewalModal').classList.add('active');
+}
+
+export function hideRenewalModal() {
+    document.getElementById('renewalModal').classList.remove('active');
+    // Reset modal to options view for next time
+    resetRenewalModal();
+}
+
+function resetRenewalModal() {
+    const options = document.getElementById('renewalOptions');
+    const paymentInfo = document.getElementById('renewalPaymentInfo');
+    if (options) options.style.display = '';
+    if (paymentInfo) paymentInfo.style.display = 'none';
+
+    // Reset the year selector and price
+    const yearSelect = document.getElementById('renewalYears');
+    if (yearSelect) yearSelect.value = '1';
+    updateRenewalPriceDisplay(1);
+
+    // Reset payment status
+    updateRenewalPaymentStatus('pending', 'Waiting for payment...');
+
+    // Reset cancel button
+    const cancelBtn = document.getElementById('cancelRenewalBtn');
+    if (cancelBtn) {
+        cancelBtn.innerHTML = '<i class="fas fa-times"></i> Cancel';
+        cancelBtn.className = 'btn-secondary';
+    }
+
+    // Reset copy button visibility
+    const copyBtn = document.getElementById('copyRenewalInvoiceBtn');
+    if (copyBtn) copyBtn.style.display = '';
+}
+
+export function updateRenewalPriceDisplay(years) {
+    const priceValue = document.getElementById('renewalPriceValue');
+    const disclaimer = document.getElementById('multiYearDisclaimer');
+
+    if (priceValue) {
+        const totalPrice = RENEWAL_PRICE_PER_YEAR * years;
+        priceValue.textContent = `${totalPrice} sats`;
+    }
+
+    if (disclaimer) {
+        if (years > 1) {
+            disclaimer.classList.remove('hidden');
+        } else {
+            disclaimer.classList.add('hidden');
+        }
+    }
+}
+
+export function updateRenewalModal(invoiceData) {
+    // Switch from options view to payment view
+    const options = document.getElementById('renewalOptions');
+    const paymentInfo = document.getElementById('renewalPaymentInfo');
+    if (options) options.style.display = 'none';
+    if (paymentInfo) paymentInfo.style.display = '';
+
+    // Fill in payment details
+    document.getElementById('renewalPeriodValue').textContent =
+        `${invoiceData.years} Year${invoiceData.years > 1 ? 's' : ''}`;
+    document.getElementById('renewalAmountValue').textContent =
+        `${invoiceData.price_sats} sats`;
+    document.getElementById('renewalPaymentHashValue').textContent =
+        invoiceData.payment_hash;
+
+    // Format new expiry date
+    if (invoiceData.new_expires_at) {
+        const expiryDate = new Date(invoiceData.new_expires_at);
+        document.getElementById('renewalNewExpiry').textContent =
+            expiryDate.toLocaleDateString('en-US', {
+                year: 'numeric', month: 'short', day: 'numeric'
+            });
+    }
+
+    // Check for WebLN availability
+    const weblnBtn = document.getElementById('renewalWeblnPayBtn');
+    if (weblnBtn) {
+        weblnBtn.style.display = window.webln ? '' : 'none';
+    }
+
+    // Set loading state for QR code
+    const qrContainer = document.getElementById('renewalQrContainer');
+    qrContainer.innerHTML = `
+        <div class="qr-loader">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Generating QR Code...</p>
+        </div>
+    `;
+
+    // Generate QR code
+    generateRenewalQRCode(invoiceData.payment_request);
+}
+
+async function generateRenewalQRCode(paymentRequest) {
+    try {
+        await waitForQRCodeLibrary();
+
+        if (typeof QRious === 'undefined') {
+            throw new Error('QRious library failed to load');
+        }
+
+        const qrContainer = document.getElementById('renewalQrContainer');
+        qrContainer.innerHTML = '';
+
+        const canvas = document.createElement('canvas');
+        qrContainer.appendChild(canvas);
+
+        new QRious({
+            element: canvas,
+            value: paymentRequest,
+            size: 200,
+            level: 'H'
+        });
+
+    } catch (error) {
+        showStatus('QR code library unavailable, showing text invoice', 'warning');
+        const container = document.getElementById('renewalQrContainer');
+        if (container) {
+            container.innerHTML = `
+                <div class="qr-fallback-box">
+                    <i class="fas fa-qrcode qr-fallback-icon"></i>
+                    <p class="qr-fallback-title">QR Code Unavailable</p>
+                    <p class="qr-fallback-desc">Please copy the invoice manually:</p>
+                    <textarea readonly class="qr-fallback-textarea">${paymentRequest}</textarea>
+                </div>
+            `;
+        }
+    }
+}
+
+export function updateRenewalPaymentStatus(status, message) {
+    const statusIcon = document.getElementById('renewalPaymentStatusIcon');
+    const statusText = document.getElementById('renewalPaymentStatusText');
+
+    if (!statusIcon || !statusText) return;
+
+    statusText.textContent = message;
+
+    // Reset icon classes
+    statusIcon.className = 'fas';
+
+    switch (status) {
+        case 'pending':
+            statusIcon.classList.add('fa-circle-notch', 'fa-spin');
+            statusIcon.style.color = '#ffc107';
+            break;
+        case 'success':
+            statusIcon.classList.add('fa-check-circle');
+            statusIcon.style.color = '#28a745';
+            break;
+        case 'error':
+            statusIcon.classList.add('fa-exclamation-circle');
+            statusIcon.style.color = '#dc3545';
+            break;
+        default:
+            statusIcon.classList.add('fa-circle-notch', 'fa-spin');
+            statusIcon.style.color = '#ffc107';
+    }
+}
+
+export function showRenewalBanner(text) {
+    const banner = document.getElementById('renewalBanner');
+    const bannerText = document.getElementById('renewalBannerText');
+    if (banner) {
+        banner.style.display = '';
+        if (bannerText && text) {
+            bannerText.textContent = text;
+        }
+    }
+}
+
+export function hideRenewalBanner() {
+    const banner = document.getElementById('renewalBanner');
+    if (banner) banner.style.display = 'none';
+}
+
+/**
+ * Block or unblock the inbox/compose UI for expired accounts.
+ * When blocked, a full-screen overlay prevents interaction with the main app
+ * content, forcing the user to renew.
+ */
+export function setExpiredOverlay(show) {
+    const mainContent = document.querySelector('.main-content');
+    if (!mainContent) return;
+
+    if (show) {
+        mainContent.classList.add('expired-blocked');
+        // Disable compose and refresh buttons
+        const composeBtn = document.getElementById('composeBtn');
+        const refreshBtn = document.getElementById('refreshBtn');
+        if (composeBtn) composeBtn.disabled = true;
+        if (refreshBtn) refreshBtn.disabled = true;
+    } else {
+        mainContent.classList.remove('expired-blocked');
+        const composeBtn = document.getElementById('composeBtn');
+        const refreshBtn = document.getElementById('refreshBtn');
+        if (composeBtn) composeBtn.disabled = false;
+        if (refreshBtn) refreshBtn.disabled = false;
+    }
 }

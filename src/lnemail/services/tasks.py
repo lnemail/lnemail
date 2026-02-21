@@ -350,6 +350,70 @@ def retry_failed_emails() -> None:
         logger.error(f"Error in retry_failed_emails: {str(e)}")
 
 
+def check_renewal_payment_status(payment_hash: str, years: int = 1) -> None:
+    """Check if a renewal Lightning invoice has been paid and extend the account.
+
+    If the account is currently expired (within the grace period), the new
+    expiration is calculated from the old expiration date. If the account is
+    still active, the extension is added from the current expiration.
+
+    Args:
+        payment_hash: The hash of the renewal invoice to check.
+        years: Number of years to extend the account.
+    """
+    logger.info(f"Checking renewal payment status for hash: {payment_hash}")
+
+    lnd_service = LNDService()
+
+    try:
+        paid = lnd_service.check_invoice(payment_hash)
+        if not paid:
+            logger.info(f"Renewal payment not received yet for hash: {payment_hash}")
+            # Re-queue to check again
+            queue.enqueue_in(
+                timedelta(seconds=5),
+                check_renewal_payment_status,
+                payment_hash,
+                years,
+                job_timeout=600,
+            )
+            return
+
+        with Session(engine) as session:
+            statement = select(EmailAccount).where(
+                EmailAccount.renewal_payment_hash == payment_hash
+            )
+            account = session.exec(statement).first()
+
+            if not account:
+                logger.error(
+                    f"Account not found for renewal payment hash: {payment_hash}"
+                )
+                return
+
+            # Extend expiration from the current expiration date (not from now)
+            # This preserves remaining time for early renewals and calculates
+            # from expiration for grace-period renewals
+            now = datetime.utcnow()
+            base_date = max(account.expires_at, now)
+            account.expires_at = base_date + timedelta(days=365 * years)
+
+            # Clear the renewal payment hash to indicate completion
+            account.renewal_payment_hash = None
+
+            session.add(account)
+            session.commit()
+
+            logger.info(
+                f"Account renewed: {account.email_address} "
+                f"(+{years} year{'s' if years > 1 else ''}, "
+                f"new expiry: {account.expires_at.isoformat()})"
+            )
+
+    except Exception as e:
+        logger.error(f"Error in check_renewal_payment_status: {str(e)}")
+
+
 def cleanup_expired_accounts() -> None:
     """Find and clean up expired accounts.
 

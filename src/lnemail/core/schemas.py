@@ -159,6 +159,32 @@ class HealthResponse(BaseModel):
 class AccountResponse(BaseModel):
     email_address: str
     expires_at: datetime
+    is_expired: bool = False
+    days_until_expiry: int = 0
+    renewal_eligible: bool = False
+
+
+class RenewalRequest(BaseModel):
+    """Request schema for account renewal."""
+
+    years: int = Field(default=1, ge=1, le=10)
+
+
+class RenewalInvoiceResponse(BaseModel):
+    """Response schema for a renewal Lightning invoice."""
+
+    payment_request: str
+    payment_hash: str
+    price_sats: int
+    years: int
+    new_expires_at: datetime
+
+
+class RenewalStatusResponse(BaseModel):
+    """Response schema for checking renewal payment status."""
+
+    payment_status: str
+    new_expires_at: Optional[datetime] = None
 
 
 class EmailDeleteRequest(BaseModel):

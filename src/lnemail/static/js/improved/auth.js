@@ -1,6 +1,14 @@
 import { state } from './state.js';
+import { RENEWAL_WARNING_DAYS } from './config.js';
 import { checkAccountAuthorization, checkApiHealth } from './api.js';
-import { showStatus, showTokenModal, hideTokenModal, showMainApp, hideMainApp, updateAccountDisplay, clearComposeForm, updateLoginHealthStatus, updateLoginHealthStatusLoading, updateConnectButtonState, hidePaymentModal, hideAccountCreationModal } from './ui.js';
+import {
+    showStatus, showTokenModal, hideTokenModal, showMainApp, hideMainApp,
+    updateAccountDisplay, clearComposeForm, updateLoginHealthStatus,
+    updateLoginHealthStatusLoading, updateConnectButtonState,
+    hidePaymentModal, hideAccountCreationModal,
+    showRenewalModal, hideRenewalModal, showRenewalBanner, hideRenewalBanner,
+    setExpiredOverlay
+} from './ui.js';
 import { refreshInbox, startAutoRefresh, stopAutoRefresh } from './inbox.js';
 
 function getSavedToken() {
@@ -61,9 +69,29 @@ export async function handleConnect() {
             hideTokenModal();
             showMainApp();
             updateAccountDisplay();
-            await refreshInbox();
-            startAutoRefresh();
-            showStatus('Connected successfully!', 'success');
+
+            // Handle expired account: show renewal modal, block inbox
+            if (state.accountInfo.is_expired) {
+                setExpiredOverlay(true);
+                showRenewalModal();
+                showStatus('Your account has expired. Please renew to continue using your inbox.', 'error');
+            } else {
+                // Account is active -- load inbox normally
+                await refreshInbox();
+                startAutoRefresh();
+                showStatus('Connected successfully!', 'success');
+
+                // Show renewal banner if expiring within warning period
+                if (state.accountInfo.days_until_expiry <= RENEWAL_WARNING_DAYS) {
+                    const days = state.accountInfo.days_until_expiry;
+                    const text = days <= 0
+                        ? 'Your account expires today! Renew now to keep your email.'
+                        : days === 1
+                            ? 'Your account expires tomorrow! Renew now to keep your email.'
+                            : `Your account expires in ${days} days. Renew now to avoid losing access.`;
+                    showRenewalBanner(text);
+                }
+            }
         } else {
             state.accessToken = null;
             showStatus('Authorization failed. Please check your access token.', 'error');
@@ -93,16 +121,26 @@ export function handleDisconnect() {
         state.accountCreationPollTimer = null;
     }
 
+    // Clear renewal polling if active
+    if (state.renewalPollTimer) {
+        clearInterval(state.renewalPollTimer);
+        state.renewalPollTimer = null;
+    }
+
     state.accessToken = null;
     state.accountInfo = null;
     state.emails = [];
     state.currentPage = 1;
     state.currentPayment = null;
     state.currentAccountCreation = null;
+    state.currentRenewal = null;
 
     hideMainApp();
     hidePaymentModal();
     hideAccountCreationModal();
+    hideRenewalModal();
+    hideRenewalBanner();
+    setExpiredOverlay(false);
     showTokenModal();
     clearComposeForm();
     document.getElementById('accessToken').value = '';
@@ -134,9 +172,29 @@ export async function tryAutoConnect() {
             hideTokenModal();
             showMainApp();
             updateAccountDisplay();
-            await refreshInbox();
-            startAutoRefresh();
-            showStatus('Connected!', 'success');
+
+            // Handle expired account: show renewal modal, block inbox
+            if (state.accountInfo.is_expired) {
+                setExpiredOverlay(true);
+                showRenewalModal();
+                showStatus('Your account has expired. Please renew to continue using your inbox.', 'error');
+            } else {
+                // Account is active
+                await refreshInbox();
+                startAutoRefresh();
+                showStatus('Connected!', 'success');
+
+                // Show renewal banner if near expiry
+                if (state.accountInfo.days_until_expiry <= RENEWAL_WARNING_DAYS) {
+                    const days = state.accountInfo.days_until_expiry;
+                    const text = days <= 0
+                        ? 'Your account expires today! Renew now to keep your email.'
+                        : days === 1
+                            ? 'Your account expires tomorrow! Renew now to keep your email.'
+                            : `Your account expires in ${days} days. Renew now to avoid losing access.`;
+                    showRenewalBanner(text);
+                }
+            }
             return;
         } else {
             clearSavedToken();

@@ -46,6 +46,8 @@ class EmailAccount(SQLModel, table=True):
     original_payment_request: str | None = Field(default=None)
     payment_hash: str = Field(index=True)
     payment_status: PaymentStatus = Field(default=PaymentStatus.PENDING)
+    # Renewal tracking
+    renewal_payment_hash: str | None = Field(default=None, index=True)
 
     @classmethod
     def generate_random_email(cls, domain: str = "lnemail.net") -> str:

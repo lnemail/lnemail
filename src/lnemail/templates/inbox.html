@@ -178,6 +178,97 @@
         </div>
     </div>
 
+    <!-- Renewal Modal -->
+    <div id="renewalModal" class="modal">
+        <div class="modal-content payment-modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-sync-alt"></i> Renew Account</h2>
+                <p>Extend your LNemail account with a Lightning payment</p>
+            </div>
+            <div class="modal-body">
+                <!-- Renewal options (shown before invoice is created) -->
+                <div id="renewalOptions" class="renewal-options">
+                    <div class="renewal-years-selector">
+                        <label for="renewalYears">Renewal period:</label>
+                        <select id="renewalYears">
+                            <option value="1" selected>1 Year</option>
+                            <option value="2">2 Years</option>
+                            <option value="3">3 Years</option>
+                            <option value="5">5 Years</option>
+                            <option value="10">10 Years</option>
+                        </select>
+                    </div>
+                    <div id="renewalPriceDisplay" class="renewal-price-display">
+                        <span class="payment-label">Price:</span>
+                        <span id="renewalPriceValue" class="payment-value">1000 sats</span>
+                    </div>
+                    <div id="multiYearDisclaimer" class="renewal-disclaimer hidden">
+                        <i class="fas fa-info-circle"></i>
+                        <p>Only 1 year of service is guaranteed. Payments for additional years are
+                        non-refundable and treated as donations supporting the service. Best-effort
+                        service is provided beyond the first year. The service will never shut down
+                        without at least 1 year of notice.</p>
+                    </div>
+                    <button id="renewalPayBtn" class="btn-primary">
+                        <i class="fas fa-bolt"></i> Generate Invoice
+                    </button>
+                    <button id="cancelRenewalOptionsBtn" class="btn-secondary">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                </div>
+
+                <!-- Payment info (shown after invoice is created) -->
+                <div id="renewalPaymentInfo" class="payment-info" style="display: none;">
+                    <div class="payment-details">
+                        <div class="payment-detail-item">
+                            <span class="payment-label">Service:</span>
+                            <span class="payment-value">Account Renewal</span>
+                        </div>
+                        <div class="payment-detail-item">
+                            <span class="payment-label">Period:</span>
+                            <span id="renewalPeriodValue" class="payment-value">1 Year</span>
+                        </div>
+                        <div class="payment-detail-item">
+                            <span class="payment-label">Amount:</span>
+                            <span id="renewalAmountValue" class="payment-value">-</span>
+                        </div>
+                        <div class="payment-detail-item">
+                            <span class="payment-label">New Expiry:</span>
+                            <span id="renewalNewExpiry" class="payment-value">-</span>
+                        </div>
+                    </div>
+
+                    <div class="qr-code-container" id="renewalQrContainer">
+                        <canvas id="renewalQrCodeCanvas"></canvas>
+                    </div>
+
+                    <div class="payment-status">
+                        <div class="payment-status-indicator">
+                            <i id="renewalPaymentStatusIcon" class="fas fa-circle-notch fa-spin" style="color: #ffc107;"></i>
+                            <span id="renewalPaymentStatusText">Waiting for payment...</span>
+                        </div>
+                        <div class="payment-hash">
+                            <span class="payment-label">Payment Hash:</span>
+                            <span id="renewalPaymentHashValue" class="payment-hash-value">-</span>
+                        </div>
+                    </div>
+
+                    <div class="payment-actions">
+                        <button id="cancelRenewalBtn" class="btn-secondary">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                        <button id="renewalWeblnPayBtn" class="btn-primary" style="display: none;">
+                            <i class="fas fa-bolt"></i> Pay with Extension
+                        </button>
+                        <button id="copyRenewalInvoiceBtn" class="btn-secondary">
+                            <i class="fas fa-copy"></i> Copy Invoice
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Main Application -->
     <div id="mainApp" class="main-app">
         <!-- Header -->
@@ -201,6 +292,9 @@
                 </div>
             </div>
             <div class="header-right">
+                <button id="renewBtn" class="btn-secondary" style="display: none;">
+                    <i class="fas fa-sync-alt"></i> Renew
+                </button>
                 <button id="refreshBtn" class="btn-secondary">
                     <i class="fas fa-sync-alt"></i> Refresh
                 </button>
@@ -212,6 +306,15 @@
                 </button>
             </div>
         </header>
+
+        <!-- Renewal Warning Banner -->
+        <div id="renewalBanner" class="renewal-banner" style="display: none;">
+            <div class="renewal-banner-content">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span id="renewalBannerText">Your account is expiring soon.</span>
+                <button id="renewalBannerBtn" class="btn-primary btn-sm">Renew Now</button>
+            </div>
+        </div>
 
         <!-- Main Content -->
         <main class="main-content">
@@ -347,9 +450,7 @@
 <link rel="stylesheet" href="/static/css/fontawesome-minimal.css">
 <link rel="stylesheet" href="/static/css/inbox-style.css">
 <script src="/static/js/qrious.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"
-        integrity="sha384-eEu5CTj3qGvu9PdJuS+YlkNi7d2XxQROAFYOr59zgObtlcux1ae1Il3u7jvdCSWu"
-        crossorigin="anonymous"></script>
+<script src="/static/js/purify.min.js"></script>
 <script type="module" src="/static/js/improved/main.js"></script>
 {% endblock %}
 > src/lnemail/static/css/style.css <

@@ -29,8 +29,6 @@ async function makeRequest(endpoint, options = {}) {
             return await response.text();
         }
     } catch (error) {
-        // console.error('API Request failed:', error);
-
         if (error.name === 'TypeError' && error.message.includes('fetch')) {
             throw new Error('Network error: Please make sure you\'re running this app through a web server (not file://) to avoid CORS issues. Try running: python -m http.server 8000');
         }
@@ -44,26 +42,34 @@ export async function checkAccountAuthorization() {
         const response = await makeRequest('/account');
 
         if (!response || typeof response !== 'object' || !response.email_address || !response.expires_at) {
-            // console.error('Invalid response format from /account');
             return false;
         }
 
         const expiresAt = new Date(response.expires_at);
-        if (isNaN(expiresAt.getTime()) || expiresAt <= new Date()) {
-            // console.error('Token has expired or expiry date is invalid');
+        if (isNaN(expiresAt.getTime())) {
+            return false;
+        }
+
+        const isExpired = response.is_expired === true;
+        const daysUntilExpiry = response.days_until_expiry || 0;
+        const renewalEligible = response.renewal_eligible !== false;
+
+        // If expired and not eligible for renewal, reject
+        if (isExpired && !renewalEligible) {
             return false;
         }
 
         state.accountInfo = {
             email_address: response.email_address,
             expires_at: response.expires_at,
-            expires_date: expiresAt
+            expires_date: expiresAt,
+            is_expired: isExpired,
+            days_until_expiry: daysUntilExpiry,
+            renewal_eligible: renewalEligible
         };
 
-        // console.log(`Account authorized for: ${response.email_address}`);
         return true;
     } catch (error) {
-        // console.error('Account authorization check failed:', error);
         return false;
     }
 }
@@ -103,7 +109,6 @@ export async function checkApiHealth() {
             data: response
         };
     } catch (error) {
-        // console.error('API health check failed:', error);
         return {
             success: false,
             error: error.message
@@ -122,7 +127,6 @@ export async function deleteEmails(emailIds) {
             data: response
         };
     } catch (error) {
-        // console.error('Delete emails failed:', error);
         return {
             success: false,
             error: error.message
@@ -145,4 +149,17 @@ export async function checkAccountPaymentStatus(paymentHash) {
 
 export async function fetchRecentSends() {
     return await makeRequest('/email/sends/recent');
+}
+
+export async function renewAccount(years = 1) {
+    return await makeRequest('/account/renew', {
+        method: 'POST',
+        body: JSON.stringify({ years })
+    });
+}
+
+export async function checkRenewalStatus(paymentHash) {
+    return await makeRequest(`/account/renew/status/${paymentHash}`, {
+        method: 'GET'
+    });
 }

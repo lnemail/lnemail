@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     # Payment settings
     EMAIL_PRICE: int = 1000
     EMAIL_SEND_PRICE: int = 100  # New: Price for sending one email
+    RENEWAL_PRICE: int = 1000  # Price per year for account renewal
 
     # LNProxy settings
     USE_LNPROXY: bool = True

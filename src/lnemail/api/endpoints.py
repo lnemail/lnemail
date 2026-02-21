@@ -7,6 +7,8 @@ for all the LNemail API endpoints.
 
 import base64
 import json
+from datetime import datetime, timedelta
+from email.utils import formatdate
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -34,12 +36,16 @@ from ..core.schemas import (
     PaymentStatusResponse,
     RecentSendItem,
     RecentSendsResponse,
+    RenewalInvoiceResponse,
+    RenewalRequest,
+    RenewalStatusResponse,
 )
 from ..db import get_db
 from ..services.email_service import EmailService
 from ..services.lnd_service import LNDService
 from ..services.tasks import (
     check_payment_status,
+    check_renewal_payment_status,
     process_send_email_payment,
     queue,
 )
@@ -55,12 +61,68 @@ security = HTTPBearer(auto_error=False)
 lnd_service = LNDService()
 email_service = EmailService()
 
+# Virtual expiration warning email ID prefix.  The full ID includes the
+# account's ``expires_at`` timestamp so it changes after a renewal,
+# ensuring users see a fresh warning in their next renewal window.
+_EXPIRY_WARNING_ID_PREFIX = "lnemail-expiry-warning"
+_EXPIRY_WARNING_DAYS = 90
+
+
+def _build_expiry_warning_header(account: EmailAccount) -> EmailHeader:
+    """Build a synthetic EmailHeader for the expiration warning."""
+    now = datetime.utcnow()
+    days_left = max(0, (account.expires_at - now).days)
+    return EmailHeader(
+        id=f"{_EXPIRY_WARNING_ID_PREFIX}-{int(account.expires_at.timestamp())}",
+        subject=f"Your LNemail account expires in {days_left} days",
+        sender=f"LNemail <noreply@{settings.MAIL_DOMAIN}>",
+        date=formatdate(localtime=False, usegmt=True),
+        read=False,
+    )
+
+
+def _build_expiry_warning_content(account: EmailAccount) -> EmailContent:
+    """Build a synthetic EmailContent for the expiration warning."""
+    now = datetime.utcnow()
+    days_left = max(0, (account.expires_at - now).days)
+    body = (
+        f"Hello,\n\n"
+        f"Your LNemail account ({account.email_address}) will expire "
+        f"in {days_left} days on "
+        f"{account.expires_at.strftime('%Y-%m-%d')}.\n\n"
+        f"To renew your account, click the Renew button in the header "
+        f"or use the renewal banner at the top of your inbox.\n\n"
+        f"You can renew for 1 or more years using a Lightning payment.\n\n"
+        f"If your account expires, you have a 1-year grace period "
+        f"during which you can still renew and your emails will be "
+        f"preserved.\n\n"
+        f"-- LNemail\n"
+    )
+    return EmailContent(
+        id=f"{_EXPIRY_WARNING_ID_PREFIX}-{int(account.expires_at.timestamp())}",
+        subject=f"Your LNemail account expires in {days_left} days",
+        sender=f"LNemail <noreply@{settings.MAIL_DOMAIN}>",
+        date=formatdate(localtime=False, usegmt=True),
+        body=body,
+        body_plain=body,
+        body_html=None,
+        content_type="text/plain",
+        attachments=[],
+        read=False,
+        message_id=None,
+        references=None,
+    )
+
 
 async def get_current_account(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
     db: Session = Depends(get_db),
 ) -> EmailAccount:
     """Validate the bearer token and return the corresponding account.
+
+    Allows expired accounts within the 1-year grace period to authenticate
+    so they can access the renewal flow. Fully expired accounts (past the
+    grace period) are rejected.
 
     Args:
         credentials: Authorization credentials from the request
@@ -91,12 +153,57 @@ async def get_current_account(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    if account.payment_status == PaymentStatus.EXPIRED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account has been permanently expired",
+        )
+
     if account.payment_status != PaymentStatus.PAID:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account payment required or expired",
+            detail="Account payment required",
         )
 
+    # Allow expired-but-within-grace-period accounts to authenticate
+    # so they can renew. The grace period is 1 year after expiration.
+    now = datetime.utcnow()
+    if account.expires_at < now:
+        grace_period_end = account.expires_at + timedelta(days=365)
+        if now > grace_period_end:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account has expired beyond the renewal grace period",
+            )
+
+    return account
+
+
+async def get_current_active_account(
+    account: EmailAccount = Depends(get_current_account),
+) -> EmailAccount:
+    """Validate that the authenticated account is not expired.
+
+    Wraps ``get_current_account`` with an additional check that the
+    account's ``expires_at`` is in the future.  Expired accounts that are
+    within the renewal grace period can still authenticate (via
+    ``get_current_account``) but must not access email endpoints.
+
+    Args:
+        account: The account returned by ``get_current_account``.
+
+    Returns:
+        EmailAccount: The authenticated, non-expired account.
+
+    Raises:
+        HTTPException: 403 if the account has expired.
+    """
+    now = datetime.utcnow()
+    if account.expires_at < now:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account has expired. Please renew your account to continue.",
+        )
     return account
 
 
@@ -245,7 +352,7 @@ async def check_payment(
 )
 async def send_email(
     send_request: EmailSendRequest,
-    account: EmailAccount = Depends(get_current_account),
+    account: EmailAccount = Depends(get_current_active_account),
     db: Session = Depends(get_db),
 ) -> EmailSendInvoiceResponse:
     """Initiate sending an email from the authenticated account.
@@ -405,7 +512,7 @@ async def check_send_email_payment_status(
     },
 )
 async def get_recent_sends(
-    account: EmailAccount = Depends(get_current_account),
+    account: EmailAccount = Depends(get_current_active_account),
     db: Session = Depends(get_db),
 ) -> RecentSendsResponse:
     """Get recent email sends for the authenticated account."""
@@ -453,9 +560,21 @@ async def get_account(
     account: EmailAccount = Depends(get_current_account),
 ) -> AccountResponse:
     """Get account details for the authenticated user."""
+    now = datetime.utcnow()
+    is_expired = account.expires_at < now
+    days_until_expiry = max(0, (account.expires_at - now).days) if not is_expired else 0
+
+    # Renewal eligible if account is expired but within 1-year grace period,
+    # or if the account is still active
+    grace_period_end = account.expires_at + timedelta(days=365)
+    renewal_eligible = now < grace_period_end
+
     return AccountResponse(
         email_address=account.email_address,
         expires_at=account.expires_at,
+        is_expired=is_expired,
+        days_until_expiry=days_until_expiry,
+        renewal_eligible=renewal_eligible,
     )
 
 
@@ -469,7 +588,7 @@ async def get_account(
     },
 )
 async def list_emails(
-    account: EmailAccount = Depends(get_current_account),
+    account: EmailAccount = Depends(get_current_active_account),
 ) -> EmailListResponse:
     """List emails for the authenticated account.
 
@@ -494,6 +613,12 @@ async def list_emails(
         # Convert the returned data to the correct type
         email_headers: list[EmailHeader] = [EmailHeader(**email) for email in emails]
 
+        # Prepend a virtual expiration warning if account expires soon
+        now = datetime.utcnow()
+        days_left = (account.expires_at - now).days
+        if 0 < days_left <= _EXPIRY_WARNING_DAYS:
+            email_headers.insert(0, _build_expiry_warning_header(account))
+
         return EmailListResponse(emails=email_headers)
 
     except HTTPException:
@@ -517,7 +642,7 @@ async def list_emails(
     },
 )
 async def get_email(
-    email_id: str, account: EmailAccount = Depends(get_current_account)
+    email_id: str, account: EmailAccount = Depends(get_current_active_account)
 ) -> EmailContent:
     """Get detailed content of a specific email.
 
@@ -529,6 +654,10 @@ async def get_email(
         Detailed email content
     """
     try:
+        # Handle virtual expiration warning email
+        if email_id.startswith(_EXPIRY_WARNING_ID_PREFIX):
+            return _build_expiry_warning_content(account)
+
         # Use the stored email password from the account
         if not account.email_password:
             raise HTTPException(
@@ -570,7 +699,7 @@ async def get_email(
     },
 )
 async def delete_email(
-    email_id: str, account: EmailAccount = Depends(get_current_account)
+    email_id: str, account: EmailAccount = Depends(get_current_active_account)
 ) -> EmailDeleteResponse:
     """Delete a specific email.
 
@@ -582,6 +711,15 @@ async def delete_email(
         EmailDeleteResponse: Result of the deletion operation
     """
     try:
+        # Virtual warning emails cannot be deleted — just acknowledge
+        if email_id.startswith(_EXPIRY_WARNING_ID_PREFIX):
+            return EmailDeleteResponse(
+                success=True,
+                deleted_count=1,
+                failed_ids=[],
+                message="Email dismissed",
+            )
+
         if not account.email_password:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -626,7 +764,7 @@ async def delete_email(
 )
 async def delete_emails_bulk(
     delete_request: EmailDeleteRequest,
-    account: EmailAccount = Depends(get_current_account),
+    account: EmailAccount = Depends(get_current_active_account),
 ) -> EmailDeleteResponse:
     """Delete multiple emails in bulk.
 
@@ -638,17 +776,29 @@ async def delete_emails_bulk(
         EmailDeleteResponse: Result of the bulk deletion operation
     """
     try:
+        # Filter out virtual warning email IDs before passing to IMAP
+        real_ids = [
+            eid
+            for eid in delete_request.email_ids
+            if not eid.startswith(_EXPIRY_WARNING_ID_PREFIX)
+        ]
+        virtual_count = len(delete_request.email_ids) - len(real_ids)
+
         if not account.email_password:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Email password not found for account",
             )
 
-        success, failed_ids = email_service.delete_emails_bulk(
-            account.email_address, account.email_password, delete_request.email_ids
-        )
+        if real_ids:
+            success, failed_ids = email_service.delete_emails_bulk(
+                account.email_address, account.email_password, real_ids
+            )
+        else:
+            success = True
+            failed_ids = []
 
-        deleted_count = len(delete_request.email_ids) - len(failed_ids)
+        deleted_count = len(real_ids) - len(failed_ids) + virtual_count
 
         if deleted_count == 0:
             message = "No emails were deleted"
@@ -673,6 +823,169 @@ async def delete_emails_bulk(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete emails",
+        )
+
+
+@router.post(
+    "/account/renew",
+    response_model=RenewalInvoiceResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {
+            "model": ErrorResponse,
+            "description": "Account not eligible for renewal",
+        },
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def renew_account(
+    renewal_request: RenewalRequest | None = None,
+    account: EmailAccount = Depends(get_current_account),
+    db: Session = Depends(get_db),
+) -> RenewalInvoiceResponse:
+    """Initiate account renewal by creating a Lightning invoice.
+
+    Generates a Lightning invoice for the renewal payment. The account
+    expiration will be extended after payment is confirmed. If the account
+    is currently expired (within the grace period), the new expiration is
+    calculated from the old expiration date, not from today.
+
+    Args:
+        renewal_request: Optional request with number of years (default 1).
+        account: Authenticated EmailAccount from token validation.
+        db: Database session dependency.
+
+    Returns:
+        RenewalInvoiceResponse: Lightning invoice details for renewal payment.
+    """
+    try:
+        years = 1
+        if renewal_request:
+            years = renewal_request.years
+
+        now = datetime.utcnow()
+        grace_period_end = account.expires_at + timedelta(days=365)
+        if now > grace_period_end:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is no longer eligible for renewal",
+            )
+
+        total_price = settings.RENEWAL_PRICE * years
+
+        # Calculate new expiration: extend from current expiration (not from now)
+        # This rewards users who renew early and preserves time for expired accounts
+        base_date = max(account.expires_at, now)
+        new_expires_at = base_date + timedelta(days=365 * years)
+
+        memo_parts = [f"LNemail renewal ({years} year{'s' if years > 1 else ''})"]
+        if years > 1:
+            memo_parts.append("Only 1 year guaranteed; extra years are donations")
+        memo = " - ".join(memo_parts)
+
+        invoice = lnd_service.create_invoice(total_price, memo)
+
+        # Store the renewal payment hash on the account
+        account.renewal_payment_hash = invoice["payment_hash"]
+        db.add(account)
+        db.commit()
+
+        # Enqueue background task to check renewal payment
+        queue.enqueue(
+            check_renewal_payment_status,
+            invoice["payment_hash"],
+            years,
+            job_timeout=600,
+        )
+
+        return RenewalInvoiceResponse(
+            payment_request=invoice["payment_request"],
+            payment_hash=invoice["payment_hash"],
+            price_sats=total_price,
+            years=years,
+            new_expires_at=new_expires_at,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error initiating account renewal: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to initiate account renewal",
+        )
+
+
+@router.get(
+    "/account/renew/status/{payment_hash}",
+    response_model=RenewalStatusResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Payment not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def check_renewal_status(
+    payment_hash: str, db: Session = Depends(get_db)
+) -> RenewalStatusResponse:
+    """Check payment status for a renewal invoice.
+
+    Args:
+        payment_hash: The Lightning payment hash to check.
+        db: Database session dependency.
+
+    Returns:
+        RenewalStatusResponse: Current renewal payment status.
+    """
+    try:
+        statement = select(EmailAccount).where(
+            EmailAccount.renewal_payment_hash == payment_hash
+        )
+        account = db.exec(statement).first()
+
+        if not account:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Renewal payment not found",
+            )
+
+        # If still pending, check with LND
+        paid = lnd_service.check_invoice(payment_hash)
+        if paid and account.renewal_payment_hash == payment_hash:
+            # Payment detected but not yet processed — re-enqueue the task
+            # The task itself is idempotent and will handle the actual extension
+            queue.enqueue(
+                check_renewal_payment_status,
+                payment_hash,
+                1,  # Default to 1 year; the task reads actual years from context
+                job_timeout=600,
+            )
+
+        # Determine status: if the renewal_payment_hash has been cleared,
+        # the renewal was processed successfully
+        if account.renewal_payment_hash != payment_hash:
+            # Hash was cleared after successful processing
+            return RenewalStatusResponse(
+                payment_status="paid",
+                new_expires_at=account.expires_at,
+            )
+
+        if paid:
+            return RenewalStatusResponse(
+                payment_status="processing",
+            )
+
+        return RenewalStatusResponse(
+            payment_status="pending",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking renewal status: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to check renewal status",
         )
 
 
