@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     LND_MACAROON_PATH: str = "/lnd/data/chain/bitcoin/mainnet/admin.macaroon"
 
     # Payment settings
-    EMAIL_PRICE: int = 994
+    EMAIL_PRICE: int = 1000
     EMAIL_SEND_PRICE: int = 100  # New: Price for sending one email
 
     # LNProxy settings

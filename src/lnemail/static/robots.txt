@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /api/v1/emails
+Disallow: /api/v1/account
+Disallow: /api/v1/email/sends/recent
+
+Sitemap: https://lnemail.net/sitemap.xml
+
+# LLM-friendly content
+# See https://lnemail.net/llms.txt for curated LLM context

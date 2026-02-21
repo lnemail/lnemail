@@ -17,7 +17,7 @@
     <link rel="manifest" href="/site.webmanifest">
 
     <!-- SEO Meta Tags -->
-    <meta name="description" content="{% block description %}Fast anonymous email accounts powered by Bitcoin Lightning Network. Get instant disposable email addresses with no personal information required.{% endblock %}">
+    <meta name="description" content="{% block description %}LNemail is a privacy-focused anonymous email service powered by Bitcoin Lightning Network. Pay 1000 sats to get an instant disposable email address -- no signup, no personal information, no passwords. Accounts last 1 year. Send emails for 100 sats each. Full REST API available.{% endblock %}">
     <meta name="keywords" content="{% block keywords %}bitcoin lightning email, fast anonymous email, lightning network disposable email, bitcoin email service, instant anonymous email{% endblock %}">
 
     <!-- Open Graph Meta Tags -->
@@ -25,12 +25,82 @@
     <meta property="og:description" content="{% block og_description %}{{ self.description() }}{% endblock %}">
     <meta property="og:type" content="website">
     <meta property="og:url" content="{% block og_url %}https://lnemail.net/{% endblock %}">
-    <meta property="og:image" content="/static/img/logo.png">
+    <meta property="og:image" content="https://lnemail.net/static/img/logo.png">
+    <meta property="og:site_name" content="LNemail">
 
     <!-- Twitter Card Meta Tags -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{% block twitter_title %}{{ self.og_title() }}{% endblock %}">
     <meta name="twitter:description" content="{% block twitter_description %}{{ self.og_description() }}{% endblock %}">
+
+    <!-- LLM discoverability -->
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM-friendly site information">
+
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "WebSite",
+                "name": "LNemail",
+                "url": "https://lnemail.net",
+                "description": "Privacy-focused anonymous email service powered by Bitcoin Lightning Network payments. No signup, no personal information, no passwords.",
+                "potentialAction": {
+                    "@type": "SearchAction",
+                    "target": "https://lnemail.net/api/v1/emails?q={search_term_string}",
+                    "query-input": "required name=search_term_string"
+                }
+            },
+            {
+                "@type": "SoftwareApplication",
+                "name": "LNemail",
+                "url": "https://lnemail.net",
+                "applicationCategory": "CommunicationApplication",
+                "operatingSystem": "Web",
+                "description": "Anonymous disposable email service that accepts Bitcoin Lightning Network payments. Create an email account for 1000 satoshis, send emails for 100 satoshis each. Accounts are valid for 1 year. Full REST API with Bearer token authentication. No personal information required.",
+                "offers": [
+                    {
+                        "@type": "Offer",
+                        "name": "Email Account",
+                        "description": "Anonymous email account valid for 1 year",
+                        "price": "1000",
+                        "priceCurrency": "SAT"
+                    },
+                    {
+                        "@type": "Offer",
+                        "name": "Send Email",
+                        "description": "Send one outgoing email",
+                        "price": "100",
+                        "priceCurrency": "SAT"
+                    }
+                ],
+                "featureList": [
+                    "Anonymous email accounts with no signup or personal information",
+                    "Bitcoin Lightning Network payments",
+                    "Send and receive emails",
+                    "REST API with Bearer token authentication",
+                    "Web-based inbox interface",
+                    "Email attachments up to 8 MB",
+                    "1-year account validity",
+                    "Open source (MIT license)"
+                ],
+                "license": "https://opensource.org/licenses/MIT",
+                "isAccessibleForFree": false
+            },
+            {
+                "@type": "Organization",
+                "name": "LNemail",
+                "url": "https://lnemail.net",
+                "sameAs": [
+                    "https://github.com/lnemail/lnemail",
+                    "https://njump.me/npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76"
+                ]
+            }
+        ]
+    }
+    </script>
+    {% block extra_jsonld %}{% endblock %}
 
     <!-- Page-specific head content -->
     {% block extra_head %}{% endblock %}

@@ -1,9 +1,50 @@
 {% extends "base.html" %}
-{% block title %}LNemail - Fast Anonymous Email with Bitcoin Lightning Network{% endblock %}
-{% block description %}Fast anonymous email accounts powered by Bitcoin Lightning Network. Get instant disposable email addresses with no personal information required - just pay with Bitcoin Lightning and start sending and receiving emails.{% endblock %}
-{% block keywords %}bitcoin lightning email, fast anonymous email, lightning network disposable email, bitcoin email service, instant anonymous email, lightning payments email, private bitcoin email, anonymous email bitcoin{% endblock %}
+{% block title %}LNemail - Anonymous Email Accounts Powered by Bitcoin Lightning Network{% endblock %}
+{% block description %}Create anonymous email accounts instantly with Bitcoin Lightning Network. Pay 1000 sats for a 1-year account, 100 sats per outgoing email. No signup, no personal data. Full REST API with Bearer token auth. Send and receive emails privately.{% endblock %}
+{% block keywords %}bitcoin lightning email, anonymous email, lightning network disposable email, bitcoin email service, instant anonymous email, lightning payments email, private bitcoin email, anonymous email bitcoin, disposable email API{% endblock %}
 {% block og_url %}https://lnemail.net/{% endblock %}
 {% block extra_head %}
+{% endblock %}
+{% block extra_jsonld %}
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "HowTo",
+        "name": "How to Create an Anonymous Email Account with Bitcoin Lightning",
+        "description": "Create a privacy-focused email account using Bitcoin Lightning Network payments in seconds. No personal information required.",
+        "totalTime": "PT1M",
+        "tool": {
+            "@type": "HowToTool",
+            "name": "Bitcoin Lightning wallet"
+        },
+        "step": [
+            {
+                "@type": "HowToStep",
+                "position": 1,
+                "name": "Create Lightning Invoice",
+                "text": "Send a POST request to /api/v1/email or click 'Create Lightning Invoice' on the website to generate a Bitcoin Lightning Network payment request for 1000 satoshis."
+            },
+            {
+                "@type": "HowToStep",
+                "position": 2,
+                "name": "Pay with Bitcoin Lightning",
+                "text": "Scan the QR code or copy the BOLT11 invoice to your Lightning wallet and pay instantly."
+            },
+            {
+                "@type": "HowToStep",
+                "position": 3,
+                "name": "Receive Email Address and Access Token",
+                "text": "Once the Lightning payment confirms, you receive your anonymous email address and a Bearer access token valid for 1 year."
+            },
+            {
+                "@type": "HowToStep",
+                "position": 4,
+                "name": "Send and Receive Emails",
+                "text": "Access your inbox through the web interface or REST API using your Bearer token. Send emails by paying 100 satoshis per message via Lightning."
+            }
+        ]
+    }
+    </script>
 {% endblock %}
 {% block content %}
 <section class="hero">

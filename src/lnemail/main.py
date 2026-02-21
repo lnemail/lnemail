@@ -144,6 +144,12 @@ async def llms_txt() -> FileResponse:
     return FileResponse(os.path.join(static_dir, "llms.txt"), media_type="text/plain")
 
 
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt() -> FileResponse:
+    """Serve robots.txt for search engine and LLM crawler directives."""
+    return FileResponse(os.path.join(static_dir, "robots.txt"), media_type="text/plain")
+
+
 # NIP-05
 @app.get(
     "/.well-known/nostr.json", response_class=JSONResponse, include_in_schema=False
