@@ -144,6 +144,12 @@ async def llms_txt() -> FileResponse:
     return FileResponse(os.path.join(static_dir, "llms.txt"), media_type="text/plain")
 
 
+@app.get("/skill.md", include_in_schema=False)
+async def skill_md() -> FileResponse:
+    """Serve skill.md for LLM-friendly site information."""
+    return FileResponse(os.path.join(static_dir, "skill.md"), media_type="text/plain")
+
+
 @app.get("/robots.txt", include_in_schema=False)
 async def robots_txt() -> FileResponse:
     """Serve robots.txt for search engine and LLM crawler directives."""
