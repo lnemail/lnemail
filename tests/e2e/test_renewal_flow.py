@@ -14,6 +14,7 @@ from __future__ import annotations
 import secrets
 import subprocess
 import time
+from typing import Any
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -48,8 +49,8 @@ def _seed_account(api_container: str, *, days: int = 5) -> tuple[str, str]:
         )
 
     output = result.stdout + result.stderr
-    email = None
-    token = None
+    email: str | None = None
+    token: str | None = None
     for line in output.splitlines():
         if "Email:" in line:
             email = line.rsplit("Email:", 1)[-1].strip()
@@ -57,14 +58,15 @@ def _seed_account(api_container: str, *, days: int = 5) -> tuple[str, str]:
             token = line.rsplit("Access token:", 1)[-1].strip()
     if not email or not token:
         pytest.skip(f"Could not parse seeded credentials from: {output!r}")
+        raise AssertionError  # pragma: no cover - help mypy narrow
     return email, token
 
 
 def test_renewal_flow_extends_expiry(
     page: Page,
-    pay_invoice,
+    pay_invoice: Any,
     api_container: str,
-):
+) -> None:
     email, token = _seed_account(api_container, days=5)
 
     # Capture the original expiry via the API so we can assert the
@@ -121,6 +123,5 @@ def test_renewal_flow_extends_expiry(
             break
         time.sleep(1)
     assert new_expiry > original_expiry, (
-        f"expiry did not advance after renewal: was {original_expiry}, "
-        f"is {new_expiry}"
+        f"expiry did not advance after renewal: was {original_expiry}, is {new_expiry}"
     )

@@ -13,6 +13,7 @@ suite down without finding additional bugs.
 from __future__ import annotations
 
 import time
+from typing import Any
 
 from playwright.sync_api import Page, expect
 
@@ -26,7 +27,7 @@ from .helpers import (
 )
 
 
-def test_send_to_self_read_and_reply(page: Page, pay_invoice):
+def test_send_to_self_read_and_reply(page: Page, pay_invoice: Any) -> None:
     account = signup_and_pay(page, pay_invoice)
 
     # Login from a clean state (the signup left us on /). Going through

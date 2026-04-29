@@ -13,13 +13,18 @@ import os
 import shlex
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
+from playwright.sync_api import Page
 
 
 # All tests in this directory are e2e by default.
-def pytest_collection_modifyitems(config, items):  # noqa: D401
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
     for item in items:
         item.add_marker(pytest.mark.e2e)
 
@@ -94,7 +99,9 @@ def _stack_ready(base_url: str, router_container: str) -> None:
 
 
 @pytest.fixture(scope="session")
-def browser_context_args(browser_context_args, base_url: str):
+def browser_context_args(
+    browser_context_args: dict[str, Any], base_url: str
+) -> dict[str, Any]:
     """Default browser context: matches the configured base URL, grants
     clipboard permissions, and records a video for every test.
 
@@ -115,7 +122,7 @@ def browser_context_args(browser_context_args, base_url: str):
 
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
-def pytest_runtest_makereport(item, call):
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) -> Any:
     """Expose test outcome to fixtures via ``item.rep_call`` / ``rep_setup``."""
     outcome = yield
     rep = outcome.get_result()
@@ -123,7 +130,7 @@ def pytest_runtest_makereport(item, call):
 
 
 @pytest.fixture(autouse=True)
-def _capture_on_failure(request, page):
+def _capture_on_failure(request: pytest.FixtureRequest, page: Page) -> Any:
     """Drop a full-page screenshot next to the video when a test fails."""
     yield
     rep_call = getattr(request.node, "rep_call", None)
@@ -140,7 +147,7 @@ def _capture_on_failure(request, page):
 
 
 @pytest.fixture
-def pay_invoice(router_container: str):
+def pay_invoice(router_container: str) -> Callable[..., str]:
     """Return a callable that pays a BOLT11 invoice via the router LND.
 
     The router node has a pre-funded channel to the merchant LND, so this
@@ -149,7 +156,9 @@ def pay_invoice(router_container: str):
     """
 
     def _pay(bolt11: str, timeout_s: int = 30) -> str:
-        if not bolt11 or not bolt11.lower().startswith(("lnbc", "lnbcrt", "lntb", "lnsb")):
+        if not bolt11 or not bolt11.lower().startswith(
+            ("lnbc", "lnbcrt", "lntb", "lnsb")
+        ):
             raise ValueError(f"Not a BOLT11 invoice: {bolt11!r}")
         cmd = [
             "docker",
@@ -167,7 +176,9 @@ def pay_invoice(router_container: str):
             f"{timeout_s}s",
             bolt11,
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s + 10)
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout_s + 10
+        )
         if result.returncode != 0:
             raise RuntimeError(
                 "payinvoice failed:\n"
