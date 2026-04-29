@@ -1,9 +1,22 @@
 name: e2e
 
+# The full e2e suite drives a complete docker compose stack
+# (bitcoind regtest, two LND nodes, docker-mailserver, the API and
+# its workers, ...) and pays real Lightning invoices. It works
+# reliably on a developer laptop but is too slow / flaky on the
+# default GitHub-hosted runners: bitcoind needs to mine ~150 blocks
+# to fund LND, the LND <-> router channel has to open and become
+# active, and docker-mailserver shuts down if no mail account is
+# created within ~120s of boot. In practice all three timers fight
+# each other on a 2-CPU runner.
+#
+# Until we have a beefier self-hosted runner, this workflow is
+# manual-only via workflow_dispatch. Locally:
+#
+#   docker compose --env-file .env.development up -d
+#   ./tests/e2e/run.sh
 on:
-  push:
-    branches: [master]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   playwright:
