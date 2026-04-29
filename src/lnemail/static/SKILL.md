@@ -237,7 +237,3 @@ Store credentials in `~/.lnemail/credentials.json`:
 - **LNemail:** https://lnemail.net
 - **API Docs:** https://lnemail.net (see homepage for full docs)
 - **Auth:** Bearer token in `Authorization` header
-
-## Note: File Naming
-
-The skill file is available at `https://lnemail.net/skill.md` (lowercase). URLs are case-sensitive — `SKILL.md` (uppercase) will not resolve.

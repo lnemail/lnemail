@@ -10,7 +10,7 @@ import pickle
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, RedirectResponse
 from starlette.templating import _TemplateResponse as TemplateResponse
 import os
 
@@ -144,10 +144,16 @@ async def llms_txt() -> FileResponse:
     return FileResponse(os.path.join(static_dir, "llms.txt"), media_type="text/plain")
 
 
-@app.get("/skill.md", include_in_schema=False)
+@app.get("/SKILL.md", include_in_schema=False)
 async def skill_md() -> FileResponse:
-    """Serve skill.md for LLM-friendly site information."""
-    return FileResponse(os.path.join(static_dir, "skill.md"), media_type="text/plain")
+    """Serve SKILL.md for LLM-friendly site information."""
+    return FileResponse(os.path.join(static_dir, "SKILL.md"), media_type="text/plain")
+
+
+@app.get("/skill.md", include_in_schema=False)
+async def skill_md_lowercase() -> RedirectResponse:
+    """Backward-compatible redirect to the canonical uppercase URL."""
+    return RedirectResponse(url="/SKILL.md", status_code=301)
 
 
 @app.get("/robots.txt", include_in_schema=False)
