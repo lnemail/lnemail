@@ -1,0 +1,75 @@
+name: e2e
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-playwright
+
+      - name: Install Playwright browsers
+        run: python -m playwright install --with-deps chromium
+
+      - name: Prepare dev-data and start the stack
+        run: |
+          bash scripts/setup.sh
+          docker compose --env-file .env.development up -d --wait || \
+            docker compose --env-file .env.development up -d
+
+      - name: Wait for the LND <-> router channel to be active
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            count=$(docker exec lnd lncli --network=regtest listchannels 2>/dev/null \
+              | python -c "import json,sys; d=json.load(sys.stdin); print(sum(1 for c in d.get('channels',[]) if c.get('active')))" \
+              || echo 0)
+            if [ "${count:-0}" -ge 1 ]; then
+              echo "Channel is active."
+              exit 0
+            fi
+            echo "Waiting for active channel (attempt $i)..."
+            sleep 5
+          done
+          echo "Timed out waiting for the LN channel to come up."
+          docker compose --env-file .env.development logs --tail=200
+          exit 1
+
+      - name: Wait for lnemail-api health
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8000/api/health >/dev/null; then
+              echo "API healthy."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Timed out waiting for /api/health."
+          docker compose --env-file .env.development logs --tail=200 lnemail-api
+          exit 1
+
+      - name: Run Playwright e2e tests
+        run: pytest tests/e2e -v
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker compose --env-file .env.development logs --tail=400
+
+      - name: Tear down the stack
+        if: always()
+        run: docker compose --env-file .env.development down -v --remove-orphans
