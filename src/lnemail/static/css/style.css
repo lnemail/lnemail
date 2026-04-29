@@ -602,6 +602,31 @@ textarea:focus {
     color: var(--text-muted);
 }
 
+/* Inputs used inside .copy-wrapper for the credentials form. They look
+   like the static text but are real <input> elements so password
+   managers can detect them as a username/password pair. */
+input.copy-text.credentials-input {
+    border: none;
+    outline: none;
+    background: transparent;
+    padding: 0;
+    width: 100%;
+    color: var(--text-color);
+}
+
+input.copy-text.credentials-input:focus {
+    outline: 2px solid var(--accent-color, #f7931a);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+.detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 20px;
+}
+
 /* Attachments */
 .email-attachments {
     margin-top: 30px;

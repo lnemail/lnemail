@@ -25,7 +25,7 @@ import {
     setExpiredOverlay,
     updateAccountDisplay
 } from './ui.js';
-import { handleConnect, handleDisconnect, tryAutoConnect, performLoginHealthCheck } from './auth.js';
+import { handleConnect, handleDisconnect, tryAutoConnect, performLoginHealthCheck, bindAccessTokenRecovery } from './auth.js';
 import { isValidEmail, formatFileSize } from './utils.js';
 import { refreshInbox, startAutoRefresh, stopAutoRefresh } from './inbox.js';
 import { tryAutoPayWebLN } from './webln.js';
@@ -476,9 +476,25 @@ async function handleCopyEmail() {
 }
 
 function bindEvents() {
-    // Authentication events
-    document.getElementById('connectBtn').addEventListener('click', handleConnect);
+    // Authentication events.
+    // The login form is a real <form> so password managers can autofill;
+    // we hook the submit event so both Enter-key and Connect-button
+    // submissions go through the same code path. The form's inline
+    // onsubmit="return false" prevents the default navigation.
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const connectBtn = document.getElementById('connectBtn');
+            if (connectBtn && !connectBtn.disabled) {
+                handleConnect();
+            }
+        });
+    } else {
+        document.getElementById('connectBtn').addEventListener('click', handleConnect);
+    }
     document.getElementById('disconnectBtn').addEventListener('click', handleDisconnect);
+    bindAccessTokenRecovery();
 
     // Login health check events
     document.getElementById('loginRefreshHealthBtn').addEventListener('click', async () => {

@@ -214,3 +214,115 @@ export async function performLoginHealthCheck() {
         updateLoginHealthStatus({ success: false, error: error.message });
     }
 }
+
+/**
+ * Open the recovery modal that lets a logged-in user view, copy, and
+ * save their access token. The token is read from in-memory state which
+ * is in turn loaded from ``localStorage`` on connect, providing a UX
+ * recovery path for users who forget where they stored the token.
+ */
+export function showAccessTokenRecovery() {
+    const modal = document.getElementById('showTokenModal');
+    const emailInput = document.getElementById('recoverEmail');
+    const tokenInput = document.getElementById('recoverToken');
+    if (!modal || !tokenInput) {
+        return;
+    }
+    if (emailInput && state.accountInfo) {
+        emailInput.value = state.accountInfo.email_address || '';
+    }
+    tokenInput.value = state.accessToken || '';
+    tokenInput.type = 'password';
+    const toggle = document.getElementById('recoverTokenToggle');
+    if (toggle) {
+        toggle.innerHTML = '<i class="fas fa-eye"></i>';
+    }
+    modal.classList.add('active');
+}
+
+export function hideAccessTokenRecovery() {
+    const modal = document.getElementById('showTokenModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+/**
+ * Wire up event handlers for the access-token recovery modal. Idempotent
+ * across page loads -- callers should invoke this once during init.
+ */
+export function bindAccessTokenRecovery() {
+    const showBtn = document.getElementById('showTokenBtn');
+    const closeBtn = document.getElementById('recoverCloseBtn');
+    const toggleBtn = document.getElementById('recoverTokenToggle');
+    const copyBtn = document.getElementById('recoverTokenCopy');
+    const form = document.getElementById('recoverCredentialsForm');
+    const tokenInput = document.getElementById('recoverToken');
+
+    if (showBtn) {
+        showBtn.addEventListener('click', showAccessTokenRecovery);
+    }
+    if (closeBtn) {
+        closeBtn.addEventListener('click', hideAccessTokenRecovery);
+    }
+    if (toggleBtn && tokenInput) {
+        toggleBtn.addEventListener('click', () => {
+            const showing = tokenInput.type === 'text';
+            tokenInput.type = showing ? 'password' : 'text';
+            toggleBtn.innerHTML = showing
+                ? '<i class="fas fa-eye"></i>'
+                : '<i class="fas fa-eye-slash"></i>';
+        });
+    }
+    if (copyBtn && tokenInput) {
+        copyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(tokenInput.value);
+                showStatus('Access token copied to clipboard', 'success');
+            } catch (err) {
+                showStatus('Failed to copy token: ' + err.message, 'error');
+            }
+        });
+    }
+    if (form && tokenInput) {
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const emailInput = document.getElementById('recoverEmail');
+            const email = emailInput ? emailInput.value : '';
+            const token = tokenInput.value;
+            // Prefer the Credential Management API where available; fall
+            // back to the form-submit heuristic that all major password
+            // managers detect.
+            let stored = false;
+            if ('credentials' in navigator && window.PasswordCredential) {
+                try {
+                    const cred = new window.PasswordCredential({
+                        id: email,
+                        password: token,
+                        name: email,
+                    });
+                    await navigator.credentials.store(cred);
+                    stored = true;
+                    showStatus('Credentials offered to your password manager.', 'success');
+                } catch (err) {
+                    // Fall through to form-submit heuristic below.
+                }
+            }
+            if (!stored) {
+                // Reveal the token so password managers reading the DOM
+                // can see the value, then re-mask after a short delay.
+                const wasMasked = tokenInput.type === 'password';
+                if (wasMasked) tokenInput.type = 'text';
+                showStatus(
+                    'If your password manager prompts to save, accept to store these credentials.',
+                    'info'
+                );
+                // Re-mask shortly after so the token does not stay
+                // visible on screen.
+                setTimeout(() => {
+                    if (wasMasked) tokenInput.type = 'password';
+                }, 1500);
+            }
+        });
+    }
+}

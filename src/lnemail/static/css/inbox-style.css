@@ -101,6 +101,71 @@ body > main > .container {
     margin-bottom: 20px;
 }
 
+/*
+ * Optional username hint shown above the access-token input. It is a
+ * real <input> so password managers can populate the username slot when
+ * autofilling, but it is rendered subtly because most users only have
+ * the access token.
+ */
+.login-username-hint {
+    width: 100%;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    border: 2px dashed #e1e5e9;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #555;
+    background: #fafbfc;
+    transition: border-color 0.3s ease;
+}
+
+.login-username-hint:focus {
+    outline: none;
+    border-color: #667eea;
+    border-style: solid;
+    background: white;
+}
+
+/* Access-token recovery modal layout */
+.recover-field {
+    margin-bottom: 16px;
+}
+
+.recover-field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 6px;
+}
+
+.recover-field input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #e1e5e9;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 14px;
+    background: #fafbfc;
+}
+
+.recover-token-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.recover-token-row input {
+    flex: 1;
+}
+
+.recover-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
 .input-group input {
     flex: 1;
     padding: 12px 16px;

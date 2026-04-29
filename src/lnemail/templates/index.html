@@ -88,31 +88,65 @@
             </div>
         </div>
     </div>
-    <div id="payment-success" class="hidden">
-        <h3>Lightning Payment Successful!</h3>
+<div id="payment-success" class="hidden">
+    <h3>Lightning Payment Successful!</h3>
+    <!--
+        Wrap credentials in a real <form> with autocomplete attributes so
+        password managers (Bitwarden, 1Password, browser built-ins, ...)
+        detect the email/token pair and offer to save them. The form's
+        ``action`` is the inbox login page so that the saved credentials
+        are scoped to the URL the user will return to.
+    -->
+    <form id="credentials-form"
+          action="/inbox"
+          method="post"
+          autocomplete="on"
+          onsubmit="return false;">
         <div class="success-details">
             <div class="detail-item">
-                <p class="label">Your Email Address:</p>
+                <p class="label"><label for="email-address-input">Your Email Address:</label></p>
                 <p id="email-address" class="value copy-wrapper">
-                    <span class="copy-text"></span>
-                    <button class="btn small copy-btn">Copy</button>
+                    <input id="email-address-input"
+                           type="email"
+                           name="username"
+                           autocomplete="username"
+                           readonly
+                           class="copy-text credentials-input" />
+                    <button type="button" class="btn small copy-btn" data-copy-target="#email-address-input">Copy</button>
                 </p>
             </div>
             <div class="detail-item">
-                <p class="label">Access Token:</p>
+                <p class="label"><label for="access-token-input">Access Token:</label></p>
                 <p id="access-token" class="value copy-wrapper">
-                    <span class="copy-text"></span>
-                    <button class="btn small copy-btn">Copy</button>
+                    <input id="access-token-input"
+                           type="password"
+                           name="password"
+                           autocomplete="new-password"
+                           readonly
+                           class="copy-text credentials-input" />
+                    <button type="button" id="toggle-token-visibility" class="btn small" aria-label="Show or hide access token">Show</button>
+                    <button type="button" class="btn small copy-btn" data-copy-target="#access-token-input">Copy</button>
                 </p>
                 <p class="note">Store this token safely. You'll need it to access your inbox.</p>
+                <p class="note">
+                    <strong>Tip:</strong> click <em>Save to password manager</em> below to let
+                    Bitwarden / 1Password / your browser save the email + token pair as login
+                    credentials for this site.
+                </p>
             </div>
             <div class="detail-item">
                 <p class="label">Expires:</p>
                 <p id="expires-at" class="value"></p>
             </div>
-            <a href="/inbox" class="btn primary">Go to Inbox</a>
+            <div class="detail-actions">
+                <button type="submit" id="save-credentials-btn" class="btn secondary">
+                    Save to password manager
+                </button>
+                <a href="/inbox" class="btn primary">Go to Inbox</a>
+            </div>
         </div>
-    </div>
+    </form>
+</div>
 </section>
 <section class="example">
     <h3>How It Works</h3>

@@ -42,13 +42,22 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Add event listeners to all copy buttons in success view
+    // Add event listeners to all copy buttons in success view.
+    // Supports both <span class="copy-text"> (text content) and
+    // <input class="copy-text"> (used for the credentials form so
+    // password managers can detect them).
     document.querySelectorAll('.copy-btn').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const parentWrapper = e.target.closest('.copy-wrapper');
-            const textEl = parentWrapper.querySelector('.copy-text');
+            const targetSelector = e.target.dataset.copyTarget;
+            const textEl = targetSelector
+                ? document.querySelector(targetSelector)
+                : parentWrapper.querySelector('.copy-text');
+            const value = textEl
+                ? (textEl.value !== undefined ? textEl.value : textEl.textContent)
+                : '';
             try {
-                await copyToClipboard(textEl.textContent);
+                await copyToClipboard(value);
                 showStatus('Copied to clipboard!', 'success');
             } catch (err) {
                 console.error('Failed to copy text: ', err);
@@ -246,17 +255,18 @@ document.addEventListener('DOMContentLoaded', () => {
         paymentPendingDiv.classList.add('hidden');
         paymentSuccessDiv.classList.remove('hidden');
 
-        // Set email data
-        const emailAddressEl = document.querySelector('#email-address .copy-text');
-        const accessTokenEl = document.querySelector('#access-token .copy-text');
+        // Set email data into the credential <input> elements so password
+        // managers (Bitwarden, 1Password, browser built-ins) can detect a
+        // username/password pair scoped to this site.
+        const emailAddressInput = document.getElementById('email-address-input');
+        const accessTokenInput = document.getElementById('access-token-input');
         const expiresAtEl = document.getElementById('expires-at');
 
-        // Fill in the payment success details
-        if (emailAddressEl) {
-            emailAddressEl.textContent = data.email_address;
+        if (emailAddressInput) {
+            emailAddressInput.value = data.email_address;
         }
-        if (accessTokenEl) {
-            accessTokenEl.textContent = data.access_token;
+        if (accessTokenInput) {
+            accessTokenInput.value = data.access_token;
         }
 
         // Format expiry date if available
@@ -273,6 +283,78 @@ document.addEventListener('DOMContentLoaded', () => {
         // Save to local storage (for inbox access)
         localStorage.setItem(STORAGE_KEYS.accessToken, data.access_token);
         localStorage.setItem(STORAGE_KEYS.emailAddress, data.email_address);
+
+        // Wire up token visibility toggle (privacy-by-default: token is
+        // type="password" so it's masked while screen-sharing).
+        const toggleBtn = document.getElementById('toggle-token-visibility');
+        if (toggleBtn && accessTokenInput) {
+            toggleBtn.addEventListener('click', () => {
+                const showing = accessTokenInput.type === 'text';
+                accessTokenInput.type = showing ? 'password' : 'text';
+                toggleBtn.textContent = showing ? 'Show' : 'Hide';
+            }, { once: false });
+        }
+
+        // Wire up the password-manager save trigger. Two strategies are
+        // attempted, in order of preference:
+        //   1) The Credential Management API (PasswordCredential) is the
+        //      W3C-blessed way to ask the browser/password manager to
+        //      store a credential. Supported in Chromium-based browsers.
+        //   2) Submitting the surrounding <form> -- this is the universal
+        //      heuristic that Bitwarden, 1Password, KeePassXC, etc. use to
+        //      detect a credential pair and offer to save it. We
+        //      intercept the navigation with preventDefault().
+        const saveBtn = document.getElementById('save-credentials-btn');
+        const credentialsForm = document.getElementById('credentials-form');
+        if (saveBtn && credentialsForm) {
+            saveBtn.addEventListener('click', async (event) => {
+                event.preventDefault();
+                let stored = false;
+                if ('credentials' in navigator && window.PasswordCredential) {
+                    try {
+                        const cred = new window.PasswordCredential({
+                            id: data.email_address,
+                            password: data.access_token,
+                            name: data.email_address,
+                        });
+                        await navigator.credentials.store(cred);
+                        stored = true;
+                        showStatus(
+                            'Credentials offered to your password manager.',
+                            'success'
+                        );
+                    } catch (err) {
+                        // Fall through to the form-submit heuristic.
+                        console.warn('Credential Management API failed:', err);
+                    }
+                }
+                if (!stored) {
+                    // Reveal the token momentarily so the password manager
+                    // can read it from the input value if needed.
+                    if (accessTokenInput && accessTokenInput.type === 'password') {
+                        accessTokenInput.type = 'text';
+                    }
+                    // Programmatic form.submit() bypasses the submit event
+                    // listeners but also bypasses many password managers.
+                    // requestSubmit() fires the submit event so onsubmit
+                    // can return false (handled by inline onsubmit attr),
+                    // which keeps us on the page while still triggering
+                    // password-manager save heuristics.
+                    if (typeof credentialsForm.requestSubmit === 'function') {
+                        credentialsForm.requestSubmit();
+                    } else {
+                        credentialsForm.dispatchEvent(
+                            new Event('submit', { cancelable: true, bubbles: true })
+                        );
+                    }
+                    showStatus(
+                        'If your password manager prompts to save, accept to store ' +
+                        'this email and access token.',
+                        'info'
+                    );
+                }
+            });
+        }
 
         showStatus('Payment successful! Account created.', 'success');
     }
