@@ -10,7 +10,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const STORAGE_KEYS = {
         accessToken: 'lnemail_access_token',
         emailAddress: 'lnemail_email_address',
-        paymentData: 'lnemail_payment_data'
+        paymentData: 'lnemail_payment_data',
+        // sessionStorage payload consumed once by the inbox login page
+        // to pre-fill the email + token fields. We deliberately do NOT
+        // write to localStorage here -- that would auto-connect and
+        // bypass the real <form> submit that triggers password-manager
+        // save heuristics (Bitwarden, browser built-ins, ...).
+        loginPrefill: 'lnemail_login_prefill'
     };
 
     const createInvoiceBtn = document.getElementById('create-invoice');
@@ -280,9 +286,23 @@ document.addEventListener('DOMContentLoaded', () => {
             expiresAtEl.textContent = expiryDate.toLocaleDateString();
         }
 
-        // Save to local storage (for inbox access)
-        localStorage.setItem(STORAGE_KEYS.accessToken, data.access_token);
-        localStorage.setItem(STORAGE_KEYS.emailAddress, data.email_address);
+        // Stash credentials for the inbox login page to pre-fill the
+        // form. Using sessionStorage (not localStorage) and a one-shot
+        // payload means the user still has to click "Connect" -- which
+        // is what triggers the browser/password-manager save heuristic.
+        // localStorage is written only after a successful Connect, so
+        // future visits auto-resume.
+        try {
+            sessionStorage.setItem(
+                STORAGE_KEYS.loginPrefill,
+                JSON.stringify({
+                    email: data.email_address,
+                    token: data.access_token,
+                })
+            );
+        } catch (err) {
+            console.warn('Failed to stash login prefill:', err);
+        }
 
         // Wire up token visibility toggle (privacy-by-default: token is
         // type="password" so it's masked while screen-sharing).
@@ -293,67 +313,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 accessTokenInput.type = showing ? 'password' : 'text';
                 toggleBtn.textContent = showing ? 'Show' : 'Hide';
             }, { once: false });
-        }
-
-        // Wire up the password-manager save trigger. Two strategies are
-        // attempted, in order of preference:
-        //   1) The Credential Management API (PasswordCredential) is the
-        //      W3C-blessed way to ask the browser/password manager to
-        //      store a credential. Supported in Chromium-based browsers.
-        //   2) Submitting the surrounding <form> -- this is the universal
-        //      heuristic that Bitwarden, 1Password, KeePassXC, etc. use to
-        //      detect a credential pair and offer to save it. We
-        //      intercept the navigation with preventDefault().
-        const saveBtn = document.getElementById('save-credentials-btn');
-        const credentialsForm = document.getElementById('credentials-form');
-        if (saveBtn && credentialsForm) {
-            saveBtn.addEventListener('click', async (event) => {
-                event.preventDefault();
-                let stored = false;
-                if ('credentials' in navigator && window.PasswordCredential) {
-                    try {
-                        const cred = new window.PasswordCredential({
-                            id: data.email_address,
-                            password: data.access_token,
-                            name: data.email_address,
-                        });
-                        await navigator.credentials.store(cred);
-                        stored = true;
-                        showStatus(
-                            'Credentials offered to your password manager.',
-                            'success'
-                        );
-                    } catch (err) {
-                        // Fall through to the form-submit heuristic.
-                        console.warn('Credential Management API failed:', err);
-                    }
-                }
-                if (!stored) {
-                    // Reveal the token momentarily so the password manager
-                    // can read it from the input value if needed.
-                    if (accessTokenInput && accessTokenInput.type === 'password') {
-                        accessTokenInput.type = 'text';
-                    }
-                    // Programmatic form.submit() bypasses the submit event
-                    // listeners but also bypasses many password managers.
-                    // requestSubmit() fires the submit event so onsubmit
-                    // can return false (handled by inline onsubmit attr),
-                    // which keeps us on the page while still triggering
-                    // password-manager save heuristics.
-                    if (typeof credentialsForm.requestSubmit === 'function') {
-                        credentialsForm.requestSubmit();
-                    } else {
-                        credentialsForm.dispatchEvent(
-                            new Event('submit', { cancelable: true, bubbles: true })
-                        );
-                    }
-                    showStatus(
-                        'If your password manager prompts to save, accept to store ' +
-                        'this email and access token.',
-                        'info'
-                    );
-                }
-            });
         }
 
         showStatus('Payment successful! Account created.', 'success');

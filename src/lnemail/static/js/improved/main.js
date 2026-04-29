@@ -585,10 +585,47 @@ function bindEvents() {
     document.getElementById('renewalBannerBtn').addEventListener('click', handleRenewalBannerClick);
 }
 
+function consumeLoginPrefill() {
+    // One-shot prefill of the login form right after signup. The
+    // landing page stashes { email, token } into sessionStorage instead
+    // of localStorage so we do NOT auto-connect: the user has to click
+    // "Connect", which submits a real <form> and lets their password
+    // manager (Bitwarden, browser built-ins, ...) offer to save the
+    // credential pair.
+    let payload = null;
+    try {
+        const raw = sessionStorage.getItem('lnemail_login_prefill');
+        if (raw) {
+            payload = JSON.parse(raw);
+            sessionStorage.removeItem('lnemail_login_prefill');
+        }
+    } catch (err) {
+        console.warn('Failed to read login prefill payload:', err);
+        try { sessionStorage.removeItem('lnemail_login_prefill'); } catch (_) { /* noop */ }
+    }
+    if (!payload || !payload.token) return false;
+
+    const emailInput = document.getElementById('loginEmail');
+    const tokenInput = document.getElementById('accessToken');
+    if (emailInput && payload.email) emailInput.value = payload.email;
+    if (tokenInput) tokenInput.value = payload.token;
+    return true;
+}
+
 function init() {
     // Synchronously hide the login modal if a saved token exists to prevent FOUC
     const savedToken = localStorage.getItem('lnemail_access_token');
-    if (savedToken) {
+    const hasPrefill = (() => {
+        try {
+            return Boolean(sessionStorage.getItem('lnemail_login_prefill'));
+        } catch (_) {
+            return false;
+        }
+    })();
+    // If we have a fresh post-signup prefill payload, do NOT silently
+    // re-use a stale localStorage token: force the user to go through
+    // the Connect form so the password manager can save the new pair.
+    if (savedToken && !hasPrefill) {
         const tokenModal = document.getElementById('tokenModal');
         if (tokenModal) {
             tokenModal.classList.remove('active');
@@ -597,7 +634,16 @@ function init() {
 
     initMobileMenu();
     bindEvents();
-    tryAutoConnect();
+    const prefilled = consumeLoginPrefill();
+    if (prefilled) {
+        // Still run the login-page health check so the Connect button
+        // can become enabled, but skip the localStorage auto-connect:
+        // we want the user to actually click Connect so their password
+        // manager can save the new credential pair.
+        performLoginHealthCheck();
+    } else {
+        tryAutoConnect();
+    }
 
     // Perform initial health check
     handleHealthCheck();
