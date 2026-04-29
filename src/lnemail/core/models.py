@@ -12,6 +12,8 @@ from typing import ClassVar
 from sqlalchemy import Column
 from sqlmodel import AutoString, Field, SQLModel
 
+from lnemail.core.tokens import generate_access_token as _generate_access_token
+
 
 class PaymentStatus(str, Enum):
     """Enum for payment status values."""
@@ -292,11 +294,19 @@ class EmailAccount(SQLModel, table=True):
 
     @classmethod
     def generate_access_token(cls) -> str:
-        """Generate a cryptographically secure access token.
+        """Generate a cryptographically secure, human-friendly access token.
+
+        Tokens use the ``lne_`` prefix followed by 25 Crockford Base32
+        characters (125 bits of entropy) grouped in five blocks of five.
+        The format is intentionally easy to read, transcribe, and dictate
+        while still being hard to memorise. See
+        :mod:`lnemail.core.tokens` for the rationale and implementation.
+
         Returns:
-            A URL-safe token string
+            A token string, e.g. ``lne_K3M9X-2H7P4-NQR8T-VWY5F-XJZ6B``.
         """
-        return secrets.token_urlsafe(32)
+        token: str = _generate_access_token()
+        return token
 
 
 class Email(SQLModel, table=True):

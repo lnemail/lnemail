@@ -18,6 +18,7 @@ from loguru import logger
 
 from ..config import settings
 from ..core.models import EmailAccount, PaymentStatus, PendingOutgoingEmail
+from ..core.tokens import normalize_token
 from ..core.schemas import (
     AccountResponse,
     EmailContent,
@@ -142,6 +143,11 @@ async def get_current_account(
         )
 
     token = credentials.credentials
+    # Normalize new-format tokens so that minor human transcription
+    # differences (case, dashes, ambiguous characters folded per Crockford
+    # Base32) still authenticate the same account. Legacy tokens pass
+    # through unchanged.
+    token = normalize_token(token)
 
     statement = select(EmailAccount).where(EmailAccount.access_token == token)
     account = db.exec(statement).first()
