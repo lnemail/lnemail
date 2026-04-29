@@ -12,6 +12,8 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
@@ -115,6 +117,7 @@ def fixture_client(
             yield session
 
     _app.dependency_overrides[get_db] = override_get_db
+    FastAPICache.init(InMemoryBackend(), prefix="lnemail-test-cache")
 
     # Ensure the mock LND service is in place for each test
     ep.lnd_service = _mock_lnd_instance

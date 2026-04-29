@@ -76,7 +76,7 @@ app.include_router(health_router, prefix="/api/v1")
 async def index(request: Request) -> HTMLResponse:
     """Home page with payment interface and service information."""
     context = {"request": request, "settings": settings}
-    return templates.TemplateResponse("index.html", context)
+    return templates.TemplateResponse(request, "index.html", context)
 
 
 @app.get("/inbox", response_class=HTMLResponse)
@@ -84,7 +84,7 @@ async def index(request: Request) -> HTMLResponse:
 async def inbox(request: Request) -> HTMLResponse:
     """Inbox access page for authenticated users."""
     context = {"request": request, "settings": settings}
-    return templates.TemplateResponse("inbox.html", context)
+    return templates.TemplateResponse(request, "inbox.html", context)
 
 
 @app.get("/tos", response_class=HTMLResponse)
@@ -92,7 +92,7 @@ async def inbox(request: Request) -> HTMLResponse:
 async def tos(request: Request) -> HTMLResponse:
     """Terms of Service page."""
     context = {"request": request, "settings": settings}
-    return templates.TemplateResponse("tos.html", context)
+    return templates.TemplateResponse(request, "tos.html", context)
 
 
 # Static file serving routes
