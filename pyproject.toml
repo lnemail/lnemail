@@ -35,6 +35,10 @@ mypy = ">=1.20.2"
 flake8 = ">=7.3.0"
 pre-commit = ">=4.6.0"
 
+[tool.poetry.group.e2e.dependencies]
+pytest-playwright = ">=0.5.2"
+playwright = ">=1.49.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
@@ -49,5 +53,8 @@ profile = "black"
 multi_line_output = 3
 
 [tool.pytest.ini_options]
-norecursedirs = ["dev-data", "data", "migrations", "node_modules"]
+norecursedirs = ["dev-data", "data", "migrations", "node_modules", "tests/e2e"]
 pythonpath = ["src"]
+markers = [
+    "e2e: end-to-end browser tests requiring the full docker compose stack",
+]

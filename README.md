@@ -202,6 +202,18 @@ swaks --to sereneforest630@lnemail.test \
 
 You can also send emails from your LNemail account using the web interface or API.
 
+#### End-to-end browser tests
+
+Realistic Playwright tests drive the full UI against the running dev
+stack and pay every Lightning invoice for real over the regtest
+channel. See [`tests/e2e/README.md`](tests/e2e/README.md) for details.
+
+```bash
+poetry install --with e2e
+poetry run playwright install --with-deps chromium
+poetry run pytest tests/e2e -v
+```
+
 ### Cleanup
 
 ```bash
