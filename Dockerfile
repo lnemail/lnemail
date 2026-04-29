@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS base
+FROM python:3.14.4-slim AS base
 
 # Set environment variables
 ENV PYTHONFAULTHANDLER=1 \

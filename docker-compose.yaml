@@ -106,7 +106,7 @@ services:
         '
 
   lnd:
-    image: docker.io/lightninglabs/lnd:v0.18.5-beta
+    image: docker.io/lightninglabs/lnd:v0.20.1-beta
     container_name: lnd
     restart: unless-stopped
     healthcheck:
@@ -239,7 +239,7 @@ services:
         '
 
   lnd-setup:
-    image: docker.io/lightninglabs/lnd:v0.18.5-beta
+    image: docker.io/lightninglabs/lnd:v0.20.1-beta
     container_name: lnd-setup
     depends_on:
       lnd:
@@ -307,7 +307,7 @@ services:
     restart: "no"
 
   ofelia:
-    image: mcuadros/ofelia:latest
+    image: mcuadros/ofelia:0.3.22
     container_name: ofelia
     restart: unless-stopped
     command: daemon --docker
@@ -321,7 +321,7 @@ services:
       - lnemail
 
   router_lnd:
-    image: docker.io/lightninglabs/lnd:v0.18.5-beta
+    image: docker.io/lightninglabs/lnd:v0.20.1-beta
     container_name: router_lnd
     restart: unless-stopped
     healthcheck:
@@ -374,7 +374,7 @@ services:
 
   # Mail certificate generation service
   cert-generator:
-    image: alpine:latest
+    image: alpine:3.23.4
     container_name: cert-generator
     volumes:
       - ./dev-data/config/ssl:/certs
@@ -426,7 +426,7 @@ services:
 
   # Mail services
   mailserver:
-    image: ghcr.io/docker-mailserver/docker-mailserver:latest
+    image: ghcr.io/docker-mailserver/docker-mailserver:15.1.0
     container_name: mailserver
     hostname: mail.lnemail.test
     restart: unless-stopped
@@ -471,7 +471,7 @@ services:
       interval: 10s
 
   mail-agent:
-    image: ghcr.io/docker-mailserver/docker-mailserver:latest
+    image: ghcr.io/docker-mailserver/docker-mailserver:15.1.0
     container_name: mail-agent
     restart: unless-stopped
     depends_on:
@@ -509,7 +509,7 @@ services:
 
   # LNEmail services
   lnemail-redis:
-    image: redis:7-alpine
+    image: redis:7.4.8-bookworm
     container_name: lnemail-redis
     restart: unless-stopped
     user: root
