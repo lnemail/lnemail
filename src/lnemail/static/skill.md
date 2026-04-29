@@ -61,11 +61,14 @@ curl -X GET https://lnemail.net/api/v1/payment/PAYMENT_HASH
 #   "payment_hash": "abc123...",
 #   "status": "paid",
 #   "email": "abc123@lnemail.net",
-#   "access_token": "eyJhbG..."
+#   "access_token": "lne_K3M9X-2H7P4-NQR8T-VWY5F-XJZ6B"
 # }
 ```
 
 **Save these credentials!** Store them securely (e.g., `~/.lnemail/credentials.json`).
+The access token is a Crockford Base32 string with the `lne_` prefix and is
+case-insensitive: dashes, surrounding whitespace, and ambiguous characters
+(`O`/`0`, `I`/`L`/`1`) are normalized server-side.
 
 ## Using Your Email
 
@@ -159,7 +162,7 @@ Store credentials in `~/.lnemail/credentials.json`:
 ```json
 {
   "email": "abc123@lnemail.net",
-  "access_token": "eyJhbG..."
+  "access_token": "lne_K3M9X-2H7P4-NQR8T-VWY5F-XJZ6B"
 }
 ```
 
