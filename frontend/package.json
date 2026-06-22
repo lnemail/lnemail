@@ -1,0 +1,14 @@
+{
+  "name": "lnemail-frontend",
+  "private": true,
+  "description": "Tailwind CSS build for the LNemail web UI. Produces a self-hosted, production-ready stylesheet so the app never depends on the Tailwind Play CDN.",
+  "scripts": {
+    "build": "tailwindcss -c ./tailwind.config.js -i ./tailwind.src.css -o ../src/lnemail/static/css/tailwind.css --minify",
+    "watch": "tailwindcss -c ./tailwind.config.js -i ./tailwind.src.css -o ../src/lnemail/static/css/tailwind.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/container-queries": "0.1.1",
+    "@tailwindcss/forms": "0.5.10",
+    "tailwindcss": "3.4.17"
+  }
+}

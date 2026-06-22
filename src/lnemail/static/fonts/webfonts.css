@@ -1,0 +1,48 @@
+/*
+ * Self-hosted web fonts for the LNemail UI.
+ *
+ * These replace the Google Fonts CDN links that the redesign originally
+ * used, so the production app makes no third-party CDN requests.
+ *
+ *   - JetBrains Mono (latin subset, weights 400/700): monospace UI/code font.
+ *   - Material Symbols Outlined (subset of the ~35 glyphs actually used):
+ *     the icon font. The full variable font is ~4 MB; this subset is ~34 KB.
+ *     If you reference a NEW icon name in templates/JS, regenerate the subset
+ *     (see scripts/fetch_fonts.sh) so the glyph is included.
+ *
+ * Inter is defined separately in inter.css.
+ */
+
+/* JetBrains Mono - variable latin file covers 400..700 */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('../fonts/JetBrainsMono-Regular.woff2') format('woff2');
+}
+
+/* Material Symbols Outlined (subset) */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url('../fonts/MaterialSymbolsOutlined.woff2') format('woff2');
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}

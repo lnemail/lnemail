@@ -1,0 +1,13 @@
+/*
+ * Tailwind entry point for the LNemail web UI.
+ *
+ * Build with:  bun run build   (from the frontend/ directory)
+ * Output:      ../src/lnemail/static/css/tailwind.css  (minified, committed)
+ *
+ * The generated stylesheet replaces the Tailwind Play CDN
+ * (https://cdn.tailwindcss.com) so the production app makes no
+ * third-party CDN requests.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
