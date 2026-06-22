@@ -4,7 +4,7 @@ This module provides a centralized configuration management system using Pydanti
 All environment variables are loaded and validated here before being used in the application.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -70,12 +70,11 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "CHANGE_THIS_TO_A_RANDOM_VALUE_IN_PRODUCTION"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 365 * 10  # 10 year
 
-    class Config:
-        """Pydantic config settings."""
-
-        env_file = ".env"
-        case_sensitive = True
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",
+    )
 
 
 # Create global settings instance
