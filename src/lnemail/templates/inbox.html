@@ -39,9 +39,9 @@
   }
   .modal.active { opacity: 1 !important; visibility: visible !important; }
   .modal-content {
-    background: #152031; border-radius: 0.75rem; padding: 30px; max-width: 500px;
-    width: 90%; box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-    border: 1px solid rgba(56,189,248,0.1);
+    background: #1b2a40; border-radius: 0.75rem; padding: 30px; max-width: 500px;
+    width: 90%; box-shadow: 0 20px 40px rgba(0,0,0,0.45);
+    border: 1px solid rgba(56,189,248,0.22);
     transform: translateY(-20px); transition: transform 0.3s ease;
   }
   .modal.active .modal-content { transform: translateY(0); }
@@ -93,8 +93,8 @@
 
   /* POC: Form inputs */
   input:not([type="checkbox"]), textarea, select {
-    padding: 10px 14px; border: 1px solid rgba(56,189,248,0.25);
-    border-radius: 6px; font-size: 14px; background: #0f1a2e; color: #d8e3fb;
+    padding: 10px 14px; border: 1px solid rgba(56,189,248,0.35);
+    border-radius: 6px; font-size: 14px; background: #12203a; color: #d8e3fb;
     transition: border-color 0.2s; font-family: inherit; width: 100%;
   }
   input:focus, textarea:focus, select:focus {
@@ -117,12 +117,12 @@
   .btn-primary:hover:not(:disabled) { background: #7bd0ff; }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
   .btn-secondary {
-    padding: 10px 18px; border: 1px solid rgba(56,189,248,0.2); border-radius: 6px;
+    padding: 10px 18px; border: 1px solid rgba(56,189,248,0.35); border-radius: 6px;
     cursor: pointer; font-size: 14px; font-weight: 500; display: inline-flex;
     align-items: center; gap: 6px; transition: all 0.15s;
-    background: rgba(56,189,248,0.06); color: #bdc8d1;
+    background: rgba(56,189,248,0.12); color: #d8e3fb;
   }
-  .btn-secondary:hover { background: rgba(56,189,248,0.15); }
+  .btn-secondary:hover { background: rgba(56,189,248,0.22); }
   .btn-danger {
     padding: 10px 18px; border: 1px solid rgba(239,68,68,0.3); border-radius: 6px;
     cursor: pointer; font-size: 14px; font-weight: 500; display: inline-flex;

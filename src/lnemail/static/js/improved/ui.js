@@ -167,7 +167,7 @@ export function renderEmailList() {
         const isSelected = state.selectedEmailIds.has(email.id);
 
         return `
-            <div class="flex items-start gap-3 p-4 border-b border-sky-900/20 ${isUnread ? 'bg-sky-500/5 border-l-2 border-l-cyber-blue' : ''} cursor-pointer email-snippet" data-email-id="${email.id}">
+            <div class="flex items-start gap-3 p-4 border-b border-sky-900/40 hover:bg-sky-500/5 ${isUnread ? 'bg-sky-500/10 border-l-2 border-l-cyber-blue' : ''} cursor-pointer email-snippet" data-email-id="${email.id}">
                 <input type="checkbox" class="email-checkbox mt-1 w-4 h-4 rounded border-sky-900/50 bg-slate-900 text-cyber-blue cursor-pointer" data-email-id="${email.id}" ${isSelected ? 'checked' : ''}>
                 <div class="flex-1 min-w-0">
                     <div class="flex justify-between items-start mb-1">
