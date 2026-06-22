@@ -34,19 +34,6 @@ export async function refreshInbox() {
         return;
     }
 
-    let loadingElement = document.getElementById('inboxLoading');
-    if (!loadingElement) {
-        const emailList = document.getElementById('emailList');
-        if (emailList) {
-            loadingElement = document.createElement('div');
-            loadingElement.id = 'inboxLoading';
-            loadingElement.className = 'flex flex-col items-center justify-center py-16 px-6 text-center';
-            loadingElement.innerHTML = '<span class="material-symbols-outlined animate-spin text-xl" style="color:#38bdf8;">progress_activity</span><span class="text-sm text-slate-500 mt-3">Loading emails...</span>';
-            emailList.appendChild(loadingElement);
-        }
-    }
-    if (loadingElement) loadingElement.classList.remove('hidden');
-
     try {
         // Load emails and recent sends in parallel
         const [emails] = await Promise.all([
@@ -61,8 +48,6 @@ export async function refreshInbox() {
         // console.error('Failed to refresh inbox:', error);
         showStatus(`Failed to load emails: ${error.message}`, 'error');
         renderEmailList(); // will render empty state
-    } finally {
-        if (loadingElement) loadingElement.classList.add('hidden');
     }
 }
 
