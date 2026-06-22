@@ -1,155 +1,467 @@
 {% extends "base.html" %}
-{% block title %}LNemail Inbox - Bitcoin Lightning Email Service{% endblock %}
-{% block description %}Access your LNemail inbox. Web interface for reading, composing, and managing anonymous emails. Authenticate with your Bearer access token. Send emails for 100 sats via Lightning. Supports attachments up to 8 MB.{% endblock %}
-{% block keywords %}bitcoin lightning email inbox, anonymous email access, lightning network email, bitcoin email service, private disposable email, fast anonymous email{% endblock %}
-{% block og_title %}LNemail Inbox - Bitcoin Lightning Email Service{% endblock %}
+{% block title %}LNemail Node - Inbox{% endblock %}
+{% block description %}Access your LNemail inbox. Web interface for reading, composing, and managing anonymous emails. Authenticate with your Bearer access token.{% endblock %}
+{% block og_title %}LNemail Inbox{% endblock %}
 {% block og_url %}https://lnemail.net/inbox{% endblock %}
-{% block mobile_menu %}
-<!-- No mobile menu toggle needed for inbox -->
-{% endblock %}
-{% block nav_links %}
-<!-- Simple navigation for inbox -->
-{% endblock %}
+{% block mobile_menu %}{% endblock %}
 {% block extra_head %}
-<link rel="stylesheet" href="/static/css/fontawesome-minimal.css">
-<link rel="stylesheet" href="/static/css/inbox-style.css">
+<style>
+  /* Hide base template header/footer */
+  body > nav, body > footer { display: none !important; }
+  body > main { padding: 0 !important; min-height: 100vh !important; }
+  body { background-color: #081425 !important; }
+
+  /* POC: Custom Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #081425; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
+
+  /* POC: Glassmorphism Sidebar */
+  .sidebar-blur {
+    backdrop-filter: blur(8px);
+    border-right: 1px solid rgba(56, 189, 248, 0.1);
+  }
+
+  /* POC: View management */
+  .view { display: none !important; }
+  .view.active { display: flex !important; }
+  .main-app { display: none !important; }
+  .main-app.active { display: flex !important; }
+  .hidden { display: none !important; }
+
+  /* POC: Modal system */
+  .modal {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85); display: flex !important; justify-content: center;
+    align-items: center; z-index: 1000; opacity: 0; visibility: hidden;
+    transition: all 0.3s ease;
+  }
+  .modal.active { opacity: 1 !important; visibility: visible !important; }
+  .modal-content {
+    background: #152031; border-radius: 0.75rem; padding: 30px; max-width: 500px;
+    width: 90%; box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    border: 1px solid rgba(56,189,248,0.1);
+    transform: translateY(-20px); transition: transform 0.3s ease;
+  }
+  .modal.active .modal-content { transform: translateY(0); }
+  .modal-header { text-align: center; margin-bottom: 24px; }
+  .modal-header h2 { color: #38bdf8; font-size: 22px; margin-bottom: 8px; }
+  .modal-header p { color: #bdc8d1; margin: 0; font-size: 13px; }
+  .modal-body { display: flex; flex-direction: column; gap: 14px; }
+
+  /* POC: Nav items */
+  .nav-item {
+    padding: 8px 16px; border: none; background: none; text-align: left;
+    cursor: pointer; font-size: 13px; color: #bdc8d1; display: flex;
+    align-items: center; gap: 8px; transition: all 0.15s; width: 100%;
+    border-radius: 6px; margin-bottom: 1px;
+  }
+  .nav-item:hover { background: rgba(56,189,248,0.06); color: #38bdf8; }
+  .nav-item.active { background: rgba(56,189,248,0.1); color: #38bdf8;
+    border-left: 2px solid #38bdf8; }
+
+  /* POC: Toast notifications */
+  .status-container {
+    position: fixed !important; top: 20px !important; right: 20px !important;
+    z-index: 1001 !important; display: flex !important; flex-direction: column !important;
+    gap: 10px !important; background: none !important; border: none !important;
+    padding: 0 !important; margin: 0 !important; width: auto !important; height: auto !important;
+  }
+  .status-message {
+    position: relative; padding: 14px 36px 18px 18px; border-radius: 8px;
+    color: white; font-size: 13px; font-weight: 500;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    transform: translateX(400px); animation: slideIn 0.3s ease forwards;
+    display: flex; align-items: center; gap: 10px; max-width: 350px; min-width: 220px;
+  }
+  .status-message.success { background: #10B981; }
+  .status-message.error { background: #EF4444; }
+  .status-message.info { background: #38bdf8; }
+  @keyframes slideIn { to { transform: translateX(0); } }
+  .status-close-btn {
+    position: absolute; top: 8px; right: 8px; background: transparent;
+    border: none; color: #fff; font-size: 16px; cursor: pointer; padding: 2px;
+    opacity: 0.7;
+  }
+  .status-close-btn:hover { opacity: 1; }
+  .status-progress-bar {
+    position: absolute; left: 0; bottom: 0; height: 3px; width: 0%;
+    background: rgba(255,255,255,0.7); border-radius: 0 0 8px 8px;
+    z-index: 1; pointer-events: none;
+  }
+
+  /* POC: Form inputs */
+  input:not([type="checkbox"]), textarea, select {
+    padding: 10px 14px; border: 1px solid rgba(56,189,248,0.25);
+    border-radius: 6px; font-size: 14px; background: #0f1a2e; color: #d8e3fb;
+    transition: border-color 0.2s; font-family: inherit; width: 100%;
+  }
+  input:focus, textarea:focus, select:focus {
+    outline: none; border-color: #38bdf8; box-shadow: 0 0 0 2px rgba(56,189,248,0.12);
+  }
+  textarea { resize: vertical; min-height: 120px; }
+
+  /* POC: Buttons */
+  button, [role="button"] {
+    transition: all 0.15s ease;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.2); }
+  button:active:not(:disabled) { transform: scale(0.96); }
+  button:disabled { cursor: not-allowed; opacity: 0.5; }
+  .btn-primary {
+    padding: 10px 18px; border: none; border-radius: 6px; cursor: pointer;
+    font-size: 14px; font-weight: 500; display: inline-flex; align-items: center;
+    gap: 6px; transition: all 0.15s; background: #38bdf8; color: #081425;
+  }
+  .btn-primary:hover:not(:disabled) { background: #7bd0ff; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary {
+    padding: 10px 18px; border: 1px solid rgba(56,189,248,0.2); border-radius: 6px;
+    cursor: pointer; font-size: 14px; font-weight: 500; display: inline-flex;
+    align-items: center; gap: 6px; transition: all 0.15s;
+    background: rgba(56,189,248,0.06); color: #bdc8d1;
+  }
+  .btn-secondary:hover { background: rgba(56,189,248,0.15); }
+  .btn-danger {
+    padding: 10px 18px; border: 1px solid rgba(239,68,68,0.3); border-radius: 6px;
+    cursor: pointer; font-size: 14px; font-weight: 500; display: inline-flex;
+    align-items: center; gap: 6px; transition: all 0.15s;
+    background: rgba(239,68,68,0.08); color: #fca5a5;
+  }
+  .btn-danger:hover { background: rgba(239,68,68,0.18); }
+  .btn-sm {
+    padding: 5px 10px; font-size: 12px; border-radius: 4px;
+  }
+
+  /* POC: Count badge */
+  .count {
+    background: #38bdf8; color: #081425; border-radius: 12px;
+    padding: 1px 7px; font-size: 11px; font-weight: 700; margin-left: auto;
+  }
+
+  /* POC: Email snippets (STATIC structural CSS - colors via Tailwind in JS render) */
+  .email-checkbox {
+    width: 16px; height: 16px; cursor: pointer; accent-color: #38bdf8;
+    border-radius: 4px; border: 1px solid rgba(56,189,248,0.3);
+    background: #0f172a;
+  }
+
+  /* POC: Empty state */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 60px 20px; color: #64748b; text-align: center;
+  }
+
+  /* POC: Pagination */
+  .pagination-controls {
+    display: flex; justify-content: center; align-items: center; gap: 8px;
+    padding: 12px 16px; border-top: 1px solid rgba(56,189,248,0.08);
+  }
+  .pagination-btn {
+    padding: 4px 10px; cursor: pointer; font-size: 12px;
+    background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.12);
+    color: #bdc8d1; border-radius: 4px; transition: all 0.15s;
+  }
+  .pagination-btn:hover:not(:disabled) { background: rgba(56,189,248,0.15); }
+  .pagination-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .pagination-info { color: #64748b; font-size: 12px; }
+
+  /* POC: Attachments (compose) */
+  .attachment-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; background: rgba(56,189,248,0.04);
+    border: 1px solid rgba(56,189,248,0.1); border-radius: 6px; font-size: 12px;
+  }
+  .attachment-item-info { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .attachment-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d8e3fb; }
+  .attachment-item-size { color: #64748b; font-size: 11px; flex-shrink: 0; }
+  .attachment-item-remove { background: none; border: none; color: #EF4444; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+  .attachment-item-remove:hover { background: rgba(239,68,68,0.1); }
+  .attachment-total-size { font-size: 11px; color: #64748b; margin-top: 4px; }
+  .attachment-total-size.over-limit { color: #EF4444; font-weight: 600; }
+
+  /* POC: Reading pane attachment detail */
+  .attachment-detail {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px; background: rgba(56,189,248,0.04);
+    border: 1px solid rgba(56,189,248,0.1); border-radius: 8px; margin-bottom: 6px;
+  }
+  .attachment-info { display: flex; align-items: center; gap: 10px; flex: 1; }
+  .attachment-actions { display: flex; gap: 6px; }
+
+  /* POC: Override .hidden !important for responsive primary nav */
+  .mobile-hidden { display: none; }
+  @media (min-width: 768px) {
+    .mobile-hidden { display: flex; }
+  }
+
+  /* POC: Recent sends */
+  .recent-send-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid rgba(56,189,248,0.05); font-size: 13px;
+  }
+  .send-recipient { color: #38bdf8; font-weight: 500; }
+  .send-subject { color: #bdc8d1; margin-left: 8px; }
+  .send-date { color: #64748b; margin-right: 8px; }
+
+  /* POC: Payment modal */
+  .payment-modal-content { max-width: 460px; min-width: 360px; }
+  .payment-detail-item {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px; font-size: 13px;
+  }
+  .payment-label { color: #64748b; }
+  .payment-value { color: #d8e3fb; max-width: 60%; text-align: right; word-break: break-word; }
+  .qr-code-container {
+    display: flex; justify-content: center; align-items: center; min-height: 180px;
+    margin-bottom: 12px;
+  }
+  .qr-code-container canvas { display: block; max-width: 180px; height: auto; }
+  .payment-status { text-align: center; padding: 10px; }
+  .payment-status-indicator { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; }
+  .payment-hash { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .payment-hash-value {
+    font-family: 'JetBrains Mono',monospace; font-size: 11px; color: #64748b;
+    word-break: break-all; background: rgba(56,189,248,0.04);
+    padding: 8px; border-radius: 4px; border: 1px solid rgba(56,189,248,0.08);
+  }
+  .payment-actions { display: flex; gap: 10px; justify-content: center; margin-top: 12px; }
+
+  /* POC: Health section */
+  .health-status-section { padding: 12px; }
+  .health-status-section h3 { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .health-item { display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px; }
+  .health-label { color: #64748b; }
+  .health-value { color: #10B981; font-weight: 500; }
+
+  /* POC: Renewal */
+  .renewal-banner {
+    background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.2);
+    color: #fbbf24; padding: 8px 16px; display: flex; justify-content: center;
+    align-items: center; gap: 8px; font-size: 12px;
+  }
+  .renewal-banner-content { display: flex; align-items: center; gap: 8px; }
+  .renewal-options { display: flex; flex-direction: column; gap: 12px; }
+  .renewal-years-selector { display: flex; align-items: center; gap: 8px; }
+  .renewal-price-display { display: flex; align-items: center; gap: 6px; }
+  .renewal-disclaimer {
+    padding: 8px; background: rgba(234,179,8,0.04);
+    border: 1px solid rgba(234,179,8,0.12); border-radius: 6px;
+    font-size: 11px; color: #bdc8d1;
+  }
+  .recover-field { margin-bottom: 12px; }
+  .recover-field label { display: block; font-size: 12px; color: #bdc8d1; margin-bottom: 4px; }
+  .recover-field input {
+    width: 100%; padding: 8px 10px; border: 1px solid rgba(56,189,248,0.15);
+    border-radius: 6px; background: #0f1a2e; color: #d8e3fb; font-family: 'JetBrains Mono',monospace;
+  }
+  .recover-token-row { display: flex; gap: 6px; align-items: stretch; }
+  .recover-token-row input { flex: 1; }
+  .recover-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .note { font-size: 11px; color: #64748b; margin-top: 6px; }
+
+  /* POC: Login */
+  .login-health-status {
+    margin-bottom: 14px; padding: 10px; background: rgba(56,189,248,0.02);
+    border-radius: 6px; border: 1px solid rgba(56,189,248,0.06);
+  }
+  .login-health-indicator { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .login-health-details.hidden { display: none; }
+  .login-health-refresh {
+    padding: 3px 6px; font-size: 11px; background: rgba(56,189,248,0.08);
+    border: 1px solid rgba(56,189,248,0.15); border-radius: 4px;
+    cursor: pointer; color: #bdc8d1;
+  }
+  .health-info-item { display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px; }
+  .login-username-hint {
+    width: 100%; padding: 8px 12px; margin-bottom: 8px;
+    border: 1px dashed rgba(56,189,248,0.15); border-radius: 6px;
+    font-size: 12px; color: #64748b; background: rgba(56,189,248,0.02);
+  }
+  .health-requirement-notice {
+    margin-top: 8px; padding: 6px 10px; background: rgba(234,179,8,0.04);
+    border: 1px solid rgba(234,179,8,0.12); border-radius: 4px;
+    color: #fbbf24; font-size: 11px; text-align: center;
+  }
+  .help-text {
+    background: rgba(56,189,248,0.02); padding: 10px; border-radius: 6px;
+    font-size: 12px; color: #64748b; display: flex; align-items: center; gap: 6px;
+  }
+  .create-account-link { color: #38bdf8; cursor: pointer; text-decoration: underline; }
+
+  .qr-fallback-box {
+    padding: 16px; text-align: center; background: rgba(56,189,248,0.02);
+    border: 1px dashed rgba(56,189,248,0.15); border-radius: 8px; width: 100%;
+  }
+  .qr-fallback-textarea {
+    width: 100%; height: 70px; font-family: 'JetBrains Mono',monospace;
+    font-size: 10px; border: 1px solid rgba(56,189,248,0.15);
+    border-radius: 4px; padding: 8px; resize: none; background: #0f1a2e; color: #64748b;
+  }
+
+  .preview-modal {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.85); display: flex; justify-content: center;
+    align-items: center; z-index: 2000; padding: 10px;
+  }
+  .preview-content {
+    background: #152031; border-radius: 10px; width: 90vw; max-width: 600px;
+    max-height: 90vh; display: flex; flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5); overflow: hidden;
+    border: 1px solid rgba(56,189,248,0.1);
+  }
+  .preview-header {
+    padding: 14px; border-bottom: 1px solid rgba(56,189,248,0.08);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .preview-header h3 { margin: 0; color: #d8e3fb; font-size: 15px; }
+  .close-preview { background: none; border: none; font-size: 18px; cursor: pointer; color: #64748b; }
+  .preview-body { flex: 1; padding: 14px; overflow: auto; }
+  .preview-actions { padding: 10px 14px; border-top: 1px solid rgba(56,189,248,0.08); text-align: right; }
+  .preview-textarea {
+    width: 100%; height: 100%; min-height: 180px;
+    border: 1px solid rgba(56,189,248,0.15); border-radius: 4px;
+    padding: 10px; font-family: 'JetBrains Mono',monospace; font-size: 12px;
+    line-height: 1.4; background: #0f1a2e; color: #bdc8d1; resize: none;
+  }
+
+  @keyframes fadeInDown {
+    from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+  .account-expiry.expired, .account-expiry.expiring-soon { color: #fbbf24 !important; }
+  .main-content.expired-blocked { position: relative; pointer-events: none; }
+  .main-content.expired-blocked::after {
+    content: ""; position: absolute; inset: 0; z-index: 10;
+    background: rgba(8,20,37,0.7);
+  }
+
+  /* Reading-pane attachments (rendered by ui.js displayEmailAttachments) */
+  .attachments-section h4 {
+    display: flex; align-items: center; gap: 8px;
+    color: #d8e3fb; font-size: 15px; margin: 0 0 12px;
+  }
+  .attachments-list-detail { display: flex; flex-direction: column; gap: 8px; }
+  .attachment-name { font-weight: 500; color: #d8e3fb; }
+  .attachment-size { color: #64748b; font-size: 12px; }
+  .attachment-type { color: #64748b; font-size: 11px; }
+  .attachment-note { color: #64748b; font-size: 12px; font-style: italic; }
+  .btn-small {
+    padding: 4px 10px; font-size: 12px; cursor: pointer;
+    background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2);
+    color: #bdc8d1; border-radius: 4px; transition: all 0.15s;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .btn-small:hover { background: rgba(56,189,248,0.18); color: #d8e3fb; }
+  .preview-download-btn { color: #38bdf8; }
+
+  /* Recent sends meta (rendered by ui.js renderRecentSends) */
+  .send-details { display: flex; flex-direction: column; min-width: 0; }
+  .send-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .send-status { display: inline-flex; align-items: center; }
+  .send-status.success { color: #10B981; }
+  .send-status.pending { color: #fbbf24; }
+  .send-status.error { color: #EF4444; }
+  .empty-state-small { color: #64748b; font-size: 13px; text-align: center; padding: 16px 0; }
+
+  /* QR loader + fallback text (payment/renewal modals) */
+  .qr-loader { display: flex; flex-direction: column; align-items: center; gap: 8px; color: #64748b; font-size: 13px; }
+  .qr-fallback-title { color: #d8e3fb; font-weight: 600; font-size: 14px; margin: 4px 0; }
+  .qr-fallback-desc { color: #64748b; font-size: 12px; margin-bottom: 8px; }
+
+  /* Toast message text wrapper */
+  .status-message-text { flex: 1; }
+</style>
 {% endblock %}
 {% block content %}
-<div class="container">
-    <!-- Token Input Modal -->
-    <div id="tokenModal" class="modal active">
+<div class="h-full flex flex-col" style="min-height:100vh;">
+
+    <!-- ======== TOKEN MODAL ======== -->
+    <div id="tokenModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2><i class="fas fa-key"></i> LNemail Access</h2>
+                <h2>LNemail Access</h2>
                 <p>Enter your access token to get started</p>
             </div>
             <div class="modal-body">
-                <!-- API Health Status in Login -->
                 <div class="login-health-status">
                     <div class="login-health-indicator">
-                        <i id="loginHealthIcon" class="fas fa-circle" style="color: #ccc;"></i>
-                        <span id="loginHealthStatus">API Status: Checking...</span>
-                        <button id="loginRefreshHealthBtn" class="btn-small login-health-refresh">
-                            <i class="fas fa-sync-alt"></i>
+                        <span class="material-symbols-outlined" id="loginHealthIcon" style="font-size:15px;color:#64748b;">circle</span>
+                        <span id="loginHealthStatus" style="color:#bdc8d1;font-size:12px;">API Status: Checking...</span>
+                        <button id="loginRefreshHealthBtn" class="login-health-refresh">
+                            <span class="material-symbols-outlined" style="font-size:13px;">refresh</span>
                         </button>
                     </div>
-                    <div id="loginHealthDetails" class="login-health-details hidden">
-                        <div class="health-info-item">
-                            <span>Status: </span><span id="loginHealthStatusValue">-</span>
-                        </div>
-                        <div class="health-info-item">
-                            <span>Version: </span><span id="loginHealthVersionValue">-</span>
-                        </div>
-                        <div class="health-info-item">
-                            <span>Last Check: </span><span id="loginHealthTimestampValue">-</span>
-                        </div>
+                    <div id="loginHealthDetails" class="login-health-details hidden" style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(56,189,248,0.06);">
+                        <div class="health-info-item"><span style="color:#64748b;">Status:</span><span id="loginHealthStatusValue" style="color:#10B981;">-</span></div>
+                        <div class="health-info-item"><span style="color:#64748b;">Version:</span><span id="loginHealthVersionValue" style="color:#bdc8d1;">-</span></div>
+                        <div class="health-info-item"><span style="color:#64748b;">Last Check:</span><span id="loginHealthTimestampValue" style="color:#bdc8d1;">-</span></div>
                     </div>
                 </div>
-
-                <!--
-                    Real <form> with autocomplete attributes so password
-                    managers can autofill saved credentials. The username
-                    field is optional (used only as a hint for the password
-                    manager) and is hidden from sight via CSS but remains
-                    discoverable to autofill logic.
-                -->
                 <form id="loginForm" action="/inbox" method="post" autocomplete="on" onsubmit="return false;">
-                    <input type="email"
-                           id="loginEmail"
-                           name="username"
-                           autocomplete="username"
-                           class="login-username-hint"
-                           placeholder="Email (optional, for password manager)"
-                           aria-label="Email address (optional)" />
-                    <div class="input-group">
-                        <input type="password"
-                               id="accessToken"
-                               name="password"
-                               autocomplete="current-password"
-                               placeholder="Enter your access token (e.g. lne_XXXXX-...)" />
-                        <button type="submit" id="connectBtn" class="btn-primary" disabled title="API health check must pass before authentication">
-                            <i class="fas fa-sign-in-alt"></i> Connect
-                        </button>
+                    <input type="email" id="loginEmail" name="username" autocomplete="username" class="login-username-hint" placeholder="Email (optional, for password manager)" />
+                    <div style="display:flex;gap:8px;">
+                        <input type="password" id="accessToken" name="password" autocomplete="current-password" placeholder="Enter your access token (e.g. lne_XXXXX-...)" style="flex:1;" />
+                        <button type="submit" id="connectBtn" class="btn-primary" disabled style="white-space:nowrap;">Connect</button>
                     </div>
                 </form>
                 <div class="help-text">
-                    <i class="fas fa-info-circle"></i>
+                    <span class="material-symbols-outlined" style="font-size:15px;color:#38bdf8;">info</span>
                     Don't have an access token?
                     <a id="createAccountLink" class="create-account-link" href="/">Create an email account first here.</a>
                 </div>
                 <div class="health-requirement-notice">
-                    <i class="fas fa-heartbeat"></i>
+                    <span class="material-symbols-outlined" style="font-size:13px;">monitoring</span>
                     <strong>Note:</strong> API health check must pass before you are authenticated.
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Payment Invoice Modal -->
+    <!-- ======== PAYMENT MODAL ======== -->
     <div id="paymentModal" class="modal">
         <div class="modal-content payment-modal-content">
             <div class="modal-header">
-                <h2><i class="fas fa-bolt"></i> Lightning Payment Required</h2>
+                <h2>Lightning Payment Required</h2>
                 <p>Scan the QR code below to pay for sending this email</p>
             </div>
             <div class="modal-body">
-                <div class="payment-info">
-                    <div class="payment-details">
-                        <div class="payment-detail-item">
-                            <span class="payment-label">To:</span>
-                            <span id="paymentRecipient" class="payment-value">-</span>
-                        </div>
-                        <div class="payment-detail-item">
-                            <span class="payment-label">Subject:</span>
-                            <span id="paymentSubject" class="payment-value">-</span>
-                        </div>
-                        <div class="payment-detail-item">
-                            <span class="payment-label">Amount:</span>
-                            <span id="paymentAmount" class="payment-value">-</span>
-                        </div>
+                <div style="padding:12px;background:rgba(56,189,248,0.02);border-radius:8px;margin-bottom:12px;">
+                    <div class="payment-detail-item"><span class="payment-label">To:</span><span id="paymentRecipient" class="payment-value">-</span></div>
+                    <div class="payment-detail-item"><span class="payment-label">Subject:</span><span id="paymentSubject" class="payment-value">-</span></div>
+                    <div class="payment-detail-item"><span class="payment-label">Amount:</span><span id="paymentAmount" class="payment-value">-</span></div>
+                </div>
+                <div class="qr-code-container"><canvas id="qrCodeCanvas"></canvas></div>
+                <div class="payment-status">
+                    <div class="payment-status-indicator">
+                        <span class="material-symbols-outlined" id="paymentStatusIcon" style="color:#fbbf24;animation:spin 1s linear infinite;">progress_activity</span>
+                        <span id="paymentStatusText" style="color:#bdc8d1;">Waiting for payment...</span>
                     </div>
-
-                    <div class="qr-code-container">
-                        <canvas id="qrCodeCanvas"></canvas>
-                    </div>
-
-                    <div class="payment-status">
-                        <div class="payment-status-indicator">
-                            <i id="paymentStatusIcon" class="fas fa-circle-notch fa-spin" style="color: #ffc107;"></i>
-                            <span id="paymentStatusText">Waiting for payment...</span>
-                        </div>
-                        <div class="payment-hash">
-                            <span class="payment-label">Payment Hash:</span>
-                            <span id="paymentHashValue" class="payment-hash-value">-</span>
-                        </div>
+                    <div class="payment-hash">
+                        <span style="color:#64748b;font-size:11px;">Payment Hash:</span>
+                        <span id="paymentHashValue" class="payment-hash-value">-</span>
                     </div>
                 </div>
-
                 <div class="payment-actions">
-                    <button id="cancelPaymentBtn" class="btn-secondary">
-                        <i class="fas fa-times"></i> Cancel
-                    </button>
-
-                    <button id="copyInvoiceBtn" class="btn-secondary">
-                        <i class="fas fa-copy"></i> Copy Invoice
-                    </button>
+                    <button id="cancelPaymentBtn" class="btn-secondary">Cancel</button>
+                    <button type="button" id="copyInvoiceBtn" class="btn-secondary">Copy Invoice</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Renewal Modal -->
+    <!-- ======== RENEWAL MODAL ======== -->
     <div id="renewalModal" class="modal">
         <div class="modal-content payment-modal-content">
             <div class="modal-header">
-                <h2><i class="fas fa-sync-alt"></i> Renew Account</h2>
+                <h2>Renew Account</h2>
                 <p>Extend your LNemail account with a Lightning payment</p>
             </div>
             <div class="modal-body">
-                <!-- Renewal options (shown before invoice is created) -->
                 <div id="renewalOptions" class="renewal-options">
                     <div class="renewal-years-selector">
-                        <label for="renewalYears">Renewal period:</label>
+                        <label style="color:#bdc8d1;font-size:12px;">Renewal period:</label>
                         <select id="renewalYears">
                             <option value="1" selected>1 Year</option>
                             <option value="2">2 Years</option>
@@ -158,308 +470,289 @@
                             <option value="10">10 Years</option>
                         </select>
                     </div>
-                    <div id="renewalPriceDisplay" class="renewal-price-display">
+                    <div class="renewal-price-display">
                         <span class="payment-label">Price:</span>
                         <span id="renewalPriceValue" class="payment-value">1000 sats</span>
                     </div>
                     <div id="multiYearDisclaimer" class="renewal-disclaimer hidden">
-                        <i class="fas fa-info-circle"></i>
-                        <p>Only 1 year of service is guaranteed. Payments for additional years are
-                        non-refundable and treated as donations supporting the service. Best-effort
-                        service is provided beyond the first year. The service will never shut down
-                        without at least 1 year of notice.</p>
+                        <span class="material-symbols-outlined" style="font-size:13px;">info</span>
+                        <p style="margin:0;">Only 1 year of service is guaranteed. Payments for additional years are non-refundable and treated as donations.</p>
                     </div>
-                    <button id="renewalPayBtn" class="btn-primary">
-                        <i class="fas fa-bolt"></i> Generate Invoice
-                    </button>
-                    <button id="cancelRenewalOptionsBtn" class="btn-secondary">
-                        <i class="fas fa-times"></i> Cancel
-                    </button>
+                    <button id="renewalPayBtn" class="btn-primary">Generate Invoice</button>
+                    <button id="cancelRenewalOptionsBtn" class="btn-secondary">Cancel</button>
                 </div>
-
-                <!-- Payment info (shown after invoice is created) -->
-                <div id="renewalPaymentInfo" style="display: none;">
-                    <div class="payment-info">
-                        <div class="payment-details">
-                            <div class="payment-detail-item">
-                                <span class="payment-label">Service:</span>
-                                <span class="payment-value">Account Renewal</span>
-                            </div>
-                            <div class="payment-detail-item">
-                                <span class="payment-label">Period:</span>
-                                <span id="renewalPeriodValue" class="payment-value">1 Year</span>
-                            </div>
-                            <div class="payment-detail-item">
-                                <span class="payment-label">Amount:</span>
-                                <span id="renewalAmountValue" class="payment-value">-</span>
-                            </div>
-                            <div class="payment-detail-item">
-                                <span class="payment-label">New Expiry:</span>
-                                <span id="renewalNewExpiry" class="payment-value">-</span>
-                            </div>
+                <div id="renewalPaymentInfo" style="display:none;">
+                    <div style="padding:12px;background:rgba(56,189,248,0.02);border-radius:8px;margin-bottom:12px;">
+                        <div class="payment-detail-item"><span class="payment-label">Service:</span><span class="payment-value">Account Renewal</span></div>
+                        <div class="payment-detail-item"><span class="payment-label">Period:</span><span id="renewalPeriodValue" class="payment-value">1 Year</span></div>
+                        <div class="payment-detail-item"><span class="payment-label">Amount:</span><span id="renewalAmountValue" class="payment-value">-</span></div>
+                        <div class="payment-detail-item"><span class="payment-label">New Expiry:</span><span id="renewalNewExpiry" class="payment-value">-</span></div>
+                    </div>
+                    <div class="qr-code-container" id="renewalQrContainer"></div>
+                    <div class="payment-status">
+                        <div class="payment-status-indicator">
+                            <span class="material-symbols-outlined" id="renewalPaymentStatusIcon" style="color:#fbbf24;animation:spin 1s linear infinite;">progress_activity</span>
+                            <span id="renewalPaymentStatusText" style="color:#bdc8d1;">Waiting for payment...</span>
                         </div>
-
-                        <div class="qr-code-container" id="renewalQrContainer"></div>
-
-                        <div class="payment-status">
-                            <div class="payment-status-indicator">
-                                <i id="renewalPaymentStatusIcon" class="fas fa-circle-notch fa-spin" style="color: #ffc107;"></i>
-                                <span id="renewalPaymentStatusText">Waiting for payment...</span>
-                            </div>
-                            <div class="payment-hash">
-                                <span class="payment-label">Payment Hash:</span>
-                                <span id="renewalPaymentHashValue" class="payment-hash-value">-</span>
-                            </div>
+                        <div class="payment-hash">
+                            <span style="color:#64748b;font-size:11px;">Payment Hash:</span>
+                            <span id="renewalPaymentHashValue" class="payment-hash-value">-</span>
                         </div>
                     </div>
-
                     <div class="payment-actions">
-                        <button id="cancelRenewalBtn" class="btn-secondary">
-                            <i class="fas fa-times"></i> Cancel
-                        </button>
-
-                        <button id="copyRenewalInvoiceBtn" class="btn-secondary">
-                            <i class="fas fa-copy"></i> Copy Invoice
-                        </button>
+                        <button id="cancelRenewalBtn" class="btn-secondary">Cancel</button>
+                        <button type="button" id="copyRenewalInvoiceBtn" class="btn-secondary">Copy Invoice</button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Show Token (recovery) Modal -->
+    <!-- ======== SHOW TOKEN MODAL ======== -->
     <div id="showTokenModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2><i class="fas fa-key"></i> Your Access Token</h2>
+                <h2>Your Access Token</h2>
                 <p>Use this to log in from another device or save it to your password manager.</p>
             </div>
             <div class="modal-body">
-                <!--
-                    Real <form> so that submitting via the
-                    "Save to password manager" button triggers the
-                    browser/password manager save heuristic. Email is
-                    populated from the authenticated account info.
-                -->
                 <form id="recoverCredentialsForm" action="/inbox" method="post" autocomplete="on" onsubmit="return false;">
                     <div class="recover-field">
                         <label for="recoverEmail">Email</label>
-                        <input type="email"
-                               id="recoverEmail"
-                               name="username"
-                               autocomplete="username"
-                               readonly />
+                        <input type="email" id="recoverEmail" name="username" autocomplete="username" readonly />
                     </div>
                     <div class="recover-field">
                         <label for="recoverToken">Access Token</label>
                         <div class="recover-token-row">
-                            <input type="password"
-                                   id="recoverToken"
-                                   name="password"
-                                   autocomplete="new-password"
-                                   readonly />
-                            <button type="button" id="recoverTokenToggle" class="btn-secondary btn-small" aria-label="Show or hide access token">
-                                <i class="fas fa-eye"></i>
+                            <input type="password" id="recoverToken" name="password" autocomplete="new-password" readonly />
+                            <button type="button" id="recoverTokenToggle" class="btn-secondary btn-sm">
+                                <span class="material-symbols-outlined" style="font-size:15px;">visibility</span>
                             </button>
-                            <button type="button" id="recoverTokenCopy" class="btn-secondary btn-small" aria-label="Copy access token">
-                                <i class="fas fa-copy"></i>
+                            <button type="button" id="recoverTokenCopy" class="btn-secondary btn-sm">
+                                <span class="material-symbols-outlined" style="font-size:15px;">content_copy</span>
                             </button>
                         </div>
                     </div>
-                    <p class="note">
-                        Treat this token like a password &mdash; anyone with it can read and
-                        send mail from your account.
-                    </p>
+                    <p class="note">Treat this token like a password &mdash; anyone with it can read and send mail from your account.</p>
                     <div class="recover-actions">
-                        <button type="submit" id="recoverSaveBtn" class="btn-primary">
-                            <i class="fas fa-save"></i> Save to password manager
-                        </button>
-                        <button type="button" id="recoverCloseBtn" class="btn-secondary">
-                            <i class="fas fa-times"></i> Close
-                        </button>
+                        <button type="submit" id="recoverSaveBtn" class="btn-primary">Save to password manager</button>
+                        <button type="button" id="recoverCloseBtn" class="btn-secondary">Close</button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 
-    <!-- Main Application -->
-    <div id="mainApp" class="main-app">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-left">
-                <h1><i class="fas fa-envelope"></i> LNemail Client</h1>
-                <div class="account-info">
-                    <div class="account-email clickable" id="accountEmailContainer" title="Click to copy email address">
-                        <i class="fas fa-user"></i>
-                        <span id="accountEmail">Loading...</span>
-                        <i class="fas fa-copy copy-icon"></i>
-                    </div>
-                    <div class="account-expiry">
-                        <i class="fas fa-clock"></i>
-                        <span id="accountExpiry">Loading...</span>
-                    </div>
-                    <div class="api-health">
-                        <i id="healthIcon" class="fas fa-circle" style="color: #ccc;"></i>
-                        <span id="healthStatus">API Status: Checking...</span>
-                    </div>
-                </div>
+    <!-- ======== MAIN APPLICATION ======== -->
+    <div id="mainApp" class="main-app" style="flex-direction:column;min-height:100vh;">
+
+        <!-- POC: MainHeader -->
+        <header class="h-16 flex items-center justify-between px-6 border-b border-sky-900/30 bg-tech-black/90 backdrop-blur-md sticky top-0 z-50" style="background:rgba(8,20,37,0.9);">
+            <!-- Brand -->
+            <div class="flex items-center gap-2">
+                <h1 class="text-xl font-bold tracking-tight text-white">LNemail</h1>
             </div>
-            <div class="header-right">
-                <button id="renewBtn" class="btn-secondary" style="display: none;">
-                    <i class="fas fa-sync-alt"></i> Renew
+
+            <!-- POC: PrimaryNavigation -->
+            <nav id="primaryNav" class="mobile-hidden md:flex items-center gap-1 bg-sky-950/20 p-1 rounded-lg border border-sky-900/40">
+                <button class="flex items-center gap-2 px-4 py-1.5 rounded-md bg-sky-500/10 border border-sky-500/20 text-cyber-blue shadow-[0_0_15px_rgba(56,189,248,0.1)]" data-view="inbox" style="transition:all 0.15s;">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+                    <span class="text-sm font-medium">Inbox</span>
                 </button>
-                <button id="refreshBtn" class="btn-secondary">
-                    <i class="fas fa-sync-alt"></i> Refresh
+                <button class="flex items-center gap-2 px-4 py-1.5 rounded-md hover:bg-sky-900/30 text-sky-200 transition-all" data-view="compose" id="composeNavBtn">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+                    <span class="text-sm font-medium">Compose</span>
                 </button>
-                <button id="showTokenBtn" class="btn-secondary" title="Reveal your access token (for backup or password manager)">
-                    <i class="fas fa-key"></i> Show Token
+                <button class="flex items-center gap-2 px-4 py-1.5 rounded-md hover:bg-sky-900/30 text-sky-200 transition-all" data-view="sent" id="sentNavBtn">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+                    <span class="text-sm font-medium">Sent</span>
                 </button>
-                <button id="composeBtn" class="btn-primary">
-                    <i class="fas fa-plus"></i> Compose
-                </button>
-                <button id="disconnectBtn" class="btn-danger">
-                    <i class="fas fa-sign-out-alt"></i> Disconnect
-                </button>
+            </nav>
+
+            <!-- POC: SystemStatus -->
+            <div class="flex items-center gap-6">
+                <div class="flex items-center bg-tech-black border border-sky-900/50 rounded px-3 py-1 gap-2" style="background:#081425;" id="subscriptionDaysBox" title="">
+                    <svg class="w-4 h-4 text-sky-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span class="text-sm text-cyber-blue font-mono font-bold flex-shrink-0" id="subscriptionDays" style="font-family:'JetBrains Mono',monospace;">--d</span>
+                </div>
+                <div class="flex items-center bg-tech-black border border-sky-900/50 rounded px-3 py-1 gap-2" style="background:#081425;">
+                    <span class="text-sm text-sky-100 font-mono" id="accountEmail" style="font-family:'JetBrains Mono',monospace;">Loading...</span>
+                    <button type="button" class="text-sky-500 hover:text-white" id="accountEmailContainer" title="Copy email">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+                    </button>
+                </div>
+                <div class="flex items-center gap-4 text-[11px] font-medium text-slate-400">
+                    <button class="flex flex-col items-center gap-0.5 hover:text-sky-400 transition-colors" id="showTokenBtn">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+                        <span>Token</span>
+                    </button>
+                    <button class="flex flex-col items-center gap-0.5 hover:text-sky-400 transition-colors" id="renewBtn" style="display:none;">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+                        <span>Renew</span>
+                    </button>
+                    <button class="flex flex-col items-center gap-0.5 text-rose-500/80 hover:text-rose-400 transition-colors" id="disconnectBtn">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+                        <span>Logout</span>
+                    </button>
+                </div>
             </div>
         </header>
 
-        <!-- Renewal Warning Banner -->
-        <div id="renewalBanner" class="renewal-banner" style="display: none;">
+        <!-- Renewal Banner -->
+        <div id="renewalBanner" class="renewal-banner" style="display:none;">
             <div class="renewal-banner-content">
-                <i class="fas fa-exclamation-triangle"></i>
+                <span class="material-symbols-outlined" style="font-size:15px;">warning</span>
                 <span id="renewalBannerText">Your account is expiring soon.</span>
                 <button id="renewalBannerBtn" class="btn-primary btn-sm">Renew Now</button>
             </div>
         </div>
 
-        <!-- Main Content -->
-        <main class="main-content">
-            <!-- Sidebar -->
-            <aside class="sidebar">
-                <nav class="nav-menu">
-                    <button class="nav-item active" data-view="inbox">
-                        <i class="fas fa-inbox"></i> Inbox
-                        <span id="inboxCount" class="count">0</span>
-                    </button>
-                    <button class="nav-item" data-view="compose">
-                        <i class="fas fa-edit"></i> Compose
-                    </button>
-                </nav>
+        <!-- POC: WorkspaceLayout -->
+        <main class="flex-1 flex flex-col md:flex-row overflow-hidden main-content">
 
-                <!-- API Health Status Section -->
-                <div class="health-status-section">
-                    <h3><i class="fas fa-heartbeat"></i> API Health</h3>
-                    <div id="healthDetails" class="health-details">
-                        <div class="health-item">
-                            <span class="health-label">Status:</span>
-                            <span id="healthStatusValue" class="health-value">Checking...</span>
-                        </div>
-                        <div class="health-item">
-                            <span class="health-label">Version:</span>
-                            <span id="healthVersionValue" class="health-value">-</span>
-                        </div>
-                        <div class="health-item">
-                            <span class="health-label">Last Check:</span>
-                            <span id="healthTimestampValue" class="health-value">-</span>
-                        </div>
+            <!-- POC: LeftSidebar (email list) -->
+            <aside class="w-full md:w-96 flex-shrink-0 flex flex-col sidebar-blur bg-sky-950/5" style="border-right:1px solid rgba(56,189,248,0.06);">
+                <div class="p-4 flex items-center justify-between border-b border-sky-900/20">
+                    <div class="flex items-center gap-3">
+                        <input type="checkbox" id="selectAllCheckbox" class="w-4 h-4 rounded border-sky-900/50 bg-slate-900 text-cyber-blue focus:ring-cyber-blue/50 focus:ring-offset-0 cursor-pointer" title="Select all">
+                        <h2 class="text-xl font-semibold text-slate-100 flex items-center gap-2">
+                            <span class="material-symbols-outlined">inbox</span> Inbox
+                            <span id="inboxCount" class="bg-cyber-blue text-tech-black px-2 py-0.5 text-xs font-bold rounded-full ml-1" style="background:#38bdf8;color:#081425;">0</span>
+                        </h2>
                     </div>
-                    <button id="refreshHealthBtn" class="btn-secondary health-refresh-btn">
-                        <i class="fas fa-sync-alt"></i> Check Health
+                    <div class="flex items-center gap-2">
+                        <button id="deleteSelectedBtn" class="p-1.5 text-slate-400 hover:text-rose-500 transition-colors rounded disabled:opacity-30 disabled:cursor-not-allowed" disabled title="Delete Selected">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+                        </button>
+                        <button class="p-1 text-slate-400 hover:text-cyber-blue transition-colors" id="refreshSidebarBtn" title="Refresh">
+                            <span class="material-symbols-outlined text-lg">refresh</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto" id="emailList">
+                    <div class="flex flex-col items-center justify-center py-16 px-6 text-center" id="inboxLoading">
+                        <span class="material-symbols-outlined animate-spin text-xl" style="color:#38bdf8;">progress_activity</span>
+                        <span class="text-sm text-slate-500 mt-3">Loading emails...</span>
+                    </div>
+                </div>
+                <!-- Health Status -->
+                <div class="health-status-section border-t border-sky-900/10">
+                    <h3 class="flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-xs">monitoring</span> API Health
+                    </h3>
+                    <div>
+                        <div class="health-item"><span class="health-label">Status:</span><span id="healthStatusValue" class="health-value">Checking...</span></div>
+                        <div class="health-item"><span class="health-label">Version:</span><span id="healthVersionValue" class="health-value">-</span></div>
+                        <div class="health-item"><span class="health-label">Last Check:</span><span id="healthTimestampValue" class="health-value">-</span></div>
+                    </div>
+                    <button id="refreshHealthBtn" class="btn-secondary btn-sm flex items-center justify-center gap-1 w-full mt-1 text-xs">
+                        <span class="material-symbols-outlined text-xs">refresh</span> Check Health
                     </button>
                 </div>
             </aside>
 
-            <!-- Content Area -->
-            <section class="content-area">
-                <!-- Inbox View -->
-                <div id="inboxView" class="view active">
-                    <div class="view-header">
-                        <h2><i class="fas fa-inbox"></i> Inbox</h2>
-                        <div class="loading" id="inboxLoading">
-                            <i class="fas fa-spinner fa-spin"></i> Loading emails...
+            <!-- POC: RightReadingPane -->
+            <section class="flex-1 flex flex-col bg-tech-black overflow-y-auto" style="background:#081425;">
+
+                <!-- Inbox View (reading placeholder) -->
+                <div id="inboxView" class="view active flex-1 flex-col items-center justify-center">
+                    <div class="flex flex-col items-center text-slate-500 py-20">
+                        <span class="material-symbols-outlined" style="font-size:56px;color:#1e293b;">inbox</span>
+                        <h3 class="text-lg font-semibold text-slate-400 mt-4">No Email Selected</h3>
+                        <p class="text-sm text-slate-500 mt-2">Select an email from the sidebar to read it.</p>
+                    </div>
+                </div>
+
+                <!-- Email Detail View (reading pane) -->
+                <div id="emailDetailView" class="view flex-1 flex-col">
+                    <!-- POC: ReadingPaneHeader -->
+                    <div class="p-6 flex items-center justify-between border border-sky-900/30 bg-slate-900/40 rounded-2xl mx-6 mt-6 shadow-2xl backdrop-blur-sm">
+                        <div class="flex items-center gap-4 flex-wrap">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold text-slate-500 uppercase tracking-widest">From:</span>
+                                <span class="text-sm font-mono text-cyber-blue" id="emailFrom" style="font-family:'JetBrains Mono',monospace;"></span>
+                            </div>
+                            <div id="bodyFormatToggle"></div>
+                            <button id="backToInbox" class="flex items-center gap-2 bg-slate-900 border border-slate-700/50 hover:bg-slate-700 hover:text-white text-slate-500 px-3 py-1 rounded transition-all uppercase text-[10px] font-bold">
+                                <span class="material-symbols-outlined text-xs">arrow_back</span> Back
+                            </button>
+                            <button id="replyBtn" class="flex items-center gap-2 bg-slate-900 border border-slate-700/50 hover:bg-slate-700 hover:text-white text-slate-500 px-3 py-1 rounded transition-all uppercase text-[10px] font-bold">
+                                <span class="material-symbols-outlined text-xs">reply</span> Reply
+                            </button>
+                        </div>
+                        <div class="text-right shrink-0 ml-6">
+                            <p class="text-sm font-bold text-slate-200 whitespace-nowrap"><span id="emailDateHuman"></span></p>
+                            <p class="text-[10px] font-mono text-slate-500 mt-0.5 whitespace-nowrap" id="emailDateFull"></p>
                         </div>
                     </div>
-                    <div id="emailList" class="email-list">
-                        <!-- Emails will be populated here -->
+                    <!-- POC: MessageContent -->
+                    <div class="p-6 md:p-10 mx-auto w-full max-w-4xl">
+                        <div class="bg-slate-900/40 border border-sky-900/30 rounded-xl p-6 md:p-8 shadow-2xl backdrop-blur-sm">
+                            <h2 id="emailSubject" class="text-2xl md:text-3xl font-semibold text-white mb-8 pb-6 border-b border-slate-800"></h2>
+                            <div id="emailBody" style="color:#cbd5e1;line-height:1.8;font-size:15px;"></div>
+                            <div id="emailAttachments" style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(30,41,59,0.5);"></div>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Compose View -->
-                <div id="composeView" class="view">
-                    <div class="view-header">
-                        <h2><i class="fas fa-edit"></i> Compose Email</h2>
+                <div id="composeView" class="view flex-1 flex-col items-center justify-start p-6 overflow-y-auto">
+                    <div class="w-full max-w-4xl border border-sky-500/30 rounded-lg bg-tech-black/90 p-8 flex flex-col gap-6 shadow-[0_0_30px_rgba(56,189,248,0.1)] backdrop-blur-md" style="background:rgba(8,20,37,0.9);">
+                        <div class="flex flex-col gap-2">
+                            <label class="text-cyber-blue font-mono text-sm uppercase tracking-widest font-bold" style="font-family:'JetBrains Mono',monospace;color:#38bdf8;">To</label>
+                            <input type="email" id="recipient" placeholder="recipient@example.com" required class="bg-tech-black border border-sky-500/40 rounded px-4 py-2 text-white focus:border-cyber-blue focus:ring-0 transition-all font-mono text-sm placeholder:text-slate-500" style="background:#081425;font-family:'JetBrains Mono',monospace;" />
+                        </div>
+                        <div class="flex flex-col gap-2">
+                            <label class="text-cyber-blue font-mono text-sm uppercase tracking-widest font-bold" style="font-family:'JetBrains Mono',monospace;color:#38bdf8;">Subject</label>
+                            <input type="text" id="subject" placeholder="Email subject" required class="bg-tech-black border border-sky-500/40 rounded px-4 py-2 text-white focus:border-cyber-blue focus:ring-0 transition-all font-mono text-sm placeholder:text-slate-500" style="background:#081425;font-family:'JetBrains Mono',monospace;" />
+                        </div>
+                        <div class="flex flex-col gap-2 flex-1">
+                            <label class="text-cyber-blue font-mono text-sm uppercase tracking-widest font-bold" style="font-family:'JetBrains Mono',monospace;color:#38bdf8;">Body</label>
+                            <textarea id="body" class="bg-tech-black border border-sky-500/40 rounded px-4 py-4 text-white focus:border-cyber-blue focus:ring-0 transition-all font-mono text-sm min-h-[320px] md:min-h-[450px] resize-none leading-relaxed placeholder:text-slate-500" placeholder="Write your message here..." required style="background:#081425;font-family:'JetBrains Mono',monospace;"></textarea>
+                        </div>
+                        <div class="flex items-center justify-between mt-4">
+                            <div class="flex flex-1 flex-col gap-2 px-4 overflow-hidden">
+                                <div class="flex items-center gap-2">
+                                    <button type="button" id="addAttachmentBtn" class="px-4 py-1.5 border border-sky-500/30 rounded text-sky-200 hover:text-white hover:bg-sky-900/30 transition-all font-mono text-[11px] uppercase tracking-widest" style="font-family:'JetBrains Mono',monospace;">Attach</button>
+                                    <span class="text-slate-400 font-mono text-[10px] uppercase tracking-tight opacity-60" style="font-family:'JetBrains Mono',monospace;">Max size: 8 MB</span>
+                                    <input type="file" id="attachmentInput" multiple style="display:none;">
+                                </div>
+                                <div id="attachmentList" class="flex flex-wrap items-center gap-2"></div>
+                            </div>
+                            <button type="submit" id="composeSubmitBtn" class="px-8 py-2 bg-cyber-blue/10 border border-cyber-blue/50 rounded text-cyber-blue font-mono text-sm uppercase tracking-widest hover:bg-cyber-blue/20 transition-all shadow-[0_0_15px_rgba(56,189,248,0.2)] flex items-center gap-2" style="font-family:'JetBrains Mono',monospace;color:#38bdf8;">
+                                <span>Send Message</span>
+                            </button>
+                        </div>
                     </div>
-                    <form id="composeForm" class="compose-form">
-                        <div class="form-group">
-                            <label for="recipient">To:</label>
-                            <input type="email" id="recipient" placeholder="recipient@example.com" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="subject">Subject:</label>
-                            <input type="text" id="subject" placeholder="Email subject" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="body">Message:</label>
-                            <textarea id="body" rows="10" placeholder="Write your message here..." required></textarea>
-                        </div>
-                        <div class="form-group attachment-group">
-                            <label for="attachmentInput"><i class="fas fa-paperclip"></i> Attachments:</label>
-                            <input type="file" id="attachmentInput" multiple style="display: none;">
-                            <button type="button" id="addAttachmentBtn" class="btn-secondary btn-sm">
-                                <i class="fas fa-plus"></i> Add Files
-                            </button>
-                            <span class="attachment-size-limit">Max 8 MB total</span>
-                            <div id="attachmentList" class="attachment-list"></div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="submit" class="btn-primary">
-                                <i class="fas fa-paper-plane"></i> Send Email
-                            </button>
-                            <button type="button" id="clearForm" class="btn-secondary">
-                                <i class="fas fa-eraser"></i> Clear
-                            </button>
-                        </div>
-                    </form>
-
-                    <div class="recent-sends-section" style="margin-top: 2rem; border-top: 1px solid #eee; padding-top: 1rem;">
-                        <h3><i class="fas fa-history"></i> Recent Sends</h3>
-                        <div id="recentSendsList" class="recent-sends-list"></div>
+                    <!-- Recent Sends -->
+                    <div style="width:100%;max-width:56rem;margin-top:2rem;padding-top:1.5rem;border-top:1px solid rgba(56,189,248,0.1);">
+                        <h3 class="text-lg font-semibold text-slate-100 flex items-center gap-2 mb-4">
+                            <span class="material-symbols-outlined">history</span> Recent Sends
+                        </h3>
+                        <div id="recentSendsList"></div>
                     </div>
                 </div>
 
-                <!-- Email Detail View -->
-                <div id="emailDetailView" class="view">
-                    <div class="view-header">
-                        <button id="backToInbox" class="btn-secondary">
-                            <i class="fas fa-arrow-left"></i> Back to Inbox
-                        </button>
-                        <button id="replyBtn" class="btn-primary">
-                            <i class="fas fa-reply"></i> Reply
-                        </button>
-                        <h2 id="emailSubject"></h2>
+                <!-- Sent Emails View -->
+                <div id="sentView" class="view flex-1 flex-col p-6 overflow-auto">
+                    <div class="mb-4">
+                        <h2 class="text-xl font-semibold text-slate-100 flex items-center gap-2">
+                            <span class="material-symbols-outlined">send</span> Sent Emails
+                        </h2>
                     </div>
-                    <div class="email-detail">
-                        <div class="email-meta">
-                            <div class="email-from">
-                                <strong>From:</strong> <span id="emailFrom"></span>
-                            </div>
-                            <div class="email-date">
-                                <strong>Date:</strong> <span id="emailDate"></span>
-                            </div>
-                        </div>
-                        <div class="email-content">
-                            <div id="bodyFormatToggle"></div>
-                            <div id="emailBody"></div>
-                            <div id="emailAttachments" class="email-attachments"></div>
+                    <div id="sentEmailsList">
+                        <div class="empty-state">
+                            <span class="material-symbols-outlined" style="font-size:48px;color:#1e293b;">send</span>
+                            <h3 style="color:#94a3b8;">No sent emails</h3>
+                            <p>Emails you send will appear here.</p>
                         </div>
                     </div>
                 </div>
+
             </section>
         </main>
     </div>
 
-    <!-- Status Messages -->
     <div id="statusContainer" class="status-container"></div>
 </div>
 {% endblock %}

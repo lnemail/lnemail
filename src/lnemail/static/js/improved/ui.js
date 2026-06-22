@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { ITEMS_PER_PAGE, RENEWAL_PRICE_PER_YEAR, RENEWAL_WARNING_DAYS } from './config.js';
 import { fetchEmailContent } from './api.js';
-import { escapeHtml, getFileIcon, isTextFile, formatFileSize } from './utils.js';
+import { escapeHtml, getFileIcon, isTextFile, formatFileSize, formatDateDMY, formatDateTime24 } from './utils.js';
 import { openEmail, renderEmailBodyContent } from './inbox.js';
 
 export function showStatus(message, type = 'info') {
@@ -9,20 +9,21 @@ export function showStatus(message, type = 'info') {
     const statusDiv = document.createElement('div');
     statusDiv.className = `status-message ${type}`;
 
-    const icon = type === 'success' ? 'check-circle' :
-                type === 'error' ? 'exclamation-circle' :
-                'info-circle';
+    const iconSvg = type === 'success'
+        ? '<svg class="w-4 h-4 inline flex-shrink-0" fill="currentColor" viewBox="0 0 24 24" style="color:#10B981"><path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clip-rule="evenodd"/></svg>'
+        : type === 'error'
+        ? '<svg class="w-4 h-4 inline flex-shrink-0" fill="currentColor" viewBox="0 0 24 24" style="color:#EF4444"><path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd"/></svg>'
+        : '<svg class="w-4 h-4 inline flex-shrink-0" fill="currentColor" viewBox="0 0 24 24" style="color:#3B82F6"><path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm8.706-1.442c1.146-.573 2.437.463 2.126 1.706l-.709 2.836.042-.02a.75.75 0 01.67 1.34l-.04.022c-1.147.573-2.438-.463-2.127-1.706l.71-2.836-.042.02a.75.75 0 11-.671-1.34l.041-.022zM12 9a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd"/></svg>';
 
     const closeBtn = document.createElement('button');
     closeBtn.className = 'status-close-btn';
     closeBtn.setAttribute('aria-label', 'Close notification');
-    closeBtn.innerHTML = '<i class="fas fa-times"></i>';
+    closeBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
 
-    // Progress bar
     const progressBar = document.createElement('div');
     progressBar.className = 'status-progress-bar';
 
-    statusDiv.innerHTML = `<i class="fas fa-${icon}"></i> <span class="status-message-text">${message}</span>`;
+    statusDiv.innerHTML = `${iconSvg} <span class="status-message-text">${message}</span>`;
     statusDiv.appendChild(closeBtn);
     statusDiv.appendChild(progressBar);
     statusContainer.appendChild(statusDiv);
@@ -80,38 +81,27 @@ export function updateAccountDisplay() {
         const daysUntilExpiry = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
         const isExpired = state.accountInfo.is_expired;
 
-        let relativeText;
-        if (isExpired) {
-            relativeText = 'Expired';
-        } else if (daysUntilExpiry > 1) {
-            relativeText = `Expires in ${daysUntilExpiry} days`;
-        } else if (daysUntilExpiry === 1) {
-            relativeText = 'Expires tomorrow';
-        } else if (daysUntilExpiry === 0) {
-            relativeText = 'Expires today';
-        } else {
-            relativeText = 'Expired';
+        const subDays = document.getElementById('subscriptionDays');
+        const subBox = document.getElementById('subscriptionDaysBox');
+        if (subDays) {
+            if (isExpired) {
+                subDays.textContent = '0d';
+                subDays.style.color = '#EF4444';
+            } else {
+                subDays.textContent = `${Math.max(0, daysUntilExpiry)}d`;
+                subDays.style.color = daysUntilExpiry <= RENEWAL_WARNING_DAYS ? '#fbbf24' : '#38bdf8';
+            }
+        }
+        if (subBox) {
+            if (isExpired) {
+                subBox.title = 'Subscription expired. Renew now to regain access.';
+            } else if (daysUntilExpiry <= RENEWAL_WARNING_DAYS) {
+                subBox.title = `${daysUntilExpiry} days remaining. Click Renew to extend your subscription.`;
+            } else {
+                subBox.title = `${daysUntilExpiry} days remaining. You can renew when 90 days or fewer are left.`;
+            }
         }
 
-        const exactDate = expiryDate.toLocaleDateString('en-US', {
-            year: 'numeric', month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-        });
-
-        const fullExpiryText = `${relativeText} (${exactDate})`;
-
-        const expiryEl = document.getElementById('accountExpiry');
-        expiryEl.textContent = fullExpiryText;
-        expiryEl.title = `Full expiry: ${expiryDate.toLocaleString()}`;
-
-        // Add visual indicator for expired or near-expiry accounts
-        const expiryContainer = expiryEl.closest('.account-expiry');
-        if (expiryContainer) {
-            expiryContainer.classList.toggle('expired', isExpired);
-            expiryContainer.classList.toggle('expiring-soon', !isExpired && daysUntilExpiry <= RENEWAL_WARNING_DAYS);
-        }
-
-        // Show/hide renew button in header
         const renewBtn = document.getElementById('renewBtn');
         if (renewBtn) {
             if (isExpired || daysUntilExpiry <= RENEWAL_WARNING_DAYS) {
@@ -141,10 +131,10 @@ export function renderEmailList() {
 
     if (state.emails.length === 0) {
         renderEmptyInbox();
+        refreshCheckboxControls();
         return;
     }
 
-    // Clean up any selections for emails that no longer exist
     cleanupSelectedEmails();
 
     const totalPages = Math.ceil(state.emails.length / ITEMS_PER_PAGE);
@@ -165,52 +155,34 @@ export function renderEmailList() {
         if (isToday) {
             dateDisplay = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
         } else if (isThisYear) {
-            dateDisplay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            dateDisplay = formatDateDMY(date).substring(0, 5); // DD/MM
         } else {
-            dateDisplay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            dateDisplay = formatDateDMY(date);
         }
 
         const senderName = (email.from || email.sender || 'Unknown Sender').replace(/<.*?>/, '').trim() || 'Unknown Sender';
         const subject = email.subject || 'No Subject';
+        const preview = (email.body_preview || email.preview || '').substring(0, 100);
         const isUnread = email.read === false;
-
         const isSelected = state.selectedEmailIds.has(email.id);
 
         return `
-            <div class="inbox-email-row ${isUnread ? 'inbox-unread' : 'inbox-read'}" data-email-id="${email.id}">
-                <div class="inbox-cell inbox-checkbox-cell">
-                    <input type="checkbox" class="email-checkbox" data-email-id="${email.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation()">
+            <div class="flex items-start gap-3 p-4 border-b border-sky-900/20 ${isUnread ? 'bg-sky-500/5 border-l-2 border-l-cyber-blue' : ''} cursor-pointer email-snippet" data-email-id="${email.id}">
+                <input type="checkbox" class="email-checkbox mt-1 w-4 h-4 rounded border-sky-900/50 bg-slate-900 text-cyber-blue cursor-pointer" data-email-id="${email.id}" ${isSelected ? 'checked' : ''}>
+                <div class="flex-1 min-w-0">
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="text-sm font-mono text-sky-400 truncate" style="font-family:'JetBrains Mono',monospace;">${escapeHtml(senderName)}</span>
+                        <span class="text-[10px] text-slate-500 uppercase flex-shrink-0 ml-2">${dateDisplay}</span>
+                    </div>
+                    <h3 class="text-sm font-semibold text-white mb-1 truncate">${escapeHtml(subject)}</h3>
+                    ${preview ? `<p class="text-xs text-slate-400 truncate">${escapeHtml(preview)}</p>` : ''}
                 </div>
-                <div class="inbox-cell inbox-status-cell"><i class="fas ${isUnread ? 'fa-circle' : 'fa-envelope-open'} read-status-icon"></i></div>
-                <div class="inbox-cell inbox-sender-cell">${escapeHtml(senderName)}</div>
-                <div class="inbox-cell inbox-subject-cell">${escapeHtml(subject)}</div>
-                <div class="inbox-cell inbox-date-cell">${dateDisplay}</div>
-            </div>
-        `;
+            </div>`;
     }).join('');
 
-    emailList.innerHTML = `
-        <div class="inbox-controls">
-            <button id="deleteSelectedBtn" class="btn-delete" disabled>
-                <i class="fas fa-trash"></i> DELETE (<span id="selectedCount">0</span>)
-            </button>
-        </div>
-        <div class="inbox-table">
-            <div class="inbox-table-header">
-                <div class="inbox-header-checkbox">
-                    <input type="checkbox" id="selectAllCheckbox" title="Select all">
-                </div>
-                <div class="inbox-header-status"></div>
-                <div class="inbox-header-sender">From</div>
-                <div class="inbox-header-subject">Subject</div>
-                <div class="inbox-header-date">Date</div>
-            </div>
-            <div class="inbox-table-body">${emailRows}</div>
-        </div>
-        ${renderPaginationControls(totalPages)}
-    `;
+    emailList.innerHTML = emailRows + renderPaginationControls(totalPages);
 
-    emailList.querySelectorAll('.inbox-email-row').forEach(item => {
+    emailList.querySelectorAll('.email-snippet').forEach(item => {
         item.addEventListener('click', (e) => {
             if (!e.target.matches('input[type="checkbox"]')) {
                 openEmail(item.dataset.emailId);
@@ -218,7 +190,6 @@ export function renderEmailList() {
         });
     });
 
-    // Add event listeners for checkboxes
     bindCheckboxEvents();
     bindPaginationEvents();
 }
@@ -227,9 +198,9 @@ function renderPaginationControls(totalPages) {
     if (totalPages <= 1) return '';
 
     let paginationHtml = `<div class="pagination-controls">`;
-    paginationHtml += `<button class="pagination-btn" data-page="${state.currentPage - 1}" ${state.currentPage === 1 ? 'disabled' : ''}><i class="fas fa-chevron-left"></i> Prev</button>`;
+    paginationHtml += `<button class="pagination-btn" data-page="${state.currentPage - 1}" ${state.currentPage === 1 ? 'disabled' : ''}><svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg> Prev</button>`;
     paginationHtml += `<span class="pagination-info">Page ${state.currentPage} of ${totalPages}</span>`;
-    paginationHtml += `<button class="pagination-btn" data-page="${state.currentPage + 1}" ${state.currentPage === totalPages ? 'disabled' : ''}>Next <i class="fas fa-chevron-right"></i></button>`;
+    paginationHtml += `<button class="pagination-btn" data-page="${state.currentPage + 1}" ${state.currentPage === totalPages ? 'disabled' : ''}>Next <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg></button>`;
     paginationHtml += `</div>`;
     return paginationHtml;
 }
@@ -246,17 +217,17 @@ function bindPaginationEvents() {
     });
 }
 
+let staticControlsBound = false;
+
 function bindCheckboxEvents() {
     const selectAllCheckbox = document.getElementById('selectAllCheckbox');
     const emailCheckboxes = document.querySelectorAll('.email-checkbox');
     const deleteBtn = document.getElementById('deleteSelectedBtn');
-    const selectedCountSpan = document.getElementById('selectedCount');
 
-    // Handle select all checkbox
-    if (selectAllCheckbox) {
+    if (selectAllCheckbox && !staticControlsBound) {
         selectAllCheckbox.addEventListener('change', () => {
             const isChecked = selectAllCheckbox.checked;
-            emailCheckboxes.forEach(checkbox => {
+            document.querySelectorAll('.email-checkbox').forEach(checkbox => {
                 checkbox.checked = isChecked;
                 const emailId = checkbox.dataset.emailId;
                 if (isChecked) {
@@ -267,9 +238,9 @@ function bindCheckboxEvents() {
             });
             updateDeleteButtonState();
         });
+        staticControlsBound = true;
     }
 
-    // Handle individual email checkboxes
     emailCheckboxes.forEach(checkbox => {
         checkbox.addEventListener('change', () => {
             const emailId = checkbox.dataset.emailId;
@@ -283,13 +254,12 @@ function bindCheckboxEvents() {
         });
     });
 
-    // Initialize states based on current selections
     updateSelectAllState();
     updateDeleteButtonState();
 
     function updateSelectAllState() {
         const checkedCount = document.querySelectorAll('.email-checkbox:checked').length;
-        const totalCount = emailCheckboxes.length;
+        const totalCount = document.querySelectorAll('.email-checkbox').length;
 
         if (selectAllCheckbox) {
             selectAllCheckbox.checked = checkedCount === totalCount && totalCount > 0;
@@ -299,17 +269,24 @@ function bindCheckboxEvents() {
 
     function updateDeleteButtonState() {
         const checkedCount = state.selectedEmailIds.size;
-
-        if (deleteBtn && selectedCountSpan) {
-            selectedCountSpan.textContent = checkedCount;
+        if (deleteBtn) {
             deleteBtn.disabled = checkedCount === 0;
-
-            if (checkedCount === 0) {
-                deleteBtn.innerHTML = '<i class="fas fa-trash"></i> DELETE (<span id="selectedCount">0</span>)';
-            } else {
-                deleteBtn.innerHTML = `<i class="fas fa-trash"></i> DELETE (<span id="selectedCount">${checkedCount}</span>)`;
-            }
+            deleteBtn.title = checkedCount > 0 ? `Delete ${checkedCount} selected` : 'Delete Selected';
         }
+    }
+}
+
+function refreshCheckboxControls() {
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const deleteBtn = document.getElementById('deleteSelectedBtn');
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+    }
+    if (deleteBtn) {
+        deleteBtn.disabled = true;
+        deleteBtn.title = 'Delete Selected';
     }
 }
 
@@ -337,10 +314,10 @@ function cleanupSelectedEmails() {
 
 function renderEmptyInbox() {
     document.getElementById('emailList').innerHTML = `
-        <div class="empty-state">
-            <i class="fas fa-inbox"></i>
-            <h3>No emails found</h3>
-            <p>Your inbox is empty or there was an issue loading your emails.<br>Try refreshing or check your connection.</p>
+        <div class="flex flex-col items-center justify-center py-20 px-6 text-center">
+            <svg class="w-12 h-12 text-slate-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
+            <h3 class="text-base font-semibold text-slate-500 mt-2">No emails found</h3>
+            <p class="text-sm text-slate-600 mt-2 max-w-xs leading-relaxed">Your inbox is empty or there was an issue loading your emails.<br>Try refreshing or check your connection.</p>
         </div>
     `;
 }
@@ -352,44 +329,77 @@ export function updateInboxCount() {
 
 /**
  * Render a toggle bar above the email body so the user can switch between
- * HTML and plain text views.  Hidden when only one format is available.
+ * HTML, plain text and source views.  Styled to match the primary nav.
  *
  * @param {boolean} hasPlain - Whether the email has a text/plain body.
  * @param {boolean} hasHtml  - Whether the email has a text/html body.
- * @param {string}  activeFormat - Currently active format ('html' or 'plain').
+ * @param {string}  activeFormat - Currently active format ('html', 'plain', or 'source').
  */
 export function renderBodyFormatToggle(hasPlain, hasHtml, activeFormat) {
     const container = document.getElementById('bodyFormatToggle');
     if (!container) return;
 
-    // Only show toggle when both formats exist
-    if (!hasPlain || !hasHtml) {
+    if (!hasHtml) {
         container.innerHTML = '';
         return;
     }
 
-    container.innerHTML = `
-        <div class="body-format-toggle">
-            <button class="body-format-btn ${activeFormat === 'html' ? 'active' : ''}" data-format="html">
-                <i class="fas fa-code"></i> HTML
-            </button>
-            <button class="body-format-btn ${activeFormat === 'plain' ? 'active' : ''}" data-format="plain">
-                <i class="fas fa-align-left"></i> Plain Text
-            </button>
-        </div>
-    `;
+    // Ensure active format is valid for what's available
+    if (!hasPlain && activeFormat === 'plain') {
+        activeFormat = 'html';
+    }
 
-    container.querySelectorAll('.body-format-btn').forEach(btn => {
+    const ACTIVE_CLASS = 'bg-sky-500/10 border border-sky-500/20 text-cyber-blue shadow-[0_0_15px_rgba(56,189,248,0.1)]';
+    const INACTIVE_CLASS = 'hover:bg-sky-900/30 text-sky-200';
+
+    const buttons = [
+        {
+            format: 'html',
+            label: 'HTML',
+            svg: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>',
+        },
+    ];
+
+    if (hasPlain) {
+        buttons.push({
+            format: 'plain',
+            label: 'Text',
+            svg: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h12M4 14h14M4 18h8"/></svg>',
+        });
+    }
+
+    buttons.push({
+        format: 'source',
+        label: 'Source',
+        svg: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>',
+    });
+
+    const buttonsHtml = buttons
+        .map(b => {
+            const cls = activeFormat === b.format
+                ? `${ACTIVE_CLASS} body-fmt-btn active`
+                : `${INACTIVE_CLASS} body-fmt-btn`;
+            return `<button class="flex items-center gap-2 px-4 py-1.5 rounded-md transition-all ${cls}" data-format="${b.format}">
+                ${b.svg} <span class="text-sm font-medium">${b.label}</span>
+            </button>`;
+        })
+        .join('');
+
+    container.innerHTML = `<div class="flex items-center gap-1 bg-sky-950/20 p-1 rounded-lg border border-sky-900/40">${buttonsHtml}</div>`;
+
+    container.querySelectorAll('.body-fmt-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const format = btn.dataset.format;
             if (format === state.currentBodyFormat) return;
 
             state.currentBodyFormat = format;
-            renderEmailBodyContent(state.currentEmail, format);
 
-            // Update active button state
-            container.querySelectorAll('.body-format-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
+            container.querySelectorAll('.body-fmt-btn').forEach(b => {
+                b.className = `flex items-center gap-2 px-4 py-1.5 rounded-md transition-all ${INACTIVE_CLASS} body-fmt-btn`;
+            });
+            btn.className = `flex items-center gap-2 px-4 py-1.5 rounded-md transition-all ${ACTIVE_CLASS} body-fmt-btn`;
+
+            renderEmailBodyContent(state.currentEmail, format);
         });
     });
 }
@@ -414,15 +424,15 @@ export function displayEmailAttachments(attachments) {
         return `
             <div class="attachment-detail" data-attachment-index="${index}">
                 <div class="attachment-info">
-                    <i class="fas ${fileIcon.icon}"></i>
+                    <span class="material-symbols-outlined" style="font-size:16px;color:${fileIcon.color}">${fileIcon.icon}</span>
                     <span class="attachment-name">${escapeHtml(filename)}</span>
                     ${sizeDisplay ? `<span class="attachment-size">(${sizeDisplay})</span>` : ''}
                     <span class="attachment-type">${escapeHtml(attachment.content_type || '')}</span>
                 </div>
                 <div class="attachment-actions">
                     ${hasContent ? `
-                        <button class="btn-small attachment-download-btn"><i class="fas fa-download"></i> Download</button>
-                        ${isText ? `<button class="btn-small attachment-preview-btn"><i class="fas fa-eye"></i> Preview</button>` : ''}
+                        <button class="btn-small attachment-download-btn"><svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg> Download</button>
+                        ${isText ? `<button class="btn-small attachment-preview-btn"><svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg> Preview</button>` : ''}
                     ` : '<span class="attachment-note">No content available</span>'}
                 </div>
             </div>
@@ -431,7 +441,7 @@ export function displayEmailAttachments(attachments) {
 
     attachmentsContainer.innerHTML = `
         <div class="attachments-section">
-            <h4><i class="fas fa-paperclip"></i> Attachments (${attachments.length})</h4>
+            <h4><svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg> Attachments (${attachments.length})</h4>
             <div class="attachments-list-detail">${attachmentsList}</div>
         </div>
     `;
@@ -518,7 +528,7 @@ function previewAttachment(index) {
                     ${modalContent}
                 </div>
                 <div class="preview-actions">
-                    <button class="btn-small preview-download-btn"><i class="fas fa-download"></i> Download</button>
+                    <button class="btn-small preview-download-btn"><svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg> Download</button>
                 </div>
             </div>
         `;
@@ -549,43 +559,33 @@ export function clearComposeForm() {
 }
 
 export function updateHealthStatus(healthData) {
-    const healthIcon = document.getElementById('healthIcon');
-    const healthStatus = document.getElementById('healthStatus');
     const healthStatusValue = document.getElementById('healthStatusValue');
     const healthVersionValue = document.getElementById('healthVersionValue');
     const healthTimestampValue = document.getElementById('healthTimestampValue');
 
     if (healthData.success && healthData.data) {
-        // Update header indicator
-        healthIcon.className = 'fas fa-check-circle';
-        healthIcon.style.color = '#28a745'; // Green color
-        healthStatus.textContent = 'API Status: Online';
+        if (healthStatusValue) {
+            healthStatusValue.textContent = healthData.data.status || 'OK';
+            healthStatusValue.style.color = '#28a745';
+        }
+        if (healthVersionValue) healthVersionValue.textContent = healthData.data.version || 'Unknown';
 
-        // Update detailed status
-        healthStatusValue.textContent = healthData.data.status || 'OK';
-        healthStatusValue.style.color = '#28a745';
-        healthVersionValue.textContent = healthData.data.version || 'Unknown';
-
-        // Format timestamp
-        if (healthData.data.timestamp) {
-            const timestamp = new Date(healthData.data.timestamp);
-            healthTimestampValue.textContent = timestamp.toLocaleString();
-        } else {
-            healthTimestampValue.textContent = new Date().toLocaleString();
+        if (healthTimestampValue) {
+            if (healthData.data.timestamp) {
+                const timestamp = new Date(healthData.data.timestamp);
+                healthTimestampValue.textContent = formatDateTime24(timestamp);
+            } else {
+                healthTimestampValue.textContent = formatDateTime24(new Date());
+            }
         }
     } else {
-        // Update header indicator for error
-        healthIcon.className = 'fas fa-exclamation-circle';
-        healthIcon.style.color = '#dc3545'; // Red color
-        healthStatus.textContent = 'API Status: Error';
+        if (healthStatusValue) {
+            healthStatusValue.textContent = 'Error';
+            healthStatusValue.style.color = '#dc3545';
+        }
+        if (healthVersionValue) healthVersionValue.textContent = '-';
+        if (healthTimestampValue) healthTimestampValue.textContent = formatDateTime24(new Date());
 
-        // Update detailed status for error
-        healthStatusValue.textContent = 'Error';
-        healthStatusValue.style.color = '#dc3545';
-        healthVersionValue.textContent = '-';
-        healthTimestampValue.textContent = new Date().toLocaleString();
-
-        // Show error message
         if (healthData.error) {
             showStatus(`Health check failed: ${healthData.error}`, 'error');
         }
@@ -593,18 +593,16 @@ export function updateHealthStatus(healthData) {
 }
 
 export function updateHealthStatusLoading() {
-    const healthIcon = document.getElementById('healthIcon');
+    const healthDot = document.getElementById('healthDot');
     const healthStatus = document.getElementById('healthStatus');
     const healthStatusValue = document.getElementById('healthStatusValue');
 
-    // Update header indicator
-    healthIcon.className = 'fas fa-spinner fa-spin';
-    healthIcon.style.color = '#ffc107'; // Yellow color
-    healthStatus.textContent = 'API Status: Checking...';
-
-    // Update detailed status
-    healthStatusValue.textContent = 'Checking...';
-    healthStatusValue.style.color = '#ffc107';
+    if (healthDot) healthDot.style.background = '#fbbf24';
+    if (healthStatus) healthStatus.textContent = 'API Status: Checking...';
+    if (healthStatusValue) {
+        healthStatusValue.textContent = 'Checking...';
+        healthStatusValue.style.color = '#ffc107';
+    }
 }
 
 // Login page health status functions
@@ -616,37 +614,41 @@ export function updateLoginHealthStatus(healthData) {
     const loginHealthTimestampValue = document.getElementById('loginHealthTimestampValue');
 
     if (healthData.success && healthData.data) {
-        // Update login health indicator
-        loginHealthIcon.className = 'fas fa-check-circle';
-        loginHealthIcon.style.color = '#28a745'; // Green color
-        loginHealthStatus.textContent = 'API Status: Online';
+        if (loginHealthIcon) {
+            loginHealthIcon.textContent = 'check_circle';
+            loginHealthIcon.style.color = '#28a745';
+        }
+        if (loginHealthStatus) loginHealthStatus.textContent = 'API Status: Online';
 
-        // Update detailed status
-        loginHealthStatusValue.textContent = healthData.data.status || 'OK';
-        loginHealthStatusValue.style.color = '#28a745';
-        loginHealthVersionValue.textContent = healthData.data.version || 'Unknown';
+        if (loginHealthStatusValue) {
+            loginHealthStatusValue.textContent = healthData.data.status || 'OK';
+            loginHealthStatusValue.style.color = '#28a745';
+        }
+        if (loginHealthVersionValue) loginHealthVersionValue.textContent = healthData.data.version || 'Unknown';
 
-        // Format timestamp
-        if (healthData.data.timestamp) {
-            const timestamp = new Date(healthData.data.timestamp);
-            loginHealthTimestampValue.textContent = timestamp.toLocaleString();
-        } else {
-            loginHealthTimestampValue.textContent = new Date().toLocaleString();
+        if (loginHealthTimestampValue) {
+            if (healthData.data.timestamp) {
+                const timestamp = new Date(healthData.data.timestamp);
+                loginHealthTimestampValue.textContent = formatDateTime24(timestamp);
+            } else {
+                loginHealthTimestampValue.textContent = formatDateTime24(new Date());
+            }
         }
     } else {
-        // Update login health indicator for error
-        loginHealthIcon.className = 'fas fa-exclamation-circle';
-        loginHealthIcon.style.color = '#dc3545'; // Red color
-        loginHealthStatus.textContent = 'API Status: Error';
+        if (loginHealthIcon) {
+            loginHealthIcon.textContent = 'error';
+            loginHealthIcon.style.color = '#dc3545';
+        }
+        if (loginHealthStatus) loginHealthStatus.textContent = 'API Status: Error';
 
-        // Update detailed status for error
-        loginHealthStatusValue.textContent = 'Error';
-        loginHealthStatusValue.style.color = '#dc3545';
-        loginHealthVersionValue.textContent = '-';
-        loginHealthTimestampValue.textContent = new Date().toLocaleString();
+        if (loginHealthStatusValue) {
+            loginHealthStatusValue.textContent = 'Error';
+            loginHealthStatusValue.style.color = '#dc3545';
+        }
+        if (loginHealthVersionValue) loginHealthVersionValue.textContent = '-';
+        if (loginHealthTimestampValue) loginHealthTimestampValue.textContent = formatDateTime24(new Date());
     }
 
-    // Update connect button state based on health status
     updateConnectButtonState(healthData.success);
 }
 
@@ -655,22 +657,23 @@ export function updateLoginHealthStatusLoading() {
     const loginHealthStatus = document.getElementById('loginHealthStatus');
     const loginHealthStatusValue = document.getElementById('loginHealthStatusValue');
 
-    // Update login health indicator
-    loginHealthIcon.className = 'fas fa-spinner fa-spin';
-    loginHealthIcon.style.color = '#ffc107'; // Yellow color
-    loginHealthStatus.textContent = 'API Status: Checking...';
+    if (loginHealthIcon) {
+        loginHealthIcon.textContent = 'progress_activity';
+        loginHealthIcon.style.color = '#ffc107';
+    }
+    if (loginHealthStatus) loginHealthStatus.textContent = 'API Status: Checking...';
+    if (loginHealthStatusValue) {
+        loginHealthStatusValue.textContent = 'Checking...';
+        loginHealthStatusValue.style.color = '#ffc107';
+    }
 
-    // Update detailed status
-    loginHealthStatusValue.textContent = 'Checking...';
-    loginHealthStatusValue.style.color = '#ffc107';
-
-    // Disable connect button while checking
     updateConnectButtonState(false);
 }
 
 export function updateConnectButtonState(isHealthy) {
     const connectBtn = document.getElementById('connectBtn');
-    const accessToken = document.getElementById('accessToken');
+
+    if (!connectBtn) return;
 
     if (isHealthy) {
         connectBtn.disabled = false;
@@ -701,7 +704,7 @@ export function updatePaymentModal(invoiceData) {
     const qrContainer = document.querySelector('.qr-code-container');
     qrContainer.innerHTML = `
         <div class="qr-loader">
-            <i class="fas fa-spinner fa-spin"></i>
+            <svg class="w-5 h-5 animate-spin mx-auto mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
             <p>Generating QR Code...</p>
         </div>
     `;
@@ -819,7 +822,7 @@ function showFallbackQRCode(paymentRequest) {
 
     container.innerHTML = `
         <div class="qr-fallback-box">
-            <i class="fas fa-qrcode qr-fallback-icon"></i>
+            <svg class="w-12 h-12 mx-auto mb-2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v1m6 11h2m-6 0h-2m4-4v1m-4-3v1m4-3v2m-4-2v2m4-1h2m-10 4h2m-4-4h2m-4 4h2m-4-4h2m-4 4h2m-4-4h2m-4 4h2" /></svg>
             <p class="qr-fallback-title">QR Code Unavailable</p>
             <p class="qr-fallback-desc">Please copy the invoice manually:</p>
             <textarea readonly class="qr-fallback-textarea">${paymentRequest}</textarea>
@@ -837,25 +840,29 @@ export function updatePaymentStatus(status, message) {
     switch (status) {
         case 'pending':
             statusContainer.classList.add('pending');
-            statusIcon.className = 'fas fa-circle-notch fa-spin';
+            statusIcon.textContent = 'progress_activity';
             statusIcon.style.color = '#ffc107';
+            statusIcon.style.animation = 'spin 1s linear infinite';
             statusText.textContent = message || 'Waiting for payment...';
             break;
         case 'success':
             statusContainer.classList.add('success');
-            statusIcon.className = 'fas fa-check-circle';
+            statusIcon.textContent = 'check_circle';
             statusIcon.style.color = '#28a745';
+            statusIcon.style.animation = '';
             statusText.textContent = message || 'Payment confirmed!';
             break;
         case 'error':
             statusContainer.classList.add('error');
-            statusIcon.className = 'fas fa-exclamation-circle';
+            statusIcon.textContent = 'error';
             statusIcon.style.color = '#dc3545';
+            statusIcon.style.animation = '';
             statusText.textContent = message || 'Payment failed';
             break;
         default:
-            statusIcon.className = 'fas fa-circle-notch fa-spin';
+            statusIcon.textContent = 'progress_activity';
             statusIcon.style.color = '#ffc107';
+            statusIcon.style.animation = 'spin 1s linear infinite';
             statusText.textContent = message || 'Checking payment status...';
     }
 }
@@ -890,8 +897,9 @@ export function updatePaymentModalWithDelivery(statusResponse) {
             // Optionally override the icon to be a spinner if we want to show it's still working
             const statusIcon = document.getElementById('paymentStatusIcon');
             if (statusIcon) {
-                statusIcon.className = 'fas fa-spinner fa-spin';
+                statusIcon.textContent = 'progress_activity';
                 statusIcon.style.color = '#28a745';
+                statusIcon.style.animation = 'spin 1s linear infinite';
             }
         }
     }
@@ -907,15 +915,15 @@ export function renderRecentSends() {
     }
 
     const html = state.recentSends.map(send => {
-        const date = new Date(send.created_at).toLocaleDateString();
-        let statusIcon = 'clock';
+        const date = formatDateDMY(new Date(send.created_at));
+        let statusIcon = 'schedule';
         let statusClass = 'pending';
 
         if (send.delivery_status === 'sent') {
-            statusIcon = 'check-circle';
+            statusIcon = 'check_circle';
             statusClass = 'success';
         } else if (send.delivery_status === 'failed') {
-            statusIcon = 'exclamation-circle';
+            statusIcon = 'error';
             statusClass = 'error';
         }
 
@@ -928,7 +936,7 @@ export function renderRecentSends() {
                 <div class="send-meta">
                     <span class="send-date">${date}</span>
                     <span class="send-status ${statusClass}" title="${send.delivery_status}">
-                        <i class="fas fa-${statusIcon}"></i>
+                        <span class="material-symbols-outlined" style="font-size:14px;">${statusIcon}</span>
                     </span>
                 </div>
             </div>
@@ -936,6 +944,55 @@ export function renderRecentSends() {
     }).join('');
 
     container.innerHTML = html;
+}
+
+export function renderSentEmails() {
+    const container = document.getElementById('sentEmailsList');
+    if (!container) return;
+
+    if (!state.recentSends || state.recentSends.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <span class="material-symbols-outlined" style="font-size:48px;color:#1e293b;">send</span>
+                <h3>No sent emails</h3>
+                <p>Emails you send will appear here.</p>
+            </div>`;
+        return;
+    }
+
+    const rows = state.recentSends.map(send => {
+        const date = new Date(send.created_at);
+        const isToday = date.toDateString() === new Date().toDateString();
+        const timePart = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        const dateDisplay = isToday
+            ? `Today at ${timePart}`
+            : `${formatDateDMY(date)} at ${timePart}`;
+        const fullDate = formatDateTime24(date);
+
+        return `
+            <tr class="hover:bg-sky-900/10 transition-colors group">
+                <td class="px-6 py-4 text-sm text-sky-100">${escapeHtml(send.recipient)}</td>
+                <td class="px-6 py-4 text-sm text-white">${escapeHtml(send.subject)}</td>
+                <td class="px-6 py-4">
+                    <div class="text-sm text-sky-200">${dateDisplay}</div>
+                    <div class="text-[10px] text-slate-400">${fullDate} GMT</div>
+                </td>
+            </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="border border-sky-900/30 rounded-lg bg-tech-black/40 overflow-hidden">
+            <table class="w-full text-left border-collapse" style="font-family:'JetBrains Mono',monospace;">
+                <thead class="bg-sky-950/30 border-b border-sky-900/30">
+                    <tr class="text-sky-500 text-[11px] uppercase tracking-widest">
+                        <th class="px-6 py-3 font-bold">Destination</th>
+                        <th class="px-6 py-3 font-bold">Subject</th>
+                        <th class="px-6 py-3 font-bold">Date</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-sky-900/20">${rows}</tbody>
+            </table>
+        </div>`;
 }
 
 export function initMobileMenu() {
@@ -997,7 +1054,7 @@ function resetRenewalModal() {
     // Reset cancel button
     const cancelBtn = document.getElementById('cancelRenewalBtn');
     if (cancelBtn) {
-        cancelBtn.innerHTML = '<i class="fas fa-times"></i> Cancel';
+        cancelBtn.innerHTML = '<svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg> Cancel';
         cancelBtn.className = 'btn-secondary';
     }
 
@@ -1042,17 +1099,14 @@ export function updateRenewalModal(invoiceData) {
     // Format new expiry date
     if (invoiceData.new_expires_at) {
         const expiryDate = new Date(invoiceData.new_expires_at);
-        document.getElementById('renewalNewExpiry').textContent =
-            expiryDate.toLocaleDateString('en-US', {
-                year: 'numeric', month: 'short', day: 'numeric'
-            });
+        document.getElementById('renewalNewExpiry').textContent = formatDateDMY(expiryDate);
     }
 
     // Set loading state for QR code
     const qrContainer = document.getElementById('renewalQrContainer');
     qrContainer.innerHTML = `
         <div class="qr-loader">
-            <i class="fas fa-spinner fa-spin"></i>
+            <svg class="w-5 h-5 animate-spin mx-auto mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
             <p>Generating QR Code...</p>
         </div>
     `;
@@ -1092,7 +1146,7 @@ async function generateRenewalQRCode(paymentRequest) {
         if (container) {
             container.innerHTML = `
                 <div class="qr-fallback-box">
-                    <i class="fas fa-qrcode qr-fallback-icon"></i>
+                    <svg class="w-12 h-12 mx-auto mb-2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v1m6 11h2m-6 0h-2m4-4v1m-4-3v1m4-3v2m-4-2v2m4-1h2m-10 4h2m-4-4h2m-4 4h2m-4-4h2m-4 4h2m-4-4h2m-4 4h2" /></svg>
                     <p class="qr-fallback-title">QR Code Unavailable</p>
                     <p class="qr-fallback-desc">Please copy the invoice manually:</p>
                     <textarea readonly class="qr-fallback-textarea">${paymentRequest}</textarea>
@@ -1110,25 +1164,26 @@ export function updateRenewalPaymentStatus(status, message) {
 
     statusText.textContent = message;
 
-    // Reset icon classes
-    statusIcon.className = 'fas';
-
     switch (status) {
         case 'pending':
-            statusIcon.classList.add('fa-circle-notch', 'fa-spin');
+            statusIcon.textContent = 'progress_activity';
             statusIcon.style.color = '#ffc107';
+            statusIcon.style.animation = 'spin 1s linear infinite';
             break;
         case 'success':
-            statusIcon.classList.add('fa-check-circle');
+            statusIcon.textContent = 'check_circle';
             statusIcon.style.color = '#28a745';
+            statusIcon.style.animation = '';
             break;
         case 'error':
-            statusIcon.classList.add('fa-exclamation-circle');
+            statusIcon.textContent = 'error';
             statusIcon.style.color = '#dc3545';
+            statusIcon.style.animation = '';
             break;
         default:
-            statusIcon.classList.add('fa-circle-notch', 'fa-spin');
+            statusIcon.textContent = 'progress_activity';
             statusIcon.style.color = '#ffc107';
+            statusIcon.style.animation = 'spin 1s linear infinite';
     }
 }
 
@@ -1159,16 +1214,11 @@ export function setExpiredOverlay(show) {
 
     if (show) {
         mainContent.classList.add('expired-blocked');
-        // Disable compose and refresh buttons
         const composeBtn = document.getElementById('composeBtn');
-        const refreshBtn = document.getElementById('refreshBtn');
         if (composeBtn) composeBtn.disabled = true;
-        if (refreshBtn) refreshBtn.disabled = true;
     } else {
         mainContent.classList.remove('expired-blocked');
         const composeBtn = document.getElementById('composeBtn');
-        const refreshBtn = document.getElementById('refreshBtn');
         if (composeBtn) composeBtn.disabled = false;
-        if (refreshBtn) refreshBtn.disabled = false;
     }
 }

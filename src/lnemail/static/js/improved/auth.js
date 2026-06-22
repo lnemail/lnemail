@@ -9,6 +9,7 @@ import {
     showRenewalModal, hideRenewalModal, showRenewalBanner, hideRenewalBanner,
     setExpiredOverlay
 } from './ui.js';
+import { showCopyFeedback } from './utils.js';
 import { refreshInbox, startAutoRefresh, stopAutoRefresh } from './inbox.js';
 
 function getSavedToken() {
@@ -47,7 +48,7 @@ export async function handleConnect() {
 
     const connectBtn = document.getElementById('connectBtn');
     const originalText = connectBtn.innerHTML;
-    connectBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
+    connectBtn.innerHTML = '<span class="material-symbols-outlined animate-spin" style="font-size:16px;vertical-align:-3px;">progress_activity</span> Verifying...';
     connectBtn.disabled = true;
 
     try {
@@ -124,6 +125,7 @@ export function handleDisconnect() {
     state.accessToken = null;
     state.accountInfo = null;
     state.emails = [];
+    state.selectedEmailIds.clear();
     state.currentPage = 1;
     state.currentPayment = null;
     state.currentRenewal = null;
@@ -142,15 +144,11 @@ export function handleDisconnect() {
 }
 
 export async function tryAutoConnect() {
-    // Perform initial health check first
-    // Note: Don't call showTokenModal() here -- init() already hides it
-    // if a saved token exists (to prevent FOUC). The modal starts as active
-    // in the HTML, so it's visible by default when no token is saved.
-    await performLoginHealthCheck();
+    // init() already fired performLoginHealthCheck(), but since both are
+    // fire-and-forget async functions we re-verify health for auto-connect.
 
     const savedToken = getSavedToken();
     if (savedToken) {
-        // Check API health before attempting auto-connect
         const healthResult = await checkApiHealth();
         updateLoginHealthStatus(healthResult);
 
@@ -235,7 +233,7 @@ export function showAccessTokenRecovery() {
     tokenInput.type = 'password';
     const toggle = document.getElementById('recoverTokenToggle');
     if (toggle) {
-        toggle.innerHTML = '<i class="fas fa-eye"></i>';
+        toggle.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">visibility</span>';
     }
     modal.classList.add('active');
 }
@@ -269,15 +267,15 @@ export function bindAccessTokenRecovery() {
         toggleBtn.addEventListener('click', () => {
             const showing = tokenInput.type === 'text';
             tokenInput.type = showing ? 'password' : 'text';
-            toggleBtn.innerHTML = showing
-                ? '<i class="fas fa-eye"></i>'
-                : '<i class="fas fa-eye-slash"></i>';
+            const icon = toggleBtn.querySelector('.material-symbols-outlined');
+            if (icon) icon.textContent = showing ? 'visibility' : 'visibility_off';
         });
     }
     if (copyBtn && tokenInput) {
         copyBtn.addEventListener('click', async () => {
             try {
                 await navigator.clipboard.writeText(tokenInput.value);
+                showCopyFeedback(copyBtn);
                 showStatus('Access token copied to clipboard', 'success');
             } catch (err) {
                 showStatus('Failed to copy token: ' + err.message, 'error');

@@ -1,7 +1,7 @@
 import { createEmailAccount, checkAccountPaymentStatus } from './api.js';
 import { tryAutoPayWebLN } from './webln.js';
 import { showStatus, initMobileMenu } from './ui.js';
-import { copyToClipboard } from './utils.js';
+import { copyToClipboard, showCopyFeedback, formatDateDMY } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     initMobileMenu();
@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
         copyInvoiceBtn.addEventListener('click', async () => {
             try {
                 await copyToClipboard(bolt11Invoice.textContent);
+                showCopyFeedback(copyInvoiceBtn);
                 showStatus('Copied to clipboard!', 'success');
             } catch (err) {
                 console.error('Failed to copy text: ', err);
@@ -64,6 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 : '';
             try {
                 await copyToClipboard(value);
+                showCopyFeedback(e.target.closest('button'));
                 showStatus('Copied to clipboard!', 'success');
             } catch (err) {
                 console.error('Failed to copy text: ', err);
@@ -278,12 +280,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Format expiry date if available
         if (expiresAtEl && data.expires_at) {
             const expiryDate = new Date(data.expires_at);
-            expiresAtEl.textContent = expiryDate.toLocaleDateString();
+            expiresAtEl.textContent = formatDateDMY(expiryDate);
         } else if (expiresAtEl) {
             // Calculate expiry date (1 year from now) as fallback
             const expiryDate = new Date();
             expiryDate.setFullYear(expiryDate.getFullYear() + 1);
-            expiresAtEl.textContent = expiryDate.toLocaleDateString();
+            expiresAtEl.textContent = formatDateDMY(expiryDate);
         }
 
         // Stash credentials for the inbox login page to pre-fill the

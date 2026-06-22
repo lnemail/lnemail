@@ -8,9 +8,10 @@ import {
     displayEmailAttachments,
     showView,
     renderRecentSends,
+    renderSentEmails,
     renderBodyFormatToggle,
 } from './ui.js';
-import { formatEmailBody } from './utils.js';
+import { formatEmailBody, formatDateDMY } from './utils.js';
 
 export async function refreshRecentSends() {
     if (!state.accessToken) return;
@@ -20,6 +21,7 @@ export async function refreshRecentSends() {
         if (response && response.sends) {
             state.recentSends = response.sends;
             renderRecentSends();
+            renderSentEmails();
         }
     } catch (error) {
         // console.error('Failed to load recent sends:', error);
@@ -32,8 +34,18 @@ export async function refreshInbox() {
         return;
     }
 
-    const loadingElement = document.getElementById('inboxLoading');
-    loadingElement.classList.remove('hidden');
+    let loadingElement = document.getElementById('inboxLoading');
+    if (!loadingElement) {
+        const emailList = document.getElementById('emailList');
+        if (emailList) {
+            loadingElement = document.createElement('div');
+            loadingElement.id = 'inboxLoading';
+            loadingElement.className = 'flex flex-col items-center justify-center py-16 px-6 text-center';
+            loadingElement.innerHTML = '<span class="material-symbols-outlined animate-spin text-xl" style="color:#38bdf8;">progress_activity</span><span class="text-sm text-slate-500 mt-3">Loading emails...</span>';
+            emailList.appendChild(loadingElement);
+        }
+    }
+    if (loadingElement) loadingElement.classList.remove('hidden');
 
     try {
         // Load emails and recent sends in parallel
@@ -50,7 +62,7 @@ export async function refreshInbox() {
         showStatus(`Failed to load emails: ${error.message}`, 'error');
         renderEmailList(); // will render empty state
     } finally {
-        loadingElement.classList.add('hidden');
+        if (loadingElement) loadingElement.classList.add('hidden');
     }
 }
 
@@ -100,7 +112,27 @@ export async function openEmail(emailId) {
 
     document.getElementById('emailSubject').textContent = fullEmail.subject || 'No Subject';
     document.getElementById('emailFrom').textContent = fullEmail.from || fullEmail.sender || 'Unknown Sender';
-    document.getElementById('emailDate').textContent = new Date(fullEmail.date || fullEmail.timestamp || Date.now()).toLocaleString();
+
+    // Date display: human-readable relative + full timestamp
+    const emailDate = new Date(fullEmail.date || fullEmail.timestamp || Date.now());
+    const now = new Date();
+    const isToday = emailDate.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = emailDate.toDateString() === yesterday.toDateString();
+
+    let relativePart;
+    if (isToday) {
+        relativePart = 'Today';
+    } else if (isYesterday) {
+        relativePart = 'Yesterday';
+    } else {
+        relativePart = formatDateDMY(emailDate);
+    }
+    const timePart = emailDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    document.getElementById('emailDateHuman').textContent = `${relativePart}  at ${timePart}`;
+
+    document.getElementById('emailDateFull').textContent = formatDateDMY(emailDate);
 
     // Determine which body format to show and render toggle
     const hasPlain = !!fullEmail.body_plain;
@@ -127,10 +159,15 @@ export async function openEmail(emailId) {
 export function renderEmailBodyContent(email, format) {
     const bodyEl = document.getElementById('emailBody');
 
-    if (format === 'html' && email.body_html) {
+    if (format === 'source' && email.body_html) {
+        bodyEl.innerHTML = formatEmailBody(email.body_html, 'text/plain');
+    } else if (format === 'html' && email.body_html) {
         bodyEl.innerHTML = formatEmailBody(email.body_html, 'text/html');
     } else if (format === 'plain' && email.body_plain) {
         bodyEl.innerHTML = formatEmailBody(email.body_plain, 'text/plain');
+    } else if (format === 'plain' && email.body_html) {
+        // Fallback: show escaped HTML when no text/plain part exists
+        bodyEl.innerHTML = formatEmailBody(email.body_html, 'text/plain');
     } else {
         // Fallback to primary body field
         bodyEl.innerHTML = formatEmailBody(

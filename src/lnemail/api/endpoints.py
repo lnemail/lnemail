@@ -617,7 +617,7 @@ async def list_emails(
         )
 
         # Convert the returned data to the correct type
-        email_headers: list[EmailHeader] = [EmailHeader(**email) for email in emails]
+        email_headers = [EmailHeader(**email) for email in emails]
 
         # Prepend a virtual expiration warning if account expires soon
         now = datetime.utcnow()

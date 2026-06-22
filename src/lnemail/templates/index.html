@@ -1,10 +1,9 @@
 {% extends "base.html" %}
-{% block title %}LNemail - Anonymous Email Accounts Powered by Bitcoin Lightning Network{% endblock %}
+{% block title %}LNemail - Anonymous Email Accounts Powered by Bitcoin Lightning{% endblock %}
 {% block description %}Create anonymous email accounts instantly with Bitcoin Lightning Network. Pay 1000 sats for a 1-year account, 100 sats per outgoing email. No signup, no personal data. Full REST API with Bearer token auth. Send and receive emails privately.{% endblock %}
 {% block keywords %}bitcoin lightning email, anonymous email, lightning network disposable email, bitcoin email service, instant anonymous email, lightning payments email, private bitcoin email, anonymous email bitcoin, disposable email API{% endblock %}
 {% block og_url %}https://lnemail.net/{% endblock %}
-{% block extra_head %}
-{% endblock %}
+{% block extra_head %}{% endblock %}
 {% block extra_jsonld %}
     <script type="application/ld+json">
     {
@@ -47,189 +46,290 @@
     </script>
 {% endblock %}
 {% block content %}
-<section class="hero">
-    <h2>Fast Anonymous Email Accounts</h2>
-    <p>Get instant disposable email addresses powered by Bitcoin Lightning Network. No personal information required - just pay with Lightning and start sending and receiving emails immediately.</p>
-</section>
-<section id="payment-section" class="card">
-    <div id="pre-payment">
-        <h3>Get Your Anonymous Email</h3>
-        <p>Price: <strong>{{ settings.EMAIL_PRICE }} sats</strong> for 1 year</p>
-        <!-- LNProxy note temporarily removed
-            <p class="note">Actual price may be slightly higher due to invoice wrapping with <a href="https://lnproxy.org" target="_blank">lnproxy.org</a> for enhanced privacy.</p>
-        -->
-        <div class="checkbox-group">
-            <label>
-                <input type="checkbox" id="include-email" checked> Include email in description
-            </label>
-            <label>
-                <input type="checkbox" id="include-token" checked> Include token in description
-            </label>
-        </div>
-        <button id="create-invoice" class="btn primary">Create Lightning Invoice</button>
-    </div>
-    <div id="payment-pending" class="hidden">
-        <h3>Pay Bitcoin Lightning Invoice</h3>
-        <div id="qr-container">
-            <div id="qrcode"></div>
-        </div>
-        <div class="payment-details">
-            <p>Email Address: <span id="payment-email"></span></p>
-            <p>Access Token: <span id="payment-token"></span></p>
-            <p id="invoice-amount"></p>
-            <p class="copy-wrapper">
-                <span id="bolt11-invoice" class="copy-text"></span>
-                <button id="copy-invoice" class="btn small">Copy</button>
-            </p>
+<!-- Ambient Grid Background -->
+<div class="absolute inset-0 bg-grid pointer-events-none -z-10 h-[800px] w-full top-0 left-0"></div>
 
-            <div class="status-container-local">
-                <div class="loader"></div>
-                <p class="status-text">Waiting for Lightning payment...</p>
+<!-- Hero Section -->
+<section class="w-full max-w-[1100px] mx-auto px-gutter pt-24 pb-16 flex flex-col items-center text-center relative">
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary-container/10 blur-[100px] rounded-full pointer-events-none -z-10"></div>
+    <h1 class="text-5xl md:text-7xl font-extrabold text-on-surface mb-6 leading-tight tracking-tight whitespace-nowrap">
+        Fast <span style="color: #38bdf8;">Anonymous</span> Email Accounts
+    </h1>
+    <p class="font-body-md text-body-md text-on-surface-variant max-w-2xl mb-12 text-lg">
+        Get instant disposable email addresses powered by Bitcoin Lightning Network. No personal information required - just pay with Lightning and start sending and receiving emails immediately.
+    </p>
+
+    <!-- Main Action Card -->
+    <div class="glass-card w-full max-w-md rounded-xl p-8 flex flex-col items-center gap-6 relative overflow-hidden group glow-hover transition-all duration-300">
+        <div class="absolute -top-10 -right-10 w-32 h-32 bg-primary/20 blur-3xl rounded-full"></div>
+
+        <!-- Pre-payment state -->
+        <div id="pre-payment" class="text-center w-full relative z-10">
+            <h2 class="font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface mb-2">Get Your Email</h2>
+            <p class="font-label-caps text-label-caps text-secondary uppercase tracking-widest mb-6">Price: {{ settings.EMAIL_PRICE }} sats <span class="text-on-surface-variant font-normal normal-case tracking-normal">for 1 year</span></p>
+            <div class="w-full flex flex-col gap-4 relative z-10">
+                <label class="flex items-center gap-3 cursor-pointer group/label">
+                    <input type="checkbox" id="include-email" checked class="focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-surface">
+                    <span class="text-on-surface-variant group-hover/label:text-on-surface transition-colors font-code-sm text-code-sm">Include email in description</span>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer group/label">
+                    <input type="checkbox" id="include-token" checked class="focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-surface">
+                    <span class="text-on-surface-variant group-hover/label:text-on-surface transition-colors font-code-sm text-code-sm">Include token in description</span>
+                </label>
+            </div>
+            <button id="create-invoice" class="w-full bg-primary hover:bg-primary-fixed text-on-primary font-bold py-4 px-6 rounded-lg transition-all active:scale-95 font-body-md text-body-md mt-4 relative z-10 shadow-[0_0_15px_rgba(142,213,255,0.3)] hover:shadow-[0_0_25px_rgba(142,213,255,0.5)]">
+                Create Lightning Invoice
+            </button>
+        </div>
+
+        <!-- Payment pending state -->
+        <div id="payment-pending" class="hidden w-full relative z-10">
+            <h3 class="font-headline-lg text-headline-lg-mobile text-on-surface mb-4 text-center">Pay Lightning Invoice</h3>
+            <div id="qr-container" class="mb-4">
+                <div id="qrcode" class="flex justify-center"></div>
+            </div>
+            <div class="payment-details flex flex-col gap-3">
+                <p class="text-sm text-on-surface-variant">Email Address: <span id="payment-email" class="text-primary font-code-sm"></span></p>
+                <p class="text-sm text-on-surface-variant">Access Token: <span id="payment-token" class="text-primary font-code-sm"></span></p>
+                <p id="invoice-amount" class="text-sm text-on-surface-variant font-bold"></p>
+                <div class="copy-wrapper flex items-center gap-2 bg-surface-container rounded p-2">
+                    <span id="bolt11-invoice" class="copy-text flex-grow text-on-surface-variant font-code-sm text-xs break-all"></span>
+                    <button id="copy-invoice" class="bg-outline-variant/30 hover:bg-outline-variant/50 text-on-surface-variant px-3 py-1 rounded text-xs transition-colors">Copy</button>
+                </div>
+                <div class="status-container-local flex items-center gap-3 mt-2">
+                    <div class="w-6 h-6 border-2 border-primary-container border-t-primary rounded-full animate-spin"></div>
+                    <p class="text-on-surface-variant text-sm">Waiting for Lightning payment...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payment success state -->
+        <div id="payment-success" class="hidden w-full relative z-10 text-center">
+            <h3 class="font-headline-lg text-headline-lg-mobile text-success-green mb-4">Payment Successful!</h3>
+            <div class="success-details flex flex-col gap-4">
+                <div class="detail-item">
+                    <p class="label text-on-surface-variant text-sm mb-1"><label for="email-address-input">Your Email Address:</label></p>
+                    <div class="copy-wrapper flex items-center gap-2 bg-surface-container rounded p-2">
+                        <input id="email-address-input" type="email" readonly class="copy-text credentials-input flex-grow bg-transparent border-none text-on-surface font-code-sm text-sm" />
+                        <button type="button" class="copy-btn bg-outline-variant/30 hover:bg-outline-variant/50 text-on-surface-variant px-3 py-1 rounded text-xs transition-colors" data-copy-target="#email-address-input">Copy</button>
+                    </div>
+                </div>
+                <div class="detail-item">
+                    <p class="label text-on-surface-variant text-sm mb-1"><label for="access-token-input">Access Token:</label></p>
+                    <div class="copy-wrapper flex items-center gap-2 bg-surface-container rounded p-2">
+                        <input id="access-token-input" type="password" readonly class="copy-text credentials-input flex-grow bg-transparent border-none text-on-surface font-code-sm text-sm" />
+                        <button type="button" id="toggle-token-visibility" class="bg-outline-variant/30 hover:bg-outline-variant/50 text-on-surface-variant px-3 py-1 rounded text-xs transition-colors">Show</button>
+                        <button type="button" class="copy-btn bg-outline-variant/30 hover:bg-outline-variant/50 text-on-surface-variant px-3 py-1 rounded text-xs transition-colors" data-copy-target="#access-token-input">Copy</button>
+                    </div>
+                    <p class="note text-xs text-on-surface-variant mt-2">Store this token safely. You'll need it to access your inbox.</p>
+                    <p class="note text-xs text-on-surface-variant">
+                        Next step: click <em class="text-primary">Continue to Inbox</em> below. Your email and
+                        access token will be pre-filled on the login form; clicking
+                        <em class="text-primary">Connect</em> there will let your password manager
+                        (Bitwarden, 1Password, your browser, ...) offer to save them.
+                    </p>
+                </div>
+                <div class="detail-item">
+                    <p class="label text-on-surface-variant text-sm">Expires:</p>
+                    <p id="expires-at" class="value text-on-surface font-bold"></p>
+                </div>
+                <div class="detail-actions mt-4">
+                    <a href="/inbox" id="continue-to-inbox-btn" class="inline-block w-full bg-primary hover:bg-primary-fixed text-on-primary font-bold py-4 px-6 rounded-lg transition-all active:scale-95 text-center no-underline">Continue to Inbox</a>
+                </div>
             </div>
         </div>
     </div>
-<div id="payment-success" class="hidden">
-    <h3>Lightning Payment Successful!</h3>
-    <!--
-        Credentials are displayed read-only here for the user to copy.
-        Saving to a password manager happens on the inbox login page:
-        we prefill the login form with these credentials so a single
-        click on Connect submits a real <form>, which is the universal
-        heuristic Bitwarden / 1Password / browser built-ins use to
-        offer to save the email + token pair.
-    -->
-    <div class="success-details">
-        <div class="detail-item">
-            <p class="label"><label for="email-address-input">Your Email Address:</label></p>
-            <p id="email-address" class="value copy-wrapper">
-                <input id="email-address-input"
-                       type="email"
-                       readonly
-                       class="copy-text credentials-input" />
-                <button type="button" class="btn small copy-btn" data-copy-target="#email-address-input">Copy</button>
-            </p>
+</section>
+
+<!-- How It Works Section -->
+<section class="w-full max-w-[1100px] mx-auto px-gutter py-16">
+    <h2 class="text-3xl md:text-5xl font-bold text-center mb-12 text-on-surface">How It Works</h2>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-8 relative how-it-works-grid">
+        <div class="flex flex-col items-center text-center gap-4">
+            <div class="w-16 h-16 rounded-full glass-card flex items-center justify-center text-primary shadow-[0_0_15px_rgba(56,189,248,0.1)] relative z-10">
+                <span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">receipt_long</span>
+            </div>
+            <h3 class="font-bold text-on-surface">1. Create Invoice</h3>
+            <p class="text-on-surface-variant text-sm font-code-sm">Click to generate a Lightning payment request.</p>
         </div>
-        <div class="detail-item">
-            <p class="label"><label for="access-token-input">Access Token:</label></p>
-            <p id="access-token" class="value copy-wrapper">
-                <input id="access-token-input"
-                       type="password"
-                       readonly
-                       class="copy-text credentials-input" />
-                <button type="button" id="toggle-token-visibility" class="btn small" aria-label="Show or hide access token">Show</button>
-                <button type="button" class="btn small copy-btn" data-copy-target="#access-token-input">Copy</button>
-            </p>
-            <p class="note">Store this token safely. You'll need it to access your inbox.</p>
-            <p class="note">
-                Next step: click <em>Continue to Inbox</em> below. Your email and
-                access token will be pre-filled on the login form; clicking
-                <em>Connect</em> there will let your password manager
-                (Bitwarden, 1Password, your browser, ...) offer to save them.
-            </p>
+        <div class="flex flex-col items-center text-center gap-4">
+            <div class="w-16 h-16 rounded-full glass-card flex items-center justify-center text-primary shadow-[0_0_15px_rgba(56,189,248,0.1)] relative z-10">
+                <span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">bolt</span>
+            </div>
+            <h3 class="font-bold text-on-surface">2. Pay with Lightning</h3>
+            <p class="text-on-surface-variant text-sm font-code-sm">Scan QR or copy invoice to your wallet.</p>
         </div>
-        <div class="detail-item">
-            <p class="label">Expires:</p>
-            <p id="expires-at" class="value"></p>
+        <div class="flex flex-col items-center text-center gap-4">
+            <div class="w-16 h-16 rounded-full glass-card flex items-center justify-center text-primary shadow-[0_0_15px_rgba(56,189,248,0.1)] relative z-10">
+                <span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">mark_email_unread</span>
+            </div>
+            <h3 class="font-bold text-on-surface">3. Receive Address</h3>
+            <p class="text-on-surface-variant text-sm font-code-sm">Get anonymous email &amp; access token instantly.</p>
         </div>
-        <div class="detail-actions">
-            <a href="/inbox" id="continue-to-inbox-btn" class="btn primary">Continue to Inbox</a>
+        <div class="flex flex-col items-center text-center gap-4">
+            <div class="w-16 h-16 rounded-full glass-card flex items-center justify-center text-primary shadow-[0_0_15px_rgba(56,189,248,0.1)] relative z-10">
+                <span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">send</span>
+            </div>
+            <h3 class="font-bold text-on-surface">4. Send &amp; Receive</h3>
+            <p class="text-on-surface-variant text-sm font-code-sm">Access inbox via web interface or API.</p>
         </div>
     </div>
+</section>
+
+<!-- Features Grid -->
+<section class="w-full max-w-[1100px] mx-auto px-gutter py-16">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 justify-center">
+        <div class="glass-card rounded-xl flex items-start gap-4 hover:border-primary/30 transition-colors p-8">
+            <span class="material-symbols-outlined text-secondary text-3xl" style="font-variation-settings: 'wght' 300;">visibility_off</span>
+            <div>
+                <h3 class="font-bold text-on-surface mb-2">Anonymous</h3>
+                <p class="text-on-surface-variant text-sm leading-relaxed">No personal data required. Pay with Bitcoin Lightning for maximum privacy and speed.</p>
+            </div>
+        </div>
+        <div class="glass-card rounded-xl flex items-start gap-4 hover:border-primary/30 transition-colors p-8">
+            <span class="material-symbols-outlined text-primary text-3xl" style="font-variation-settings: 'wght' 300;">api</span>
+            <div>
+                <h3 class="font-bold text-on-surface mb-2">API</h3>
+                <p class="text-on-surface-variant text-sm leading-relaxed">You can access your inbox emails, like 2FA codes over API.</p>
+            </div>
+        </div>
+        <div class="glass-card rounded-xl flex items-start gap-4 hover:border-primary/30 transition-colors p-8">
+            <span class="material-symbols-outlined text-primary text-3xl" style="font-variation-settings: 'wght' 300;">mail</span>
+            <div>
+                <h3 class="font-bold text-on-surface mb-2">Full Service</h3>
+                <p class="text-on-surface-variant text-sm leading-relaxed">Complete email functionality - Receive and send emails from a web interface.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Divider -->
+<div class="w-full max-w-[1100px] mx-auto px-gutter my-8 opacity-20">
+    <hr class="border-t border-outline-variant">
 </div>
-</section>
-<section class="example">
-    <h3>How It Works</h3>
-    <div class="example-steps">
-        <div class="step">
-            <h4>1. Create Lightning Invoice</h4>
-            <p>Click "Create Lightning Invoice" to generate a Bitcoin Lightning Network payment request.</p>
-        </div>
-        <div class="step">
-            <h4>2. Pay with Bitcoin Lightning</h4>
-            <p>Scan the QR code or copy the invoice to your Lightning wallet and pay instantly.</p>
-        </div>
-        <div class="step">
-            <h4>3. Receive Email Address</h4>
-            <p>Once Lightning payment confirms, you'll get your anonymous email address and access token.</p>
-        </div>
-        <div class="step">
-            <h4>4. Send and Receive Emails</h4>
-            <p>Access your inbox through our web interface or API to read incoming emails and send outgoing messages.</p>
-        </div>
+
+<!-- Service Capabilities -->
+<section class="w-full max-w-[1100px] mx-auto px-gutter py-16">
+    <h2 class="text-3xl md:text-5xl font-bold text-center mb-8 text-on-surface">Service Capabilities</h2>
+    <div class="glass-card rounded-xl p-8 max-w-3xl mx-auto">
+        <ul class="flex flex-col gap-4 text-on-surface-variant">
+            <li class="flex items-start gap-3"><span class="material-symbols-outlined text-primary mt-0.5">check_circle</span><span><strong class="text-on-surface">Send &amp; Receive:</strong> Full email functionality. Sending emails costs 100 sats per sent email to prevent spam.</span></li>
+            <li class="flex items-start gap-3"><span class="material-symbols-outlined text-primary mt-0.5">check_circle</span><span><strong class="text-on-surface">Web &amp; API Access:</strong> Emails accessible through our web interface and REST API.</span></li>
+            <li class="flex items-start gap-3"><span class="material-symbols-outlined text-primary mt-0.5">check_circle</span><span><strong class="text-on-surface">Plain Text Focus:</strong> Emails are stripped of trackers for security and contents can be displayed as plaintext.</span></li>
+        </ul>
     </div>
 </section>
-<section class="features">
-    <div class="feature">
-        <h3>Anonymous</h3>
-        <p>No personal information required. Pay with Bitcoin Lightning for maximum privacy and speed.</p>
-    </div>
-    <div class="feature">
-        <h3>Instant</h3>
-        <p>Lightning Network payments confirm in seconds. Start sending and receiving emails immediately.</p>
-    </div>
-    <div class="feature">
-        <h3>Full Service</h3>
-        <p>Complete email functionality - send and receive messages with Lightning-powered payments.</p>
-    </div>
-</section>
-<section class="limitations">
-    <h3>Service Capabilities</h3>
-    <ul>
-        <li><strong>Send & Receive:</strong> Full email functionality with Lightning payments for sending.</li>
-        <li><strong>Web & API Access:</strong> Emails accessible through our web interface and REST API.</li>
-        <li><strong>Plain Text Focus:</strong> HTML content is stripped for security; emails are displayed as plain text.</li>
-        <li><strong>Lightning Payments:</strong> Small Lightning payments required for each outgoing email ({{ settings.EMAIL_SEND_PRICE }} sats).</li>
-    </ul>
-</section>
-<section class="use-cases">
-    <h3>Perfect For</h3>
-    <div class="use-case-list">
-        <div class="use-case">
-            <h4>Two-Factor Authentication</h4>
-            <p>Fast email delivery for 2FA codes with reliable long-term access.</p>
+
+<!-- Divider -->
+<div class="w-full max-w-[1100px] mx-auto px-gutter my-8 opacity-20">
+    <hr class="border-t border-outline-variant">
+</div>
+
+<!-- API Section -->
+<section class="w-full max-w-[1100px] mx-auto px-gutter py-16 flex flex-col items-center">
+    <h2 class="text-3xl md:text-5xl font-bold text-center mb-8 text-on-surface">API Access</h2>
+    <p class="text-on-surface-variant mb-8 text-center max-w-2xl">LNemail can be accessed programmatically via our REST API. <a class="text-primary hover:underline" href="/docs">View full API documentation &rarr;</a></p>
+    <div class="w-full max-w-3xl flex flex-col gap-6">
+
+        <div class="code-block rounded-xl overflow-hidden shadow-lg">
+            <div class="bg-surface-container-high px-4 py-2 border-b border-outline-variant/30 flex justify-between items-center">
+                <span class="font-code-sm text-code-sm text-on-surface-variant text-xs">1. Create Email Account</span>
+                <button class="text-on-surface-variant hover:text-success-green transition-colors" title="Copy to clipboard">
+                    <span class="material-symbols-outlined text-sm">content_copy</span>
+                </button>
+            </div>
+            <div class="p-4 overflow-x-auto font-code-sm text-code-sm whitespace-pre bg-black">
+                <span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X POST</span> <span class="syntax-url">'https://lnemail.net/api/v1/email'</span>
+            </div>
         </div>
-        <div class="use-case">
-            <h4>Anonymous Communication</h4>
-            <p>Send and receive emails anonymously with Bitcoin Lightning payments.</p>
+
+        <div class="code-block rounded-xl overflow-hidden shadow-lg">
+            <div class="bg-surface-container-high px-4 py-2 border-b border-outline-variant/30 flex justify-between items-center">
+                <span class="font-code-sm text-code-sm text-on-surface-variant text-xs">2. Check Inbox</span>
+                <button class="text-on-surface-variant hover:text-success-green transition-colors" title="Copy to clipboard">
+                    <span class="material-symbols-outlined text-sm">content_copy</span>
+                </button>
+            </div>
+            <div class="p-4 overflow-x-auto font-code-sm text-code-sm whitespace-pre bg-black">
+                <span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X GET</span> <span class="syntax-url">'https://lnemail.net/api/v1/emails'</span> \
+                <span class="syntax-method">-H</span> <span class="syntax-header">'Authorization: Bearer YOUR_ACCESS_TOKEN'</span>
+            </div>
         </div>
-        <div class="use-case">
-            <h4>Bitcoin & Lightning Apps</h4>
-            <p>Perfect for Bitcoin-native applications needing full email integration with Lightning payments.</p>
+
+        <div class="code-block rounded-xl overflow-hidden shadow-lg">
+            <div class="bg-surface-container-high px-4 py-2 border-b border-outline-variant/30 flex justify-between items-center">
+                <span class="font-code-sm text-code-sm text-on-surface-variant text-xs">3. Get Email Content</span>
+                <button class="text-on-surface-variant hover:text-success-green transition-colors" title="Copy to clipboard">
+                    <span class="material-symbols-outlined text-sm">content_copy</span>
+                </button>
+            </div>
+            <div class="p-4 overflow-x-auto font-code-sm text-code-sm whitespace-pre bg-black">
+                <span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X GET</span> <span class="syntax-url">'https://lnemail.net/api/v1/emails/EMAIL_ID'</span> \
+                <span class="syntax-method">-H</span> <span class="syntax-header">'Authorization: Bearer YOUR_ACCESS_TOKEN'</span>
+            </div>
+        </div>
+
+        <div class="code-block rounded-xl overflow-hidden shadow-lg">
+            <div class="bg-surface-container-high px-4 py-2 border-b border-outline-variant/30 flex justify-between items-center">
+                <span class="font-code-sm text-code-sm text-on-surface-variant text-xs">4. Send Email</span>
+                <button class="text-on-surface-variant hover:text-success-green transition-colors" title="Copy to clipboard">
+                    <span class="material-symbols-outlined text-sm">content_copy</span>
+                </button>
+            </div>
+            <div class="p-4 overflow-x-auto font-code-sm text-code-sm whitespace-pre bg-black">
+                <span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X POST</span> <span class="syntax-url">'https://lnemail.net/api/v1/email/send'</span> \
+                <span class="syntax-method">-H</span> <span class="syntax-header">'Authorization: Bearer YOUR_ACCESS_TOKEN'</span> \
+                <span class="syntax-method">-d</span> <span class="syntax-string">'{"recipient": "example@example.com", "subject": "Test", "body": "Hello World!"}'</span>
+            </div>
+        </div>
+
+        <div class="code-block rounded-xl overflow-hidden shadow-lg">
+            <div class="bg-surface-container-high px-4 py-2 border-b border-outline-variant/30 flex justify-between items-center">
+                <span class="font-code-sm text-code-sm text-on-surface-variant text-xs">5. Check Send Payment Status</span>
+                <button class="text-on-surface-variant hover:text-success-green transition-colors" title="Copy to clipboard">
+                    <span class="material-symbols-outlined text-sm">content_copy</span>
+                </button>
+            </div>
+            <div class="p-4 overflow-x-auto font-code-sm text-code-sm whitespace-pre bg-black">
+                <span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X GET</span> <span class="syntax-url">'https://lnemail.net/api/v1/email/send/status/PAYMENT_HASH'</span>
+            </div>
+        </div>
+
+        <div class="code-block rounded-xl overflow-hidden shadow-lg">
+            <div class="bg-surface-container-high px-4 py-2 border-b border-outline-variant/30 flex justify-between items-center">
+                <span class="font-code-sm text-code-sm text-on-surface-variant text-xs">6. Check Account Payment Status</span>
+                <button class="text-on-surface-variant hover:text-success-green transition-colors" title="Copy to clipboard">
+                    <span class="material-symbols-outlined text-sm">content_copy</span>
+                </button>
+            </div>
+            <div class="p-4 overflow-x-auto font-code-sm text-code-sm whitespace-pre bg-black">
+                <span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X GET</span> <span class="syntax-url">'https://lnemail.net/api/v1/payment/PAYMENT_HASH'</span>
+            </div>
         </div>
     </div>
 </section>
-<section class="api-usage">
-    <h3>API Access</h3>
-    <p>LNemail can be accessed programmatically via our REST API. <a href="/docs" target="_blank" class="api-docs-link">View full API documentation →</a></p>
-    <div class="code-example">
-        <h4>Create Email Account</h4>
-        <pre><code class="language-bash">curl -X POST 'https://lnemail.net/api/v1/email'</code></pre>
-    </div>
-    <div class="code-example">
-        <h4>Check Inbox</h4>
-        <pre><code class="language-bash">curl -X GET 'https://lnemail.net/api/v1/emails' \
-    -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'</code></pre>
-    </div>
-    <div class="code-example">
-        <h4>Get Email Content</h4>
-        <pre><code class="language-bash">curl -X GET 'https://lnemail.net/api/v1/emails/EMAIL_ID' \
-    -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'</code></pre>
-    </div>
-    <div class="code-example">
-        <h4>Send Email</h4>
-        <pre><code class="language-bash">curl -X POST 'https://lnemail.net/api/v1/email/send' \
-    -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
-    -d '{"recipient": "example@example.com", "subject": "Test", "body": "Hello World!"}'</code></pre>
-    </div>
-    <div class="code-example">
-        <h4>Check Send Payment Status</h4>
-        <pre><code class="language-bash">curl -X GET 'https://lnemail.net/api/v1/email/send/status/PAYMENT_HASH'</code></pre>
-    </div>
-    <div class="code-example">
-        <h4>Check Account Payment Status</h4>
-        <pre><code class="language-bash">curl -X GET 'https://lnemail.net/api/v1/payment/PAYMENT_HASH'</code></pre>
-    </div>
-</section>
+
+<!-- Copy Feedback Script -->
+<script>
+    document.querySelectorAll('.code-block button').forEach(button => {
+        button.addEventListener('click', function() {
+            const codeBlock = this.closest('.code-block');
+            const codeText = codeBlock.querySelector('.whitespace-pre, .p-4').textContent.trim();
+            navigator.clipboard.writeText(codeText).then(() => {
+                const icon = this.querySelector('.material-symbols-outlined');
+                const originalText = icon.textContent;
+                icon.textContent = 'check';
+                icon.classList.remove('text-on-surface-variant');
+                icon.classList.add('text-success-green');
+                setTimeout(() => {
+                    icon.textContent = originalText;
+                    icon.classList.remove('text-success-green');
+                    icon.classList.add('text-on-surface-variant');
+                }, 2000);
+            }).catch(() => {});
+        });
+    });
+</script>
 {% endblock %}
 {% block extra_js %}
 <script src="/static/js/qrious.min.js"></script>

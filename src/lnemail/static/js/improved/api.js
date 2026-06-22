@@ -103,7 +103,10 @@ export async function checkPaymentStatus(paymentHash) {
 
 export async function checkApiHealth() {
     try {
-        const response = await makeRequest('/health');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const response = await makeRequest('/health', { signal: controller.signal });
+        clearTimeout(timeoutId);
         return {
             success: true,
             data: response
@@ -111,7 +114,7 @@ export async function checkApiHealth() {
     } catch (error) {
         return {
             success: false,
-            error: error.message
+            error: error.name === 'AbortError' ? 'Health check timed out after 10 seconds' : error.message
         };
     }
 }

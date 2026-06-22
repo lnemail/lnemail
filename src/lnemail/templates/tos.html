@@ -5,92 +5,121 @@
 {% block og_title %}Terms of Service - LNemail{% endblock %}
 {% block og_url %}https://lnemail.net/tos{% endblock %}
 {% block nav_links %}
-<a href="/" class="nav-link">Home</a>
-<a href="/inbox" class="nav-link">Inbox</a>
+<a href="/" class="text-on-surface-variant font-medium hover:text-primary transition-colors duration-200">Home</a>
+<a href="/inbox" class="text-on-surface-variant font-medium hover:text-primary transition-colors duration-200">Inbox</a>
 {% endblock %}
 {% block content %}
-<section class="hero">
-    <h2>Terms of Service</h2>
-    <p class="last-updated">Last updated: June 2025</p>
+<!-- Ambient Grid Background -->
+<div class="absolute inset-0 bg-grid pointer-events-none -z-10 h-[400px] w-full top-0 left-0"></div>
+
+<section class="w-full max-w-[1100px] mx-auto px-gutter pt-24 pb-12 flex flex-col items-center text-center relative">
+    <h1 class="font-headline-xl text-headline-xl text-on-surface mb-4">Terms of Service</h1>
+    <p class="text-on-surface-variant text-sm">Last updated: June 2025</p>
 </section>
-<section class="card">
-    <div class="tos-content">
-        <h3>1. Service Overview</h3>
-        <p>LNemail provides fast anonymous email accounts powered by Bitcoin Lightning Network payments. This is a full-featured email service supporting both sending and receiving with Lightning-powered payments.</p>
 
-        <h3>2. Privacy & Anonymity Commitment</h3>
-        <ul>
-            <li><strong>No KYC, Ever:</strong> We will never require or collect personal identification information from our users.</li>
-            <li><strong>Anonymous Operation:</strong> The service operators remain anonymous and are not subject to any specific jurisdiction, operating under natural law principles.</li>
-            <li><strong>No IP Tracking:</strong> IP addresses are only used for request throttling and web firewall protection. We do not store any links between IP addresses and email accounts.</li>
-            <li><strong>Bitcoin Lightning Payments:</strong> All payments are processed through the Bitcoin Lightning Network for maximum privacy and speed.</li>
-        </ul>
+<section class="w-full max-w-3xl mx-auto px-gutter pb-16">
+    <div class="glass-card rounded-xl p-8 md:p-12">
+        <div class="flex flex-col gap-8 text-on-surface-variant leading-relaxed">
 
-        <h3>3. Data Handling & Retention</h3>
-        <ul>
-            <li><strong>Automatic Cleanup:</strong> All system logs are automatically cleaned up after 30 days.</li>
-            <li><strong>Account Expiration:</strong> Email accounts are valid for one year from creation date.</li>
-            <li><strong>Post-Expiration Grace Period:</strong> Accounts and data are automatically deleted 1 year after subscription expiration, with opportunity to renew within that timeframe.</li>
-            <li><strong>Data Removal on Request:</strong> Users can request immediate data removal by contacting lnemail@lnemail.net with their access token.</li>
-            <li><strong>No Long-term Storage:</strong> We do not retain user data beyond the service period and grace period.</li>
-        </ul>
+            <div>
+                <h3 class="text-lg font-bold text-on-surface mb-3">1. Service Overview</h3>
+                <p>LNemail provides fast anonymous email accounts powered by Bitcoin Lightning Network payments. This is a full-featured email service supporting both sending and receiving with Lightning-powered payments.</p>
+            </div>
 
-        <h3>4. Service Features</h3>
-        <ul>
-            <li><strong>Send & Receive:</strong> Full email functionality with Lightning payments for outgoing messages.</li>
-            <li><strong>Web & API Access:</strong> Email access through our web interface and REST API.</li>
-            <li><strong>Plain Text Focus:</strong> HTML content is stripped for security; emails are displayed as plain text.</li>
-            <li><strong>Lightning Payments for Sending:</strong> Small Lightning payments required for each outgoing email for spam prevention.</li>
-            <li><strong>No Attachments:</strong> Email attachments are not supported for security reasons.</li>
-        </ul>
+            <div>
+                <h3 class="text-lg font-bold text-on-surface mb-3">2. Privacy &amp; Anonymity Commitment</h3>
+                <ul class="flex flex-col gap-3 list-none pl-0">
+                    <li class="flex items-start gap-3"><span class="material-symbols-outlined text-primary mt-0.5 text-lg">verified_user</span><span><strong class="text-on-surface">No KYC, Ever:</strong> We will never require or collect personal identification information from our users.</span></li>
+                    <li class="flex items-start gap-3"><span class="material-symbols-outlined text-primary mt-0.5 text-lg">visibility_off</span><span><strong class="text-on-surface">Anonymous Operation:</strong> The service operators remain anonymous and are not subject to any specific jurisdiction, operating under natural law principles.</span></li>
+                    <li class="flex items-start gap-3"><span class="material-symbols-outlined text-primary mt-0.5 text-lg">wifi_off</span><span><strong class="text-on-surface">No IP Tracking:</strong> IP addresses are only used for request throttling and web firewall protection. We do not store any links between IP addresses and email accounts.</span></li>
+                    <li class="flex items-start gap-3"><span class="material-symbols-outlined text-primary mt-0.5 text-lg">bolt</span><span><strong class="text-on-surface">Bitcoin Lightning Payments:</strong> All payments are processed through the Bitcoin Lightning Network for maximum privacy and speed.</span></li>
+                </ul>
+            </div>
 
-        <h3>5. Payment & Access</h3>
-        <ul>
-            <li><strong>Lightning Network Only:</strong> All payments must be made via Bitcoin Lightning Network.</li>
-            <li><strong>Account Creation:</strong> One-time Lightning payment for one-year email account access.</li>
-            <li><strong>Email Sending:</strong> Per-email Lightning payments for outgoing messages to prevent spam.</li>
-            <li><strong>Token-Based Authentication:</strong> Access is controlled through secure tokens with no password storage.</li>
-            <li><strong>No Refunds:</strong> All Lightning Network payments are final and non-refundable.</li>
-            <li><strong>Payment Verification:</strong> Account activation and email sending require successful Lightning payment confirmation.</li>
-        </ul>
+            <div>
+                <h3 class="text-lg font-bold text-on-surface mb-3">3. Data Handling &amp; Retention</h3>
+                <ul class="flex flex-col gap-2 list-disc pl-5">
+                    <li><strong class="text-on-surface">Automatic Cleanup:</strong> All system logs are automatically cleaned up after 30 days.</li>
+                    <li><strong class="text-on-surface">Account Expiration:</strong> Email accounts are valid for one year from creation date.</li>
+                    <li><strong class="text-on-surface">Post-Expiration Grace Period:</strong> Accounts and data are automatically deleted 1 year after subscription expiration, with opportunity to renew within that timeframe.</li>
+                    <li><strong class="text-on-surface">Data Removal on Request:</strong> Users can request immediate data removal by contacting lnemail@lnemail.net with their access token.</li>
+                    <li><strong class="text-on-surface">No Long-term Storage:</strong> We do not retain user data beyond the service period and grace period.</li>
+                </ul>
+            </div>
 
-        <h3>6. Acceptable Use</h3>
-        <ul>
-            <li>Service is intended for legitimate email communication purposes only.</li>
-            <li>Service may not be used for spam, phishing, harassment, or other malicious activities.</li>
-            <li>Lightning payment requirements help prevent abuse and spam.</li>
-        </ul>
+            <div>
+                <h3 class="text-lg font-bold text-on-surface mb-3">4. Service Features</h3>
+                <ul class="flex flex-col gap-2 list-disc pl-5">
+                    <li><strong class="text-on-surface">Send &amp; Receive:</strong> Full email functionality with Lightning payments for outgoing messages.</li>
+                    <li><strong class="text-on-surface">Web &amp; API Access:</strong> Email access through our web interface and REST API.</li>
+                    <li><strong class="text-on-surface">Plain Text Focus:</strong> HTML content is stripped for security; emails are displayed as plain text.</li>
+                    <li><strong class="text-on-surface">Lightning Payments for Sending:</strong> Small Lightning payments required for each outgoing email for spam prevention.</li>
+                    <li><strong class="text-on-surface">No Attachments:</strong> Email attachments are not supported for security reasons.</li>
+                </ul>
+            </div>
 
-        <h3>7. Service Availability</h3>
-        <ul>
-            <li><strong>Best Effort:</strong> We provide service on a best-effort basis with no uptime guarantees.</li>
-            <li><strong>Maintenance:</strong> Service may be interrupted for maintenance or upgrades.</li>
-            <li><strong>Continuous Improvement:</strong> Service is actively maintained and improved.</li>
-        </ul>
+            <div>
+                <h3 class="text-lg font-bold text-on-surface mb-3">5. Payment &amp; Access</h3>
+                <ul class="flex flex-col gap-2 list-disc pl-5">
+                    <li><strong class="text-on-surface">Lightning Network Only:</strong> All payments must be made via Bitcoin Lightning Network.</li>
+                    <li><strong class="text-on-surface">Account Creation:</strong> One-time Lightning payment for one-year email account access.</li>
+                    <li><strong class="text-on-surface">Email Sending:</strong> Per-email Lightning payments for outgoing messages to prevent spam.</li>
+                    <li><strong class="text-on-surface">Token-Based Authentication:</strong> Access is controlled through secure tokens with no password storage.</li>
+                    <li><strong class="text-on-surface">No Refunds:</strong> All Lightning Network payments are final and non-refundable.</li>
+                    <li><strong class="text-on-surface">Payment Verification:</strong> Account activation and email sending require successful Lightning payment confirmation.</li>
+                </ul>
+            </div>
 
-        <h3>8. Liability & Disclaimers</h3>
-        <ul>
-            <li><strong>Service Provided "As Is":</strong> LNemail is provided without warranties.</li>
-            <li><strong>Limited Liability:</strong> We are not liable for any damages, losses, or issues arising from service use.</li>
-            <li><strong>Data Backup:</strong> Users should not rely solely on LNemail for critical communications.</li>
-        </ul>
+            <div>
+                <h3 class="text-lg font-bold text-on-surface mb-3">6. Acceptable Use</h3>
+                <ul class="flex flex-col gap-2 list-disc pl-5">
+                    <li>Service is intended for legitimate email communication purposes only.</li>
+                    <li>Service may not be used for spam, phishing, harassment, or other malicious activities.</li>
+                    <li>Lightning payment requirements help prevent abuse and spam.</li>
+                </ul>
+            </div>
 
-        <h3>9. Open Source</h3>
-        <p>LNemail is <a href="https://github.com/lnemail/lnemail" target="_blank" rel="noopener">open source software</a> released under the MIT license. You can review the code, contribute improvements, or run your own instance.</p>
+            <div>
+                <h3 class="text-lg font-bold text-on-surface mb-3">7. Service Availability</h3>
+                <ul class="flex flex-col gap-2 list-disc pl-5">
+                    <li><strong class="text-on-surface">Best Effort:</strong> We provide service on a best-effort basis with no uptime guarantees.</li>
+                    <li><strong class="text-on-surface">Maintenance:</strong> Service may be interrupted for maintenance or upgrades.</li>
+                    <li><strong class="text-on-surface">Continuous Improvement:</strong> Service is actively maintained and improved.</li>
+                </ul>
+            </div>
 
-        <h3>10. Changes to Terms</h3>
-        <p>These terms may be updated periodically. Continued use of the service constitutes acceptance of any changes. Major changes will be announced through available communication channels.</p>
+            <div>
+                <h3 class="text-lg font-bold text-on-surface mb-3">8. Liability &amp; Disclaimers</h3>
+                <ul class="flex flex-col gap-2 list-disc pl-5">
+                    <li><strong class="text-on-surface">Service Provided "As Is":</strong> LNemail is provided without warranties.</li>
+                    <li><strong class="text-on-surface">Limited Liability:</strong> We are not liable for any damages, losses, or issues arising from service use.</li>
+                    <li><strong class="text-on-surface">Data Backup:</strong> Users should not rely solely on LNemail for critical communications.</li>
+                </ul>
+            </div>
 
-        <h3>11. Contact</h3>
-        <p>For questions, data removal requests, or other inquiries:</p>
-        <ul>
-            <li><strong>Email:</strong> lnemail@lnemail.net (<a href="/pgp-key.asc">PGP key</a>, fingerprint: <code>7919 5492 2EF7 502E 69CC EDEA B69F 765D F154 C11B</code>)</li>
-            <li><strong>Nostr:</strong> <a href="https://njump.me/npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76">npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76</a></li>
-            <li><strong>GitHub:</strong> <a href="https://github.com/lnemail/lnemail" target="_blank" rel="noopener">https://github.com/lnemail/lnemail</a></li>
-        </ul>
+            <div>
+                <h3 class="text-lg font-bold text-on-surface mb-3">9. Open Source</h3>
+                <p>LNemail is <a href="https://github.com/lnemail/lnemail" target="_blank" rel="noopener" class="text-primary hover:underline">open source software</a> released under the MIT license. You can review the code, contribute improvements, or run your own instance.</p>
+            </div>
 
-        <div class="tos-footer">
-            <p><strong>By using LNemail, you acknowledge that you have read, understood, and agree to these Terms of Service.</strong></p>
+            <div>
+                <h3 class="text-lg font-bold text-on-surface mb-3">10. Changes to Terms</h3>
+                <p>These terms may be updated periodically. Continued use of the service constitutes acceptance of any changes. Major changes will be announced through available communication channels.</p>
+            </div>
+
+            <div>
+                <h3 class="text-lg font-bold text-on-surface mb-3">11. Contact</h3>
+                <p class="mb-3">For questions, data removal requests, or other inquiries:</p>
+                <ul class="flex flex-col gap-2 list-disc pl-5">
+                    <li><strong class="text-on-surface">Email:</strong> lnemail@lnemail.net (<a href="/pgp-key.asc" class="text-primary hover:underline">PGP key</a>, fingerprint: <code class="font-code-sm bg-surface-container rounded px-1 text-xs">7919 5492 2EF7 502E 69CC EDEA B69F 765D F154 C11B</code>)</li>
+                    <li><strong class="text-on-surface">Nostr:</strong> <a href="https://njump.me/npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76" class="text-primary hover:underline">npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76</a></li>
+                    <li><strong class="text-on-surface">GitHub:</strong> <a href="https://github.com/lnemail/lnemail" target="_blank" rel="noopener" class="text-primary hover:underline">https://github.com/lnemail/lnemail</a></li>
+                </ul>
+            </div>
+
+            <div class="pt-4 border-t border-outline-variant/20">
+                <p class="text-on-surface font-bold text-center">By using LNemail, you acknowledge that you have read, understood, and agree to these Terms of Service.</p>
+            </div>
         </div>
     </div>
 </section>

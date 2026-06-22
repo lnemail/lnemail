@@ -1,14 +1,127 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}LNemail - Fast Anonymous Email with Bitcoin Lightning Network{% endblock %}</title>
 
-    <!-- Common CSS -->
-    <link rel="stylesheet" href="/static/css/normalize.css">
-    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Tailwind CSS (pre-compiled, self-hosted; built from frontend/) -->
+    <link rel="stylesheet" href="/static/css/tailwind.css">
+
+    <!-- Self-hosted fonts (Inter, JetBrains Mono, Material Symbols Outlined) -->
     <link rel="stylesheet" href="/static/fonts/inter.css">
+    <link rel="stylesheet" href="/static/fonts/webfonts.css">
+
+    <style>
+      .glass-card {
+        background: rgba(30, 41, 59, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        border-left: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .glow-hover:hover {
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
+        border-color: rgba(56, 189, 248, 0.3);
+      }
+      .bg-grid {
+        background-size: 40px 40px;
+        background-image:
+          linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        mask-image: radial-gradient(circle at center, black 40%, transparent 80%);
+        -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 80%);
+      }
+      .code-block {
+        background-color: #152031;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+      }
+      .how-it-works-grid::before {
+        content: '';
+        position: absolute;
+        top: 2rem;
+        left: 10%;
+        right: 10%;
+        height: 2px;
+        background: linear-gradient(to right, transparent, rgba(62, 72, 79, 0.5) 10%, rgba(62, 72, 79, 0.5) 90%, transparent);
+        z-index: 0;
+      }
+      @media (max-width: 767px) {
+        .how-it-works-grid::before {
+          display: none;
+        }
+      }
+      .syntax-method { color: #38bdf8; }
+      .syntax-url { color: #d8e3fb; }
+      .syntax-header { color: #e78603; }
+      .syntax-string { color: #10B981; }
+
+      input[type="checkbox"] {
+        appearance: none;
+        background-color: #0F172A;
+        margin: 0;
+        font: inherit;
+        color: currentColor;
+        width: 1.15em;
+        height: 1.15em;
+        border: 1px solid #3e484f;
+        border-radius: 4px;
+        display: grid;
+        place-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease-in-out;
+      }
+      input[type="checkbox"]::before {
+        content: "";
+        width: 0.65em;
+        height: 0.65em;
+        clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+        transform: scale(0);
+        transform-origin: bottom left;
+        transition: 120ms transform ease-in-out;
+        box-shadow: inset 1em 1em white;
+        background-color: white;
+      }
+      input[type="checkbox"]:checked {
+        background-color: #38bdf8;
+        border-color: #38bdf8;
+      }
+      input[type="checkbox"]:checked::before {
+        transform: scale(1);
+      }
+
+      ::-webkit-scrollbar { width: 4px; }
+      ::-webkit-scrollbar-track { background: #081425; }
+      ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
+
+      body {
+        background-color: #081425;
+        color: #e2e8f0;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* Button interaction feedback */
+      button, .btn, [role="button"], a.btn {
+        transition: all 0.15s ease;
+      }
+      button:hover:not(:disabled), .btn:hover:not(:disabled), a.btn:hover:not(:disabled) {
+        filter: brightness(1.2);
+      }
+      button:active:not(:disabled), .btn:active:not(:disabled), a.btn:active:not(:disabled) {
+        transform: scale(0.96);
+      }
+      button:disabled, .btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      @keyframes fadeInDown {
+        from { opacity: 0; transform: translate(-50%, -8px); }
+        to { opacity: 1; transform: translate(-50%, 0); }
+      }
+    </style>
 
     <!-- Favicon and App Icons -->
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
@@ -105,44 +218,44 @@
     <!-- Page-specific head content -->
     {% block extra_head %}{% endblock %}
 </head>
-<body>
-    <header>
-        <div class="container">
-            <div class="logo">
-                <h1><a href="/">LN<span>email</span></a></h1>
-            </div>
-            {% block mobile_menu %}
-            <!-- Mobile menu toggle button -->
-            <button class="mobile-menu-toggle">&#9776;</button>
-            {% endblock %}
-            <nav class="header-nav">
+<body class="bg-background text-on-surface min-h-screen flex flex-col font-body-md text-body-md overflow-x-hidden">
+    <!-- Top Nav Bar -->
+    <nav class="bg-surface-glass font-body-md text-body-md full-width top-0 sticky backdrop-blur-xl border-b border-outline-variant/20 shadow-sm z-50">
+        <div class="flex justify-between items-center px-gutter py-4 max-w-[1100px] mx-auto w-full">
+            <a class="font-headline-lg text-headline-lg font-black text-primary tracking-tighter hover:text-primary transition-colors duration-200 active:scale-95" href="/">LNemail</a>
+            <div class="flex items-center gap-4">
                 {% block nav_links %}
-                <a href="/inbox" class="nav-link">Inbox</a>
+                <a class="text-on-surface-variant font-medium hover:text-primary transition-colors duration-200 active:scale-95" href="/inbox">Inbox</a>
                 {% endblock %}
-            </nav>
+            </div>
         </div>
-    </header>
+    </nav>
 
-    <main>
-        <div class="container">
-            {% block content %}{% endblock %}
-        </div>
+    <!-- Main Content -->
+    <main class="flex-grow w-full relative z-10">
+        {% block content %}{% endblock %}
     </main>
 
-    <footer>
-        <div class="container">
-            <p>LNemail - Fast anonymous email powered by Bitcoin Lightning Network</p>
-            <div class="footer-links">
-                <p>Contact: <a href="https://njump.me/npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76">npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76</a></p>
-                <a href="/tos">Terms of Service</a> |
-                <a href="https://github.com/lnemail/lnemail" target="_blank" rel="noopener">Source Code (MIT)</a> |
-                <a href="/pgp-key.asc">PGP Key</a>
+    <!-- Footer -->
+    <footer class="bg-surface-container-lowest font-code-sm text-code-sm full-width py-12 border-t border-outline-variant/10">
+        <div class="max-w-[1100px] mx-auto px-gutter flex flex-col items-center text-center gap-6">
+            <div class="flex flex-col items-center gap-3">
+                <span class="font-label-caps text-label-caps text-primary tracking-widest">LNEMAIL</span>
+                <p class="text-on-surface-variant max-w-xl">LNemail - Fast anonymous email powered by Bitcoin Lightning Network</p>
+                <p class="text-xs text-on-surface-variant opacity-60 font-code-sm">
+                    Contact:
+                    <a href="https://njump.me/npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76" class="hover:text-primary transition-colors">npub1rkh3y6j0a64xyv5f89mpeh8ah68a9jcmjv5mwppc9kr4w9dplg9qpuxk76</a>
+                </p>
+            </div>
+            <div class="flex flex-wrap justify-center gap-4 text-xs text-on-surface-variant">
+                <a class="hover:text-secondary transition-colors" href="/tos">Terms of Service</a>
+                <span class="opacity-30">|</span>
+                <a class="hover:text-secondary transition-colors" href="https://github.com/lnemail/lnemail" target="_blank" rel="noopener">Source Code (MIT)</a>
+                <span class="opacity-30">|</span>
+                <a class="hover:text-secondary transition-colors" href="/pgp-key.asc">PGP Key</a>
             </div>
         </div>
     </footer>
-
-    <!-- Common JavaScript -->
-    <!-- <script src="/static/js/main.js"></script> -->
 
     <!-- Status Messages Container -->
     <div id="statusContainer" class="status-container"></div>

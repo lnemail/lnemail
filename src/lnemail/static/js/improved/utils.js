@@ -4,6 +4,27 @@ export function escapeHtml(text) {
     return div.innerHTML;
 }
 
+/**
+ * Format a Date as DD/MM/YYYY (e.g. 21/06/2026).
+ */
+export function formatDateDMY(date) {
+    const d = String(date.getDate()).padStart(2, '0');
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const y = date.getFullYear();
+    return `${d}/${m}/${y}`;
+}
+
+/**
+ * Format a Date as DD/MM/YYYY HH:MM:SS (24h).
+ */
+export function formatDateTime24(date) {
+    const datePart = formatDateDMY(date);
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    const s = String(date.getSeconds()).padStart(2, '0');
+    return `${datePart} ${h}:${min}:${s}`;
+}
+
 // Configure DOMPurify: force all links to open in new tab safely.
 // This hook runs on every sanitize() call, rewriting anchor attributes.
 if (typeof DOMPurify !== 'undefined') {
@@ -90,34 +111,34 @@ export function isValidBase64(str) {
 export function getFileIcon(filename) {
     const extension = filename.split('.').pop().toLowerCase();
     const iconMap = {
-        'pdf': { icon: 'fa-file-pdf', color: '#dc3545' },
-        'doc': { icon: 'fa-file-word', color: '#2b579a' },
-        'docx': { icon: 'fa-file-word', color: '#2b579a' },
-        'xls': { icon: 'fa-file-excel', color: '#107c41' },
-        'xlsx': { icon: 'fa-file-excel', color: '#107c41' },
-        'ppt': { icon: 'fa-file-powerpoint', color: '#d24726' },
-        'pptx': { icon: 'fa-file-powerpoint', color: '#d24726' },
-        'txt': { icon: 'fa-file-alt', color: '#6c757d' },
-        'asc': { icon: 'fa-file-code', color: '#6c757d' },
-        'sig': { icon: 'fa-file-code', color: '#6c757d' },
-        'gpg': { icon: 'fa-file-code', color: '#6c757d' },
-        'pgp': { icon: 'fa-file-code', color: '#6c757d' },
-        'csv': { icon: 'fa-file-csv', color: '#28a745' },
-        'json': { icon: 'fa-file-code', color: '#6c757d' },
-        'xml': { icon: 'fa-file-code', color: '#6c757d' },
-        'log': { icon: 'fa-file-alt', color: '#6c757d' },
-        'jpg': { icon: 'fa-file-image', color: '#28a745' },
-        'jpeg': { icon: 'fa-file-image', color: '#28a745' },
-        'png': { icon: 'fa-file-image', color: '#28a745' },
-        'gif': { icon: 'fa-file-image', color: '#28a745' },
-        'zip': { icon: 'fa-file-archive', color: '#ffc107' },
-        'rar': { icon: 'fa-file-archive', color: '#ffc107' },
-        'mp3': { icon: 'fa-file-audio', color: '#17a2b8' },
-        'mp4': { icon: 'fa-file-video', color: '#6f42c1' },
-        'avi': { icon: 'fa-file-video', color: '#6f42c1' }
+        'pdf': { icon: 'picture_as_pdf', color: '#dc3545' },
+        'doc': { icon: 'description', color: '#2b579a' },
+        'docx': { icon: 'description', color: '#2b579a' },
+        'xls': { icon: 'table_chart', color: '#107c41' },
+        'xlsx': { icon: 'table_chart', color: '#107c41' },
+        'ppt': { icon: 'slideshow', color: '#d24726' },
+        'pptx': { icon: 'slideshow', color: '#d24726' },
+        'txt': { icon: 'description', color: '#6c757d' },
+        'asc': { icon: 'code', color: '#6c757d' },
+        'sig': { icon: 'code', color: '#6c757d' },
+        'gpg': { icon: 'code', color: '#6c757d' },
+        'pgp': { icon: 'code', color: '#6c757d' },
+        'csv': { icon: 'grid_on', color: '#28a745' },
+        'json': { icon: 'code', color: '#6c757d' },
+        'xml': { icon: 'code', color: '#6c757d' },
+        'log': { icon: 'description', color: '#6c757d' },
+        'jpg': { icon: 'image', color: '#28a745' },
+        'jpeg': { icon: 'image', color: '#28a745' },
+        'png': { icon: 'image', color: '#28a745' },
+        'gif': { icon: 'image', color: '#28a745' },
+        'zip': { icon: 'folder_zip', color: '#ffc107' },
+        'rar': { icon: 'folder_zip', color: '#ffc107' },
+        'mp3': { icon: 'audio_file', color: '#17a2b8' },
+        'mp4': { icon: 'video_file', color: '#6f42c1' },
+        'avi': { icon: 'video_file', color: '#6f42c1' }
     };
 
-    return iconMap[extension] || { icon: 'fa-file', color: '#6c757d' };
+    return iconMap[extension] || { icon: 'insert_drive_file', color: '#6c757d' };
 }
 
 /**
@@ -135,20 +156,81 @@ export function formatFileSize(bytes) {
     return `${i === 0 ? value : value.toFixed(1)} ${units[i]}`;
 }
 
-export async function copyToClipboard(text) {
+export function copyToClipboard(text) {
     if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-    } else {
-        // Fallback for older browsers
-        const textArea = document.createElement('textarea');
-        textArea.value = text;
-        textArea.style.position = 'fixed';
-        textArea.style.left = '-999999px';
-        textArea.style.top = '-999999px';
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
+        return navigator.clipboard.writeText(text).catch(() => {
+            return copyFallback(text);
+        });
     }
+    return copyFallback(text);
+}
+
+function copyFallback(text) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    let success = false;
+    try {
+        success = document.execCommand('copy');
+    } catch (e) {
+        // execCommand may throw in some environments
+    }
+    document.body.removeChild(textArea);
+    if (!success) {
+        return Promise.reject(new Error('Copy command failed'));
+    }
+    return Promise.resolve();
+}
+
+/**
+ * Show visual feedback on a copy button: swaps icon to checkmark temporarily
+ * and shows a toast notification.
+ */
+export function showCopyFeedback(button) {
+    if (!button) return;
+
+    // Save original appearance
+    const originalHTML = button.innerHTML;
+    const wasDisabled = button.disabled;
+
+    // Swap button icon to checkmark
+    const iconEl = button.querySelector('svg, .material-symbols-outlined, img');
+    if (iconEl) {
+        const originalIconHTML = iconEl.outerHTML;
+        const checkSvg = '<svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="#10B981" viewBox="0 0 24 24" style="display:inline;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>';
+        iconEl.outerHTML = checkSvg;
+        button.disabled = true;
+
+        setTimeout(() => {
+            const newIcon = button.querySelector('svg');
+            if (newIcon) newIcon.outerHTML = originalIconHTML;
+            button.disabled = wasDisabled;
+        }, 2000);
+    } else {
+        // No icon found, replace whole content
+        const checkSvg = '<svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="#10B981" viewBox="0 0 24 24" style="display:inline;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>';
+        button.innerHTML = `${checkSvg} <span style="color:#10B981;font-size:12px;">Copied!</span>`;
+        button.disabled = true;
+
+        setTimeout(() => {
+            button.innerHTML = originalHTML;
+            button.disabled = wasDisabled;
+        }, 2000);
+    }
+
+    // Show floating "Copied!" badge next to button
+    const badge = document.createElement('span');
+    badge.textContent = 'Copied!';
+    badge.style.cssText = 'position:absolute;top:-28px;left:50%;transform:translateX(-50%);background:#10B981;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;z-index:9999;pointer-events:none;animation:fadeInDown 0.2s ease;';
+    button.style.position = button.style.position || 'relative';
+    button.appendChild(badge);
+
+    setTimeout(() => {
+        if (badge.parentNode) badge.parentNode.removeChild(badge);
+    }, 2000);
 }

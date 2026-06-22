@@ -26,7 +26,7 @@ import {
     updateAccountDisplay
 } from './ui.js';
 import { handleConnect, handleDisconnect, tryAutoConnect, performLoginHealthCheck, bindAccessTokenRecovery } from './auth.js';
-import { isValidEmail, formatFileSize } from './utils.js';
+import { isValidEmail, formatFileSize, showCopyFeedback, copyToClipboard } from './utils.js';
 import { refreshInbox, startAutoRefresh, stopAutoRefresh } from './inbox.js';
 import { tryAutoPayWebLN } from './webln.js';
 import { HEALTH_CHECK_INTERVAL, PAYMENT_POLL_INTERVAL, RENEWAL_PRICE_PER_YEAR } from './config.js';
@@ -49,12 +49,12 @@ function renderAttachmentList() {
         item.className = 'attachment-item';
         item.innerHTML = `
             <div class="attachment-item-info">
-                <i class="fas fa-file"></i>
+                <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">insert_drive_file</span>
                 <span class="attachment-item-name" title="${att.filename}">${att.filename}</span>
                 <span class="attachment-item-size">(${formatFileSize(att.size)})</span>
             </div>
             <button type="button" class="attachment-item-remove" data-index="${index}" title="Remove">
-                <i class="fas fa-times"></i>
+                <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">close</span>
             </button>
         `;
         list.appendChild(item);
@@ -131,28 +131,30 @@ function clearAttachments() {
     if (input) input.value = '';
 }
 
-async function handleRefreshClick() {
-    const refreshBtn = document.getElementById('refreshBtn');
-    const refreshIcon = refreshBtn.querySelector('i');
+async function handleRefreshClick(e) {
+    const refreshBtn = e.target.closest('button');
+    if (!refreshBtn) return;
+    const svg = refreshBtn.querySelector('svg');
+    const originalOpacity = svg ? svg.style.opacity : '';
 
-    const originalClasses = refreshIcon.className;
-    refreshIcon.className = 'fas fa-sync-alt fa-spin';
+    if (svg) svg.style.opacity = '0.5';
     refreshBtn.disabled = true;
 
     try {
         await refreshInbox();
     } finally {
-        refreshIcon.className = originalClasses;
+        if (svg) svg.style.opacity = originalOpacity;
         refreshBtn.disabled = false;
     }
 }
 
 async function handleHealthCheck() {
     const refreshHealthBtn = document.getElementById('refreshHealthBtn');
-    const refreshHealthIcon = refreshHealthBtn.querySelector('i');
+    if (!refreshHealthBtn) return;
+    const icon = refreshHealthBtn.querySelector('.material-symbols-outlined');
+    const originalText = icon ? icon.textContent : '';
 
-    const originalClasses = refreshHealthIcon.className;
-    refreshHealthIcon.className = 'fas fa-sync-alt fa-spin';
+    if (icon) { icon.textContent = 'progress_activity'; icon.style.animation = 'spin 1s linear infinite'; }
     refreshHealthBtn.disabled = true;
 
     updateHealthStatusLoading();
@@ -167,7 +169,7 @@ async function handleHealthCheck() {
     } catch (error) {
         updateHealthStatus({ success: false, error: error.message });
     } finally {
-        refreshHealthIcon.className = originalClasses;
+        if (icon) { icon.textContent = originalText; icon.style.animation = ''; }
         refreshHealthBtn.disabled = false;
     }
 }
@@ -218,9 +220,9 @@ async function handleSendEmail(e) {
         content: att.content,
     }));
 
-    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const submitBtn = document.getElementById('composeSubmitBtn') || e.target.querySelector('button[type="submit"]');
     const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating Invoice...';
+    submitBtn.innerHTML = '<span class="material-symbols-outlined animate-spin" style="font-size:16px;vertical-align:-3px;">progress_activity</span> Creating Invoice...';
     submitBtn.disabled = true;
 
     try {
@@ -308,7 +310,7 @@ function startPaymentPolling() {
                 const copyBtn = document.getElementById('copyInvoiceBtn');
 
                 if (cancelBtn) {
-                    cancelBtn.innerHTML = '<i class="fas fa-check"></i> Close';
+                    cancelBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">check</span> Close';
                     cancelBtn.className = 'btn-primary';
                 }
                 if (copyBtn) {
@@ -361,7 +363,7 @@ function handleCancelPayment() {
         const copyBtn = document.getElementById('copyInvoiceBtn');
 
         if (cancelBtn) {
-            cancelBtn.innerHTML = '<i class="fas fa-times"></i> Cancel';
+            cancelBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">close</span> Cancel';
             cancelBtn.className = 'btn-secondary';
         }
         if (copyBtn) {
@@ -379,25 +381,11 @@ async function handleCopyInvoice() {
     }
 
     try {
-        if (navigator.clipboard && window.isSecureContext) {
-            await navigator.clipboard.writeText(state.currentPayment.payment_request);
-        } else {
-            // Fallback for older browsers
-            const textArea = document.createElement('textarea');
-            textArea.value = state.currentPayment.payment_request;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            textArea.style.top = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
-        }
+        await copyToClipboard(state.currentPayment.payment_request);
 
+        showCopyFeedback(document.getElementById('copyInvoiceBtn'));
         showStatus('Lightning invoice copied to clipboard!', 'success');
     } catch (error) {
-        // console.error('Failed to copy invoice:', error);
         showStatus('Failed to copy invoice to clipboard', 'error');
     }
 }
@@ -418,7 +406,7 @@ async function handleDeleteSelected() {
 
     const deleteBtn = document.getElementById('deleteSelectedBtn');
     const originalText = deleteBtn.innerHTML;
-    deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+    deleteBtn.innerHTML = '<span class="material-symbols-outlined animate-spin" style="font-size:16px;vertical-align:-3px;">progress_activity</span> Deleting...';
     deleteBtn.disabled = true;
 
     try {
@@ -442,35 +430,19 @@ async function handleDeleteSelected() {
 
 async function handleCopyEmail() {
     const emailSpan = document.getElementById('accountEmail');
+    if (!emailSpan) return;
     const emailText = emailSpan.textContent;
 
-    // Check if the email is loaded (not "Loading...")
     if (!emailText || emailText === 'Loading...') {
         showStatus('Email address not yet loaded', 'error');
         return;
     }
 
     try {
-        // Use the modern Clipboard API if available
-        if (navigator.clipboard && window.isSecureContext) {
-            await navigator.clipboard.writeText(emailText);
-        } else {
-            // Fallback for older browsers or non-secure contexts
-            const textArea = document.createElement('textarea');
-            textArea.value = emailText;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            textArea.style.top = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
-        }
-
-        showStatus(`Email address copied: ${emailText}`, 'success');
+        await copyToClipboard(emailText);
+        showCopyFeedback(document.getElementById('accountEmailContainer'));
+        showStatus('Email address copied to clipboard', 'success');
     } catch (error) {
-        // console.error('Failed to copy email:', error);
         showStatus('Failed to copy email address to clipboard', 'error');
     }
 }
@@ -491,75 +463,107 @@ function bindEvents() {
             }
         });
     } else {
-        document.getElementById('connectBtn').addEventListener('click', handleConnect);
+        const connectBtn = document.getElementById('connectBtn');
+        if (connectBtn) connectBtn.addEventListener('click', handleConnect);
     }
-    document.getElementById('disconnectBtn').addEventListener('click', handleDisconnect);
+    const disconnectBtn = document.getElementById('disconnectBtn');
+    if (disconnectBtn) disconnectBtn.addEventListener('click', handleDisconnect);
     bindAccessTokenRecovery();
 
     // Login health check events
-    document.getElementById('loginRefreshHealthBtn').addEventListener('click', async () => {
-        const loginRefreshHealthBtn = document.getElementById('loginRefreshHealthBtn');
-        const loginRefreshHealthIcon = loginRefreshHealthBtn.querySelector('i');
-
-        const originalClasses = loginRefreshHealthIcon.className;
-        loginRefreshHealthIcon.className = 'fas fa-sync-alt fa-spin';
-        loginRefreshHealthBtn.disabled = true;
-
-        try {
-            await performLoginHealthCheck();
-        } finally {
-            loginRefreshHealthIcon.className = originalClasses;
-            loginRefreshHealthBtn.disabled = false;
-        }
-    });
+    const loginRefreshHealthBtn = document.getElementById('loginRefreshHealthBtn');
+    if (loginRefreshHealthBtn) {
+        loginRefreshHealthBtn.addEventListener('click', async () => {
+            const icon = loginRefreshHealthBtn.querySelector('.material-symbols-outlined');
+            const originalText = icon ? icon.textContent : '';
+            if (icon) { icon.textContent = 'progress_activity'; icon.style.animation = 'spin 1s linear infinite'; }
+            loginRefreshHealthBtn.disabled = true;
+            try {
+                await performLoginHealthCheck();
+            } finally {
+                if (icon) { icon.textContent = originalText; icon.style.animation = ''; }
+                loginRefreshHealthBtn.disabled = false;
+            }
+        });
+    }
 
     // Toggle login health details
-    document.getElementById('loginHealthStatus').addEventListener('click', () => {
+    const loginHealthStatus = document.getElementById('loginHealthStatus');
+    if (loginHealthStatus) loginHealthStatus.addEventListener('click', () => {
         const details = document.getElementById('loginHealthDetails');
-        details.classList.toggle('hidden');
+        if (details) details.classList.toggle('hidden');
     });
 
     // Allow enter key to connect (if health check passes)
-    document.getElementById('accessToken').addEventListener('keypress', (e) => {
+    const accessToken = document.getElementById('accessToken');
+    if (accessToken) accessToken.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             const connectBtn = document.getElementById('connectBtn');
-            if (!connectBtn.disabled) {
+            if (connectBtn && !connectBtn.disabled) {
                 handleConnect();
             }
         }
     });
 
-    // Navigation events
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.addEventListener('click', () => {
-            document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+    // Navigation events - handle both .nav-item and POC header buttons
+    document.querySelectorAll('[data-view]').forEach(item => {
+        item.addEventListener('click', (e) => {
+            const viewName = item.dataset.view;
+            if (!viewName) return;
+            // Mark all nav items as inactive
+            document.querySelectorAll('[data-view]').forEach(nav => {
+                nav.classList.remove('active');
+                // POC header button styling
+                nav.classList.remove('bg-sky-500/10', 'border', 'border-sky-500/20', 'shadow-[0_0_15px_rgba(56,189,248,0.1)]');
+                nav.style.color = '';
+            });
+            // Mark clicked as active
             item.classList.add('active');
-            showView(item.dataset.view);
+            // Apply POC header active styling if it's a header nav button
+            if (item.closest('nav')) {
+                item.classList.add('bg-sky-500/10', 'border', 'border-sky-500/20');
+                item.style.color = '';
+                item.style.boxShadow = '0 0 15px rgba(56,189,248,0.1)';
+            }
+            showView(viewName);
         });
     });
 
-    // Compose events
-    document.getElementById('composeBtn').addEventListener('click', () => showView('compose'));
-    document.getElementById('composeForm').addEventListener('submit', handleSendEmail);
-    document.getElementById('clearForm').addEventListener('click', () => {
+    // Compose events - header nav handles compose, but keep composeNavBtn as trigger
+    const composeBtn = document.getElementById('composeBtn');
+    if (composeBtn) composeBtn.addEventListener('click', () => showView('compose'));
+    const composeForm = document.getElementById('composeForm');
+    if (composeForm) composeForm.addEventListener('submit', handleSendEmail);
+    const composeSubmitBtn = document.getElementById('composeSubmitBtn');
+    if (composeSubmitBtn) composeSubmitBtn.addEventListener('click', handleSendEmail);
+    const clearForm = document.getElementById('clearForm');
+    if (clearForm) clearForm.addEventListener('click', () => {
         clearComposeForm();
         clearAttachments();
     });
 
     // Attachment events
-    document.getElementById('addAttachmentBtn').addEventListener('click', () => {
-        document.getElementById('attachmentInput').click();
+    const addAttachmentBtn = document.getElementById('addAttachmentBtn');
+    if (addAttachmentBtn) addAttachmentBtn.addEventListener('click', () => {
+        const attachmentInput = document.getElementById('attachmentInput');
+        if (attachmentInput) attachmentInput.click();
     });
-    document.getElementById('attachmentInput').addEventListener('change', handleAttachmentInput);
-    document.getElementById('attachmentList').addEventListener('click', handleAttachmentRemove);
+    const attachmentInput = document.getElementById('attachmentInput');
+    if (attachmentInput) attachmentInput.addEventListener('change', handleAttachmentInput);
+    const attachmentList = document.getElementById('attachmentList');
+    if (attachmentList) attachmentList.addEventListener('click', handleAttachmentRemove);
 
     // Email list events
-    document.getElementById('refreshBtn').addEventListener('click', handleRefreshClick);
-    document.getElementById('backToInbox').addEventListener('click', () => showView('inbox'));
-    document.getElementById('replyBtn').addEventListener('click', handleReply);
+    const refreshSidebarBtn = document.getElementById('refreshSidebarBtn');
+    if (refreshSidebarBtn) refreshSidebarBtn.addEventListener('click', handleRefreshClick);
+    const backToInbox = document.getElementById('backToInbox');
+    if (backToInbox) backToInbox.addEventListener('click', () => showView('inbox'));
+    const replyBtn = document.getElementById('replyBtn');
+    if (replyBtn) replyBtn.addEventListener('click', handleReply);
 
     // Health check events
-    document.getElementById('refreshHealthBtn').addEventListener('click', handleHealthCheck);
+    const refreshHealthBtn = document.getElementById('refreshHealthBtn');
+    if (refreshHealthBtn) refreshHealthBtn.addEventListener('click', handleHealthCheck);
 
     // Delete emails events - using event delegation since button is dynamically created
     document.addEventListener('click', (e) => {
@@ -569,20 +573,30 @@ function bindEvents() {
     });
 
     // Copy email address events
-    document.getElementById('accountEmailContainer').addEventListener('click', handleCopyEmail);
+    const accountEmailContainer = document.getElementById('accountEmailContainer');
+    if (accountEmailContainer) accountEmailContainer.addEventListener('click', handleCopyEmail);
 
     // Payment modal events
-    document.getElementById('cancelPaymentBtn').addEventListener('click', handleCancelPayment);
-    document.getElementById('copyInvoiceBtn').addEventListener('click', handleCopyInvoice);
+    const cancelPaymentBtn = document.getElementById('cancelPaymentBtn');
+    if (cancelPaymentBtn) cancelPaymentBtn.addEventListener('click', handleCancelPayment);
+    const copyInvoiceBtn = document.getElementById('copyInvoiceBtn');
+    if (copyInvoiceBtn) copyInvoiceBtn.addEventListener('click', handleCopyInvoice);
 
     // Renewal events
-    document.getElementById('renewBtn').addEventListener('click', () => showRenewalModal());
-    document.getElementById('renewalPayBtn').addEventListener('click', handleRenewAccount);
-    document.getElementById('cancelRenewalOptionsBtn').addEventListener('click', handleCancelRenewalOptions);
-    document.getElementById('cancelRenewalBtn').addEventListener('click', handleCancelRenewal);
-    document.getElementById('copyRenewalInvoiceBtn').addEventListener('click', handleCopyRenewalInvoice);
-    document.getElementById('renewalYears').addEventListener('change', handleRenewalYearsChange);
-    document.getElementById('renewalBannerBtn').addEventListener('click', handleRenewalBannerClick);
+    const renewBtn = document.getElementById('renewBtn');
+    if (renewBtn) renewBtn.addEventListener('click', () => showRenewalModal());
+    const renewalPayBtn = document.getElementById('renewalPayBtn');
+    if (renewalPayBtn) renewalPayBtn.addEventListener('click', handleRenewAccount);
+    const cancelRenewalOptionsBtn = document.getElementById('cancelRenewalOptionsBtn');
+    if (cancelRenewalOptionsBtn) cancelRenewalOptionsBtn.addEventListener('click', handleCancelRenewalOptions);
+    const cancelRenewalBtn = document.getElementById('cancelRenewalBtn');
+    if (cancelRenewalBtn) cancelRenewalBtn.addEventListener('click', handleCancelRenewal);
+    const copyRenewalInvoiceBtn = document.getElementById('copyRenewalInvoiceBtn');
+    if (copyRenewalInvoiceBtn) copyRenewalInvoiceBtn.addEventListener('click', handleCopyRenewalInvoice);
+    const renewalYears = document.getElementById('renewalYears');
+    if (renewalYears) renewalYears.addEventListener('change', handleRenewalYearsChange);
+    const renewalBannerBtn = document.getElementById('renewalBannerBtn');
+    if (renewalBannerBtn) renewalBannerBtn.addEventListener('click', handleRenewalBannerClick);
 }
 
 function consumeLoginPrefill() {
@@ -613,7 +627,9 @@ function consumeLoginPrefill() {
 }
 
 function init() {
-    // Synchronously hide the login modal if a saved token exists to prevent FOUC
+    // Token modal starts hidden (no "active" class) to prevent flash.
+    // Show it immediately for new visitors; returning users with a saved
+    // token skip straight to auto-connect without ever seeing the modal.
     const savedToken = localStorage.getItem('lnemail_access_token');
     const hasPrefill = (() => {
         try {
@@ -622,30 +638,29 @@ function init() {
             return false;
         }
     })();
+    const tokenModal = document.getElementById('tokenModal');
     // If we have a fresh post-signup prefill payload, do NOT silently
     // re-use a stale localStorage token: force the user to go through
     // the Connect form so the password manager can save the new pair.
     if (savedToken && !hasPrefill) {
-        const tokenModal = document.getElementById('tokenModal');
-        if (tokenModal) {
-            tokenModal.classList.remove('active');
-        }
+        // Modal stays hidden; auto-connect will take over below
+    } else if (tokenModal) {
+        tokenModal.classList.add('active');
     }
 
     initMobileMenu();
     bindEvents();
     const prefilled = consumeLoginPrefill();
-    if (prefilled) {
-        // Still run the login-page health check so the Connect button
-        // can become enabled, but skip the localStorage auto-connect:
-        // we want the user to actually click Connect so their password
-        // manager can save the new credential pair.
-        performLoginHealthCheck();
-    } else {
+
+    // Always run the login-page health check so the Connect button
+    // can become enabled without the user clicking refresh.
+    performLoginHealthCheck();
+
+    if (!prefilled) {
         tryAutoConnect();
     }
 
-    // Perform initial health check
+    // Perform initial health check for the inbox sidebar
     handleHealthCheck();
 
     // Set up automatic health checking every 5 minutes
@@ -664,7 +679,7 @@ async function handleRenewAccount() {
 
     const payBtn = document.getElementById('renewalPayBtn');
     const originalText = payBtn.innerHTML;
-    payBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating Invoice...';
+    payBtn.innerHTML = '<span class="material-symbols-outlined animate-spin" style="font-size:16px;vertical-align:-3px;">progress_activity</span> Creating Invoice...';
     payBtn.disabled = true;
 
     try {
@@ -728,7 +743,7 @@ async function checkRenewalPaymentStatusPoll() {
             const cancelBtn = document.getElementById('cancelRenewalBtn');
             const copyBtn = document.getElementById('copyRenewalInvoiceBtn');
             if (cancelBtn) {
-                cancelBtn.innerHTML = '<i class="fas fa-check"></i> Close';
+                cancelBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">check</span> Close';
                 cancelBtn.className = 'btn-primary';
             }
             if (copyBtn) copyBtn.style.display = 'none';
@@ -799,21 +814,9 @@ async function handleCopyRenewalInvoice() {
     }
 
     try {
-        if (navigator.clipboard && window.isSecureContext) {
-            await navigator.clipboard.writeText(state.currentRenewal.payment_request);
-        } else {
-            const textArea = document.createElement('textarea');
-            textArea.value = state.currentRenewal.payment_request;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            textArea.style.top = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
-        }
+        await copyToClipboard(state.currentRenewal.payment_request);
 
+        showCopyFeedback(document.getElementById('copyRenewalInvoiceBtn'));
         showStatus('Lightning invoice copied to clipboard!', 'success');
     } catch (error) {
         showStatus('Failed to copy invoice to clipboard', 'error');
