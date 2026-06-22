@@ -14,10 +14,23 @@ way a real user would.
 - `test_inbox_send_and_read.py` - login, compose an email to the
   account itself, pay the send invoice, wait for delivery, open the
   message, reply to it, pay again, verify the reply lands.
+- `test_renewal_flow.py` - seed a near-expiry account, renew it with a
+  real LN payment, and verify the expiry advanced.
 
 The suite is intentionally small: the priority is detecting regressions
 in the core paying / sending / receiving / reading / replying loop, not
 covering every UI permutation.
+
+### NWC payment backend
+
+The same suite can run against the Nostr Wallet Connect (NIP-47) payment
+backend instead of LND, exercising the multi-provider path with real
+invoices over a real Nostr relay. See
+[`nwc_wallet/README.md`](nwc_wallet/README.md):
+
+```bash
+./tests/e2e/nwc_wallet/run-nwc.sh
+```
 
 ## Prerequisites
 

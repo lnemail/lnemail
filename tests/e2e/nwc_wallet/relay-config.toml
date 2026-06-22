@@ -1,0 +1,22 @@
+# Minimal nostr-rs-relay configuration for e2e tests.
+# Permissive and ephemeral: this relay only exists to shuttle NIP-47
+# messages between the test NWC wallet and lnemail during the suite.
+[info]
+relay_url = "ws://relay:8080/"
+name = "lnemail-e2e-relay"
+description = "Ephemeral relay for NWC e2e tests"
+
+[database]
+data_directory = "/usr/src/app/db"
+
+[network]
+port = 8080
+address = "0.0.0.0"
+
+[limits]
+messages_per_sec = 0
+max_event_bytes = 131072
+max_ws_message_bytes = 131072
+
+[authorization]
+# No pubkey allowlist: accept everything (test-only).
