@@ -180,6 +180,33 @@ The development environment includes:
 - Redis for background job processing
 - LNemail API and worker services
 
+#### Frontend assets (Tailwind CSS and fonts)
+
+The web UI uses Tailwind CSS and a small set of web fonts. To keep the
+production site free of any third-party CDN requests, these are
+pre-compiled and self-hosted:
+
+- `src/lnemail/static/css/tailwind.css` is generated from
+  `frontend/tailwind.config.js` + `frontend/tailwind.src.css` and is
+  committed to the repo (so deployments need no Node/Bun toolchain).
+- Fonts (Inter, JetBrains Mono, Material Symbols Outlined) live under
+  `src/lnemail/static/fonts/` with `inter.css` and `webfonts.css`.
+
+Rebuild the stylesheet after changing any template or JS that uses
+Tailwind classes:
+
+```bash
+cd frontend
+bun install          # first time only
+bun run build        # writes ../src/lnemail/static/css/tailwind.css
+# bun run watch      # rebuild on change during development
+```
+
+Refresh the fonts (only needed to add a new Material Symbols icon or
+update a font) with `./scripts/fetch_fonts.sh`. The Material Symbols
+font is subset to just the icons the UI references, keeping it ~34 KB
+instead of ~4 MB.
+
 #### Pay for Email Account
 
 Use the web or API to generate an invoice, then pay it from the second LND node:
