@@ -3,11 +3,9 @@ Enhanced LND Service with debugging capabilities for packet inspection.
 """
 
 import codecs
-import json
 from typing import Any, Dict, Tuple, Callable
 
 import grpc
-import requests
 from loguru import logger
 
 from ..config import settings
@@ -275,34 +273,6 @@ class LNDService:
                 break
             shift += 7
         return result, offset
-
-    def wrap_with_lnproxy(self, invoice: str) -> Dict[str, Any]:
-        """Wrap an invoice with LNProxy relay."""
-        try:
-            headers = {"Content-Type": "application/json"}
-            payload = {"invoice": invoice}
-
-            response = requests.post(
-                settings.LNPROXY_URL,
-                headers=headers,
-                data=json.dumps(payload),
-                timeout=30,
-            )
-
-            if response.status_code != 200:
-                logger.error(
-                    f"LNProxy error: Status {response.status_code}, {response.text}"
-                )
-                raise Exception(f"LNProxy returned status code {response.status_code}")
-
-            result: Dict[str, Any] = response.json()
-            if "proxy_invoice" not in result:
-                raise Exception("LNProxy response missing proxy_invoice field")
-
-            return result
-        except Exception as e:
-            logger.error(f"Error wrapping invoice with LNProxy: {str(e)}")
-            raise
 
     def check_invoice(self, payment_hash: str) -> bool:
         """Check if a Lightning invoice has been paid."""

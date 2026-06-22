@@ -62,10 +62,6 @@ class Settings(BaseSettings):
     # if it is configured (use the NWC wallets exclusively).
     NWC_ONLY: bool = False
 
-    # LNProxy settings
-    USE_LNPROXY: bool = True
-    LNPROXY_URL: str = "https://lnproxy.org/spec"
-
     # Redis settings
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
