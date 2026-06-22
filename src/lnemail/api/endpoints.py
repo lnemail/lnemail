@@ -43,7 +43,7 @@ from ..core.schemas import (
 )
 from ..db import get_db
 from ..services.email_service import EmailService
-from ..services.lnd_service import LNDService
+from ..services.payments import get_payment_backend
 from ..services.tasks import (
     check_payment_status,
     check_renewal_payment_status,
@@ -59,7 +59,9 @@ health_router = APIRouter(tags=["health"])
 security = HTTPBearer(auto_error=False)
 
 # Initialize services
-lnd_service = LNDService()
+# The payment backend abstracts away whether invoices are served by the
+# self-hosted LND node, one or more NWC wallets, or a mix (with fallback).
+payment_backend = get_payment_backend()
 email_service = EmailService()
 
 # Virtual expiration warning email ID prefix.  The full ID includes the
@@ -246,7 +248,7 @@ async def create_email_account(
         memo_parts.append("(valid for 1 year)")
         memo = " ".join(memo_parts)
 
-        invoice = lnd_service.create_invoice(settings.EMAIL_PRICE, memo)
+        invoice = payment_backend.create_invoice(settings.EMAIL_PRICE, memo)
 
         # Create account record in pending state
         account = EmailAccount(
@@ -255,10 +257,6 @@ async def create_email_account(
             payment_hash=invoice["payment_hash"],
             payment_status=PaymentStatus.PENDING,
         )
-
-        if settings.USE_LNPROXY and "original_payment_request" in invoice:
-            # Store the original payment request for validation when using LNProxy
-            account.original_payment_request = invoice["original_payment_request"]
 
         db.add(account)
         db.commit()
@@ -322,7 +320,7 @@ async def check_payment(
 
         # If still pending, check the current status with LND
         if account.payment_status == PaymentStatus.PENDING:
-            paid = lnd_service.check_invoice(payment_hash)
+            paid = payment_backend.check_invoice(payment_hash)
             if paid and account.payment_status != PaymentStatus.PAID:
                 # Payment just received, trigger the account setup
                 queue.enqueue(check_payment_status, payment_hash, job_timeout=600)
@@ -397,7 +395,7 @@ async def send_email(
         sender_email = account.email_address
         memo = f"Send email from {sender_email} to {send_request.recipient}"
 
-        invoice = lnd_service.create_invoice(settings.EMAIL_SEND_PRICE, memo)
+        invoice = payment_backend.create_invoice(settings.EMAIL_SEND_PRICE, memo)
 
         # Serialize attachments to JSON for storage
         attachments_json: str | None = None
@@ -475,7 +473,7 @@ async def check_send_email_payment_status(
             )
 
         if pending_email.status == PaymentStatus.PENDING:
-            paid = lnd_service.check_invoice(payment_hash)
+            paid = payment_backend.check_invoice(payment_hash)
             if paid:
                 queue.enqueue(process_send_email_payment, payment_hash, job_timeout=600)
 
@@ -890,7 +888,7 @@ async def renew_account(
             memo_parts.append("Only 1 year guaranteed; extra years are donations")
         memo = " - ".join(memo_parts)
 
-        invoice = lnd_service.create_invoice(total_price, memo)
+        invoice = payment_backend.create_invoice(total_price, memo)
 
         # Store the renewal payment hash on the account
         account.renewal_payment_hash = invoice["payment_hash"]
@@ -953,7 +951,7 @@ async def check_renewal_status(
             # Account not found by renewal_payment_hash. This can happen when
             # the background task already processed the payment and cleared the
             # hash. Check with LND to distinguish from a truly invalid hash.
-            paid = lnd_service.check_invoice(payment_hash)
+            paid = payment_backend.check_invoice(payment_hash)
             if paid:
                 # Payment was settled and the hash was already cleared by the
                 # background task — renewal was processed successfully.
@@ -968,7 +966,7 @@ async def check_renewal_status(
             )
 
         # If still pending, check with LND
-        paid = lnd_service.check_invoice(payment_hash)
+        paid = payment_backend.check_invoice(payment_hash)
         if paid and account.renewal_payment_hash == payment_hash:
             # Payment detected but not yet processed — re-enqueue the task
             # The task itself is idempotent and will handle the actual extension

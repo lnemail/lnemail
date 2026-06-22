@@ -52,13 +52,13 @@ class TestRenewalPollBounding:
     def test_unpaid_reenqueues_with_incremented_attempt(self) -> None:
         engine = _make_engine()
         mock_queue = MagicMock()
-        mock_lnd = MagicMock()
-        mock_lnd.check_invoice.return_value = False
+        mock_backend = MagicMock()
+        mock_backend.check_invoice.return_value = False
 
         with (
             patch.object(tasks, "engine", engine),
             patch.object(tasks, "queue", mock_queue),
-            patch.object(tasks, "LNDService", return_value=mock_lnd),
+            patch.object(tasks, "get_payment_backend", return_value=mock_backend),
         ):
             tasks.check_renewal_payment_status("hash_unpaid", years=1, attempt=0)
 
@@ -74,15 +74,15 @@ class TestRenewalPollBounding:
     def test_unpaid_at_last_attempt_stops_requeueing(self) -> None:
         engine = _make_engine()
         mock_queue = MagicMock()
-        mock_lnd = MagicMock()
-        mock_lnd.check_invoice.return_value = False
+        mock_backend = MagicMock()
+        mock_backend.check_invoice.return_value = False
 
         last_attempt = tasks.MAX_RENEWAL_POLL_ATTEMPTS - 1
 
         with (
             patch.object(tasks, "engine", engine),
             patch.object(tasks, "queue", mock_queue),
-            patch.object(tasks, "LNDService", return_value=mock_lnd),
+            patch.object(tasks, "get_payment_backend", return_value=mock_backend),
         ):
             tasks.check_renewal_payment_status(
                 "hash_expired", years=1, attempt=last_attempt
@@ -101,13 +101,13 @@ class TestRenewalPollBounding:
             expires_at=datetime.utcnow() + timedelta(days=10),
         )
         mock_queue = MagicMock()
-        mock_lnd = MagicMock()
-        mock_lnd.check_invoice.return_value = False
+        mock_backend = MagicMock()
+        mock_backend.check_invoice.return_value = False
 
         with (
             patch.object(tasks, "engine", engine),
             patch.object(tasks, "queue", mock_queue),
-            patch.object(tasks, "LNDService", return_value=mock_lnd),
+            patch.object(tasks, "get_payment_backend", return_value=mock_backend),
         ):
             tasks.check_renewal_payment_status(
                 "hash_expired", years=1, attempt=tasks.MAX_RENEWAL_POLL_ATTEMPTS - 1
@@ -128,13 +128,13 @@ class TestRenewalPollBounding:
             engine, renewal_hash="hash_paid", expires_at=original_expiry
         )
         mock_queue = MagicMock()
-        mock_lnd = MagicMock()
-        mock_lnd.check_invoice.return_value = True
+        mock_backend = MagicMock()
+        mock_backend.check_invoice.return_value = True
 
         with (
             patch.object(tasks, "engine", engine),
             patch.object(tasks, "queue", mock_queue),
-            patch.object(tasks, "LNDService", return_value=mock_lnd),
+            patch.object(tasks, "get_payment_backend", return_value=mock_backend),
         ):
             tasks.check_renewal_payment_status("hash_paid", years=1, attempt=0)
 

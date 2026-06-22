@@ -22,7 +22,7 @@ from ..core.models import (
 
 from ..db import engine
 from .email_service import EmailService
-from .lnd_service import LNDService
+from .payments import get_payment_backend
 
 # Set up Redis connection and RQ queue
 redis_conn = Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT)
@@ -57,12 +57,12 @@ def check_payment_status(payment_hash: str) -> None:
     logger.info(f"Checking payment status for hash: {payment_hash}")
 
     # Initialize services
-    lnd_service = LNDService()
+    payment_backend = get_payment_backend()
     email_service = EmailService()
 
     try:
         # Check if payment is received
-        paid = lnd_service.check_invoice(payment_hash)
+        paid = payment_backend.check_invoice(payment_hash)
         if not paid:
             logger.info(f"Payment not received yet for hash: {payment_hash}")
             return
@@ -156,7 +156,7 @@ def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> Non
         f"{' (retry)' if is_retry else ''}"
     )
 
-    lnd_service = LNDService()
+    payment_backend = get_payment_backend()
     email_service = EmailService()
 
     try:
@@ -183,7 +183,7 @@ def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> Non
                 return
 
             # Check payment status
-            paid = lnd_service.check_invoice(payment_hash)
+            paid = payment_backend.check_invoice(payment_hash)
 
             if not paid:
                 # Invoice not paid yet
@@ -389,10 +389,10 @@ def check_renewal_payment_status(
         f"(attempt {attempt + 1}/{MAX_RENEWAL_POLL_ATTEMPTS})"
     )
 
-    lnd_service = LNDService()
+    payment_backend = get_payment_backend()
 
     try:
-        paid = lnd_service.check_invoice(payment_hash)
+        paid = payment_backend.check_invoice(payment_hash)
         if not paid:
             if attempt + 1 >= MAX_RENEWAL_POLL_ATTEMPTS:
                 logger.info(

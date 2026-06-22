@@ -32,7 +32,7 @@ class TestRenewalStatusPending:
 
         import lnemail.api.endpoints as ep
 
-        ep.lnd_service.check_invoice.return_value = False
+        ep.payment_backend.check_invoice.return_value = False
 
         response = client.get("/api/v1/account/renew/status/renewal_hash_pending")
 
@@ -45,7 +45,7 @@ class TestRenewalStatusPending:
         """Status check for a completely unknown hash returns 404."""
         import lnemail.api.endpoints as ep
 
-        ep.lnd_service.check_invoice.return_value = False
+        ep.payment_backend.check_invoice.return_value = False
 
         response = client.get("/api/v1/account/renew/status/nonexistent_hash")
 
@@ -68,7 +68,7 @@ class TestRenewalStatusProcessing:
 
         import lnemail.api.endpoints as ep
 
-        ep.lnd_service.check_invoice.return_value = True
+        ep.payment_backend.check_invoice.return_value = True
 
         response = client.get("/api/v1/account/renew/status/renewal_hash_processing")
 
@@ -99,7 +99,7 @@ class TestRenewalStatusPaidHashCleared:
         import lnemail.api.endpoints as ep
 
         # LND confirms the invoice was paid
-        ep.lnd_service.check_invoice.return_value = True
+        ep.payment_backend.check_invoice.return_value = True
 
         response = client.get("/api/v1/account/renew/status/some_paid_hash")
 
@@ -121,7 +121,7 @@ class TestRenewalStatusPaidHashCleared:
 
         import lnemail.api.endpoints as ep
 
-        ep.lnd_service.check_invoice.return_value = False
+        ep.payment_backend.check_invoice.return_value = False
 
         response = client.get("/api/v1/account/renew/status/totally_bogus_hash")
 
@@ -149,7 +149,7 @@ class TestRenewalStatusPaidHashOnAccount:
         import lnemail.api.endpoints as ep
 
         # LND confirms the old hash was paid
-        ep.lnd_service.check_invoice.return_value = True
+        ep.payment_backend.check_invoice.return_value = True
 
         # Query for the old hash -- no account has this hash anymore
         response = client.get("/api/v1/account/renew/status/old_renewal_hash")

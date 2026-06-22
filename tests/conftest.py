@@ -57,10 +57,12 @@ if not _endpoints_already_loaded:
     _email_patch.stop()
     _rq_patch.stop()
 
-    # Replace the module-level service instances with our controlled mocks
+    # Replace the module-level payment backend with our controlled mock.
+    # The backend exposes the same create_invoice/check_invoice contract as
+    # the old LNDService, so a MagicMock is a drop-in stand-in.
     import lnemail.api.endpoints as _ep
 
-    _ep.lnd_service = _mock_lnd_instance
+    _ep.payment_backend = _mock_lnd_instance
 else:
     from lnemail.main import app as _app
 
@@ -119,8 +121,8 @@ def fixture_client(
     _app.dependency_overrides[get_db] = override_get_db
     FastAPICache.init(InMemoryBackend(), prefix="lnemail-test-cache")
 
-    # Ensure the mock LND service is in place for each test
-    ep.lnd_service = _mock_lnd_instance
+    # Ensure the mock payment backend is in place for each test
+    ep.payment_backend = _mock_lnd_instance
     # Reset call counts between tests
     _mock_lnd_instance.reset_mock()
     _mock_lnd_instance.create_invoice.return_value = {

@@ -45,6 +45,23 @@ class Settings(BaseSettings):
     EMAIL_SEND_PRICE: int = 100  # New: Price for sending one email
     RENEWAL_PRICE: int = 1000  # Price per year for account renewal
 
+    # Payment backend selection.
+    #   "lnd" (default): use the self-hosted LND node only.
+    #   "nwc":  use the configured NWC wallet(s). If LND is also reachable it
+    #           is included as an additional provider unless NWC_ONLY is set.
+    #   "multi": explicit alias for "use LND + NWC together".
+    PAYMENT_BACKEND: str = "lnd"
+    # Newline- or comma-separated list of NWC connection URIs
+    # (nostr+walletconnect://...). These are alternative third-party
+    # providers and only ever receive a generic invoice memo.
+    NWC_CONNECTIONS: str = ""
+    # Optional preferred NWC URI: when set it is always tried first and the
+    # others are only used as fallback on error.
+    NWC_PRIMARY_CONNECTION: str = ""
+    # When true, do NOT include the self-hosted LND node as a provider even
+    # if it is configured (use the NWC wallets exclusively).
+    NWC_ONLY: bool = False
+
     # LNProxy settings
     USE_LNPROXY: bool = True
     LNPROXY_URL: str = "https://lnproxy.org/spec"

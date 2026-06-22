@@ -25,6 +25,7 @@ grpcio-tools = ">=1.80.0"
 protobuf = ">=6.33.6"
 redis = ">=7.4.0"
 Jinja2 = ">=3.1.6"
+nostr-sdk = ">=0.44.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=9.0.3"

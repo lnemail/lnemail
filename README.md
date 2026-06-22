@@ -104,10 +104,34 @@ The `EmailService` class handles:
 ### Lightning Payment Processing
 
 The system uses:
-- Direct LND integration for Bitcoin Lightning Network payments
-- Optional LNProxy integration for enhanced privacy
+- A pluggable payment backend (`src/lnemail/services/payments/`): the
+  self-hosted LND node, one or more Nostr Wallet Connect (NWC) wallets,
+  or a mix with automatic fallback.
 - Background job processing for Lightning payment verification
 - Separate payment flows for account creation and email sending
+
+#### Payment backend configuration
+
+Selected via environment variables:
+
+- `PAYMENT_BACKEND` - `lnd` (default) for the self-hosted node, or
+  `nwc`/`multi` to use NWC wallet(s).
+- `NWC_CONNECTIONS` - newline- or comma-separated `nostr+walletconnect://`
+  URIs. These are third-party providers.
+- `NWC_PRIMARY_CONNECTION` - optional preferred URI, always tried first
+  with the rest used only as fallback on error.
+- `NWC_ONLY` - if true, do not include the LND node as a provider.
+
+When several providers are configured, invoices are created on the
+primary (if set) and otherwise on a randomly chosen provider, falling
+back to the next one on error. Settlement is checked across all
+providers (a payment hash is specific to the wallet that issued it).
+
+**Privacy:** NWC wallets are third parties, so they are treated as
+untrusted and only ever receive a generic invoice memo. The descriptive
+memo (which may contain the email address, access token, or recipient)
+is passed only to the self-hosted LND node.
+
 
 ### Security Model
 

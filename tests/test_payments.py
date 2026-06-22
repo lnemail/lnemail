@@ -1,0 +1,255 @@
+"""Unit tests for the payment backend abstraction and dispatcher.
+
+These cover the provider-selection, fallback and privacy logic without
+touching the network (no real LND or NWC connection). The NWC client
+itself is integration-tested separately against the dev stack.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from lnemail.services.payments import get_payment_backend
+from lnemail.services.payments.base import (
+    GENERIC_MEMO,
+    PaymentBackend,
+    public_memo,
+)
+from lnemail.services.payments.multi import (
+    AllProvidersFailedError,
+    MultiProviderBackend,
+)
+
+
+class _FakeBackend(PaymentBackend):
+    """A controllable in-memory PaymentBackend for tests."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        trusted: bool = False,
+        fail_create: bool = False,
+        settled: bool = False,
+    ) -> None:
+        self.name = name
+        self.trusted = trusted
+        self.fail_create = fail_create
+        self.settled = settled
+        self.seen_memos: list[str] = []
+        self.created = 0
+
+    def create_invoice(self, amount_sats: int, memo: str) -> dict[str, str]:
+        self.seen_memos.append(memo)
+        self.created += 1
+        if self.fail_create:
+            raise RuntimeError(f"{self.name} boom")
+        return {
+            "payment_hash": f"{self.name}_hash",
+            "payment_request": f"lnbc_{self.name}",
+        }
+
+    def check_invoice(self, payment_hash: str) -> bool:
+        # Only "our" hash can be settled here.
+        return self.settled and payment_hash == f"{self.name}_hash"
+
+
+class TestPublicMemo:
+    def test_trusted_backend_sees_full_memo(self) -> None:
+        backend = _FakeBackend("lnd", trusted=True)
+        assert public_memo(backend, "Send email from a@x to b@y") == (
+            "Send email from a@x to b@y"
+        )
+
+    def test_untrusted_backend_gets_generic_memo(self) -> None:
+        backend = _FakeBackend("nwc", trusted=False)
+        assert public_memo(backend, "Token: lne_secret") == GENERIC_MEMO
+
+
+class TestMultiProviderCreate:
+    def test_primary_is_tried_first(self) -> None:
+        primary = _FakeBackend("primary")
+        other = _FakeBackend("other")
+        multi = MultiProviderBackend([other, primary], primary=primary)
+
+        result = multi.create_invoice(1000, "memo")
+
+        assert result["payment_hash"] == "primary_hash"
+        assert primary.created == 1
+        assert other.created == 0
+
+    def test_falls_back_when_a_provider_fails(self) -> None:
+        bad = _FakeBackend("bad", fail_create=True)
+        good = _FakeBackend("good")
+        # Force deterministic order: bad is primary, good is fallback.
+        multi = MultiProviderBackend([good, bad], primary=bad)
+
+        result = multi.create_invoice(1000, "memo")
+
+        assert result["payment_hash"] == "good_hash"
+        assert bad.created == 1  # attempted
+        assert good.created == 1  # fell back
+
+    def test_raises_when_all_fail(self) -> None:
+        a = _FakeBackend("a", fail_create=True)
+        b = _FakeBackend("b", fail_create=True)
+        multi = MultiProviderBackend([a, b])
+
+        with pytest.raises(AllProvidersFailedError):
+            multi.create_invoice(1000, "memo")
+
+    def test_untrusted_provider_never_sees_private_memo(self) -> None:
+        nwc = _FakeBackend("nwc", trusted=False)
+        multi = MultiProviderBackend([nwc], primary=nwc)
+
+        multi.create_invoice(100, "Send email from alice@x to bob@y")
+
+        assert nwc.seen_memos == [GENERIC_MEMO]
+
+    def test_trusted_provider_sees_private_memo(self) -> None:
+        lnd = _FakeBackend("lnd", trusted=True)
+        multi = MultiProviderBackend([lnd], primary=lnd)
+
+        multi.create_invoice(100, "Send email from alice@x to bob@y")
+
+        assert lnd.seen_memos == ["Send email from alice@x to bob@y"]
+
+    def test_incomplete_invoice_triggers_fallback(self) -> None:
+        class _Incomplete(_FakeBackend):
+            def create_invoice(self, amount_sats: int, memo: str) -> dict[str, str]:
+                self.created += 1
+                return {"payment_hash": "", "payment_request": ""}
+
+        broken = _Incomplete("broken")
+        good = _FakeBackend("good")
+        multi = MultiProviderBackend([good, broken], primary=broken)
+
+        result = multi.create_invoice(1000, "memo")
+        assert result["payment_hash"] == "good_hash"
+
+
+class TestMultiProviderCheck:
+    def test_returns_true_if_any_provider_settled(self) -> None:
+        a = _FakeBackend("a", settled=False)
+        b = _FakeBackend("b", settled=True)
+        multi = MultiProviderBackend([a, b])
+
+        # b's hash is settled.
+        assert multi.check_invoice("b_hash") is True
+
+    def test_returns_false_when_none_settled(self) -> None:
+        a = _FakeBackend("a", settled=False)
+        b = _FakeBackend("b", settled=False)
+        multi = MultiProviderBackend([a, b])
+
+        assert multi.check_invoice("b_hash") is False
+
+    def test_provider_errors_are_swallowed_during_check(self) -> None:
+        class _Raises(_FakeBackend):
+            def check_invoice(self, payment_hash: str) -> bool:
+                raise RuntimeError("relay down")
+
+        raising = _Raises("raising")
+        settled = _FakeBackend("settled", settled=True)
+        multi = MultiProviderBackend([raising, settled])
+
+        assert multi.check_invoice("settled_hash") is True
+
+
+class TestFactory:
+    def test_empty_requires_at_least_one_provider(self) -> None:
+        with pytest.raises(ValueError):
+            MultiProviderBackend([])
+
+    def test_default_returns_lnd_backend(self) -> None:
+        from lnemail.services.payments.lnd_backend import LNDBackend
+
+        fake_settings = MagicMock()
+        fake_settings.PAYMENT_BACKEND = "lnd"
+        with (
+            patch("lnemail.services.payments.settings", fake_settings),
+            patch(
+                "lnemail.services.payments.lnd_backend.LNDService",
+                return_value=MagicMock(),
+            ),
+        ):
+            backend = get_payment_backend()
+        assert isinstance(backend, LNDBackend)
+        assert backend.trusted is True
+
+    def test_nwc_without_connections_falls_back_to_lnd(self) -> None:
+        from lnemail.services.payments.lnd_backend import LNDBackend
+
+        fake_settings = MagicMock()
+        fake_settings.PAYMENT_BACKEND = "nwc"
+        fake_settings.NWC_CONNECTIONS = ""
+        fake_settings.NWC_PRIMARY_CONNECTION = ""
+        with (
+            patch("lnemail.services.payments.settings", fake_settings),
+            patch(
+                "lnemail.services.payments.lnd_backend.LNDService",
+                return_value=MagicMock(),
+            ),
+        ):
+            backend = get_payment_backend()
+        assert isinstance(backend, LNDBackend)
+
+    def test_nwc_builds_multi_with_lnd_fallback(self) -> None:
+        fake_settings = MagicMock()
+        fake_settings.PAYMENT_BACKEND = "nwc"
+        fake_settings.NWC_CONNECTIONS = (
+            "nostr+walletconnect://a,nostr+walletconnect://b"
+        )
+        fake_settings.NWC_PRIMARY_CONNECTION = ""
+        fake_settings.NWC_ONLY = False
+
+        built: list[Any] = []
+
+        def _fake_nwc(uri: str) -> Any:
+            b = _FakeBackend(f"nwc:{uri[-1]}", trusted=False)
+            built.append(b)
+            return b
+
+        with (
+            patch("lnemail.services.payments.settings", fake_settings),
+            patch(
+                "lnemail.services.payments.nwc_backend.NWCBackend",
+                side_effect=_fake_nwc,
+            ),
+            patch(
+                "lnemail.services.payments.lnd_backend.LNDService",
+                return_value=MagicMock(),
+            ),
+        ):
+            backend = get_payment_backend()
+
+        assert isinstance(backend, MultiProviderBackend)
+        # 2 NWC + 1 LND fallback.
+        assert len(backend._providers) == 3
+        assert sum(1 for p in backend._providers if not p.trusted) == 2
+
+    def test_nwc_only_excludes_lnd(self) -> None:
+        fake_settings = MagicMock()
+        fake_settings.PAYMENT_BACKEND = "nwc"
+        fake_settings.NWC_CONNECTIONS = "nostr+walletconnect://a"
+        fake_settings.NWC_PRIMARY_CONNECTION = "nostr+walletconnect://a"
+        fake_settings.NWC_ONLY = True
+
+        def _fake_nwc(uri: str) -> Any:
+            return _FakeBackend("nwc", trusted=False)
+
+        with (
+            patch("lnemail.services.payments.settings", fake_settings),
+            patch(
+                "lnemail.services.payments.nwc_backend.NWCBackend",
+                side_effect=_fake_nwc,
+            ),
+        ):
+            backend = get_payment_backend()
+
+        assert isinstance(backend, MultiProviderBackend)
+        assert all(not p.trusted for p in backend._providers)
+        assert backend._primary is not None
