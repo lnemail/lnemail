@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 import stat
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 try:
     import inotify.adapters
@@ -233,71 +233,76 @@ def ensure_directory_permissions() -> None:
         logger.error(f"Failed to set directory permissions: {e}")
 
 
+def _process_existing_requests() -> None:
+    """Process any request files already present at startup."""
+    for filename in os.listdir(REQUESTS_DIR):
+        if filename.endswith(".json"):
+            process_request(os.path.join(REQUESTS_DIR, filename))
+
+
+def _watch_with_inotify(inotify_adapter: "inotify.adapters.Inotify") -> None:
+    """Block on inotify events, processing new request files."""
+    try:
+        for event in inotify_adapter.event_gen(yield_nones=False):
+            (_, type_names, path, filename) = event
+            if "IN_CLOSE_WRITE" in type_names and filename.endswith(".json"):
+                process_request(os.path.join(path, filename))
+    except KeyboardInterrupt:
+        logger.info("Mail agent stopping...")
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        sys.exit(1)
+
+
+def _watch_with_polling() -> None:
+    """Poll the requests directory for new files (rootless Docker compat)."""
+    logger.info(f"Polling directory {REQUESTS_DIR} for new requests...")
+    seen_files = {f for f in os.listdir(REQUESTS_DIR) if f.endswith(".json")}
+    try:
+        while True:
+            time.sleep(2)
+            try:
+                current_files = {
+                    f for f in os.listdir(REQUESTS_DIR) if f.endswith(".json")
+                }
+            except OSError:
+                continue
+            for filename in sorted(current_files - seen_files):
+                process_request(os.path.join(REQUESTS_DIR, filename))
+            seen_files = current_files
+    except KeyboardInterrupt:
+        logger.info("Mail agent stopping...")
+
+
+def _create_inotify_adapter() -> Optional["inotify.adapters.Inotify"]:
+    """Return a configured inotify adapter, or None to fall back to polling."""
+    if not HAS_INOTIFY:
+        return None
+    try:
+        adapter = inotify.adapters.Inotify()
+        adapter.add_watch(REQUESTS_DIR)
+        logger.info(f"Watching directory {REQUESTS_DIR} with inotify...")
+        return adapter
+    except Exception as e:
+        logger.warning(f"inotify failed ({e}), falling back to polling")
+        return None
+
+
 def main() -> None:
     """Main function that monitors the requests directory."""
     logger.info("Mail agent starting...")
 
-    # Ensure directories exist
     os.makedirs(REQUESTS_DIR, exist_ok=True)
     os.makedirs(RESPONSES_DIR, exist_ok=True)
-
-    # Set appropriate permissions on the shared directories
     ensure_directory_permissions()
 
-    # Process any existing requests
-    for filename in os.listdir(REQUESTS_DIR):
-        if filename.endswith(".json"):
-            request_path = os.path.join(REQUESTS_DIR, filename)
-            process_request(request_path)
+    _process_existing_requests()
 
-    # Try inotify first, fall back to polling (rootless Docker compat)
-    inotify_adapter = None
-    if HAS_INOTIFY:
-        try:
-            inotify_adapter = inotify.adapters.Inotify()
-            inotify_adapter.add_watch(REQUESTS_DIR)
-            logger.info(f"Watching directory {REQUESTS_DIR} with inotify...")
-        except Exception as e:
-            logger.warning(f"inotify failed ({e}), falling back to polling")
-            inotify_adapter = None
-
+    inotify_adapter = _create_inotify_adapter()
     if inotify_adapter is not None:
-        try:
-            for event in inotify_adapter.event_gen(yield_nones=False):
-                (_, type_names, path, filename) = event
-
-                # We're only interested in new files
-                if "IN_CLOSE_WRITE" in type_names and filename.endswith(".json"):
-                    request_path = os.path.join(path, filename)
-                    process_request(request_path)
-
-        except KeyboardInterrupt:
-            logger.info("Mail agent stopping...")
-        except Exception as e:
-            logger.error(f"Unexpected error: {str(e)}")
-            sys.exit(1)
+        _watch_with_inotify(inotify_adapter)
     else:
-        logger.info(f"Polling directory {REQUESTS_DIR} for new requests...")
-        seen_files: set[str] = set()
-        for filename in os.listdir(REQUESTS_DIR):
-            if filename.endswith(".json"):
-                seen_files.add(filename)
-        try:
-            while True:
-                time.sleep(2)
-                try:
-                    current_files = {
-                        f for f in os.listdir(REQUESTS_DIR) if f.endswith(".json")
-                    }
-                except OSError:
-                    continue
-                new_files = current_files - seen_files
-                for filename in sorted(new_files):
-                    request_path = os.path.join(REQUESTS_DIR, filename)
-                    process_request(request_path)
-                seen_files = current_files
-        except KeyboardInterrupt:
-            logger.info("Mail agent stopping...")
+        _watch_with_polling()
 
 
 if __name__ == "__main__":

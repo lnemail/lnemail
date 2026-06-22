@@ -6,6 +6,8 @@ handling asynchronous operations like payment verification and cleanup.
 
 from datetime import timedelta
 import json
+from typing import Optional
+
 from loguru import logger
 from redis import Redis
 from rq import Queue
@@ -23,7 +25,7 @@ from ..core.models import (
 
 from ..db import engine
 from .email_service import EmailService
-from .payments import get_payment_backend
+from .payments import PaymentBackend, get_payment_backend
 
 # Set up Redis connection and RQ queue
 redis_conn = Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT)
@@ -145,6 +147,150 @@ def update_email_statistics(
         logger.error(f"Error updating email statistics: {str(e)}")
 
 
+def _handle_unpaid_send(
+    session: Session, pending_email: PendingOutgoingEmail, payment_hash: str
+) -> None:
+    """Expire or re-queue an outgoing-email invoice that is not paid yet."""
+    if utcnow() > pending_email.expires_at:
+        pending_email.status = PaymentStatus.EXPIRED
+        session.add(pending_email)
+        session.commit()
+        logger.warning(f"Outgoing email invoice expired for hash: {payment_hash}")
+        return
+    logger.info(f"Outgoing email invoice not paid yet for hash: {payment_hash}")
+    queue.enqueue_in(
+        timedelta(seconds=5),
+        process_send_email_payment,
+        payment_hash,
+        False,
+        job_timeout=600,
+    )
+
+
+def _schedule_send_retry(
+    pending_email: PendingOutgoingEmail, payment_hash: str, message: str
+) -> None:
+    """Record a failed delivery attempt and schedule the next retry."""
+    pending_email.delivery_error = message
+    pending_email.retry_count += 1
+    pending_email.last_retry_at = utcnow()
+
+    if pending_email.retry_count <= len(RETRY_DELAYS):
+        retry_delay = RETRY_DELAYS[pending_email.retry_count - 1]
+    else:
+        retry_delay = ONGOING_RETRY_DELAY
+
+    logger.warning(
+        f"Email send failed (attempt {pending_email.retry_count}), "
+        f"retrying in {retry_delay}s: {message}"
+    )
+    queue.enqueue_in(
+        timedelta(seconds=retry_delay),
+        process_send_email_payment,
+        payment_hash,
+        True,  # is_retry
+        job_timeout=600,
+    )
+
+
+def _deliver_pending_email(
+    session: Session,
+    email_service: EmailService,
+    pending_email: PendingOutgoingEmail,
+    sender_account: EmailAccount,
+    payment_hash: str,
+) -> None:
+    """Send a paid outgoing email and record success or schedule a retry."""
+    attachments = None
+    if pending_email.attachments_json:
+        try:
+            attachments = json.loads(pending_email.attachments_json)
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.error(f"Failed to deserialize attachments for {payment_hash}: {e}")
+
+    success, message = email_service.send_email_with_auth(
+        sender=pending_email.sender_email,
+        sender_password=sender_account.email_password,
+        recipient=pending_email.recipient,
+        subject=pending_email.subject or "",
+        body=pending_email.body,
+        in_reply_to=pending_email.in_reply_to,
+        references=pending_email.references,
+        attachments=attachments,
+    )
+
+    if success:
+        pending_email.delivery_status = DeliveryStatus.SENT
+        pending_email.delivery_error = None
+        pending_email.sent_at = utcnow()
+        update_email_statistics(session, PaymentStatus.PAID, pending_email.price_sats)
+        logger.info(f"Email sent successfully from {pending_email.sender_email}")
+    else:
+        _schedule_send_retry(pending_email, payment_hash, message)
+
+
+def _fail_delivery(
+    session: Session, pending_email: PendingOutgoingEmail, error: str
+) -> None:
+    """Mark a paid outgoing email as permanently failed to deliver."""
+    pending_email.status = PaymentStatus.PAID  # payment was received
+    pending_email.delivery_status = DeliveryStatus.FAILED
+    pending_email.delivery_error = error
+    session.add(pending_email)
+    session.commit()
+
+
+def _resolve_sender_account(
+    session: Session, pending_email: PendingOutgoingEmail
+) -> Optional[EmailAccount]:
+    """Return the sender account if it exists and has a usable password."""
+    sender_account = session.exec(
+        select(EmailAccount).where(
+            EmailAccount.email_address == pending_email.sender_email
+        )
+    ).first()
+    if not sender_account or not sender_account.email_password:
+        return None
+    return sender_account
+
+
+def _load_processable_send(
+    session: Session,
+    payment_backend: PaymentBackend,
+    payment_hash: str,
+) -> Optional[PendingOutgoingEmail]:
+    """Return the pending email ready to deliver, or None if nothing to do.
+
+    Handles the "not found", "already sent" and "not paid yet" cases
+    (re-queueing/expiring as needed) and returns None for them so the
+    caller can simply stop.
+    """
+    pending_email = session.exec(
+        select(PendingOutgoingEmail).where(
+            PendingOutgoingEmail.payment_hash == payment_hash
+        )
+    ).first()
+
+    if not pending_email:
+        logger.error(f"Pending outgoing email not found for hash: {payment_hash}")
+        return None
+
+    if (
+        pending_email.status == PaymentStatus.PAID
+        and pending_email.delivery_status == DeliveryStatus.SENT
+    ):
+        logger.info(
+            f"Outgoing email already sent successfully for hash: {payment_hash}"
+        )
+        return None
+
+    if not payment_backend.check_invoice(payment_hash):
+        _handle_unpaid_send(session, pending_email, payment_hash)
+        return None
+
+    return pending_email
+
+
 def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> None:
     """Process a paid invoice for an outgoing email and send the email.
 
@@ -162,153 +308,32 @@ def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> Non
 
     try:
         with Session(engine) as session:
-            statement = select(PendingOutgoingEmail).where(
-                PendingOutgoingEmail.payment_hash == payment_hash
+            pending_email = _load_processable_send(
+                session, payment_backend, payment_hash
             )
-            pending_email = session.exec(statement).first()
-
-            if not pending_email:
-                logger.error(
-                    f"Pending outgoing email not found for hash: {payment_hash}"
-                )
+            if pending_email is None:
                 return
 
-            # Skip if already processed successfully
-            if (
-                pending_email.status == PaymentStatus.PAID
-                and pending_email.delivery_status == DeliveryStatus.SENT
-            ):
-                logger.info(
-                    f"Outgoing email already sent successfully for hash: {payment_hash}"
-                )
-                return
-
-            # Check payment status
-            paid = payment_backend.check_invoice(payment_hash)
-
-            if not paid:
-                # Invoice not paid yet
-                if utcnow() > pending_email.expires_at:
-                    pending_email.status = PaymentStatus.EXPIRED
-                    session.add(pending_email)
-                    session.commit()
-                    logger.warning(
-                        f"Outgoing email invoice expired for hash: {payment_hash}"
-                    )
-                else:
-                    logger.info(
-                        f"Outgoing email invoice not paid yet for hash: {payment_hash}"
-                    )
-                    # Re-queue to check again later
-                    queue.enqueue_in(
-                        timedelta(seconds=5),
-                        process_send_email_payment,
-                        payment_hash,
-                        False,
-                        job_timeout=600,
-                    )
-                return
-
-            # Payment received, validate we have email content
+            # Payment received, validate we have email content.
             if not pending_email.recipient or not pending_email.body:
                 logger.error(f"Email content missing for paid invoice: {payment_hash}")
-                pending_email.status = (
-                    PaymentStatus.PAID
-                )  # Payment was received but we can't process
-                pending_email.delivery_status = DeliveryStatus.FAILED
-                pending_email.delivery_error = "Invalid email content"
-                session.add(pending_email)
-                session.commit()
+                _fail_delivery(session, pending_email, "Invalid email content")
                 return
 
-            # Get the sender's email account to retrieve password
-            sender_statement = select(EmailAccount).where(
-                EmailAccount.email_address == pending_email.sender_email
-            )
-            sender_account = session.exec(sender_statement).first()
-
-            if not sender_account or not sender_account.email_password:
+            sender_account = _resolve_sender_account(session, pending_email)
+            if sender_account is None:
                 logger.error(
                     f"Sender account not found or missing password: "
                     f"{pending_email.sender_email}"
                 )
-                pending_email.status = PaymentStatus.PAID  # Payment received
-                pending_email.delivery_status = DeliveryStatus.FAILED
-                pending_email.delivery_error = "Sender authentication failed"
-                session.add(pending_email)
-                session.commit()
+                _fail_delivery(session, pending_email, "Sender authentication failed")
                 return
 
-            # Mark as paid immediately since we confirmed payment
+            # Mark as paid immediately since we confirmed payment, then deliver.
             pending_email.status = PaymentStatus.PAID
-
-            # Deserialize attachments from JSON storage
-            attachments = None
-            if pending_email.attachments_json:
-                try:
-                    attachments = json.loads(pending_email.attachments_json)
-                except (json.JSONDecodeError, TypeError) as e:
-                    logger.error(
-                        f"Failed to deserialize attachments for {payment_hash}: {e}"
-                    )
-
-            # Send email using SMTP with authentication
-            success, message = email_service.send_email_with_auth(
-                sender=pending_email.sender_email,
-                sender_password=sender_account.email_password,
-                recipient=pending_email.recipient,
-                subject=pending_email.subject or "",
-                body=pending_email.body,
-                in_reply_to=pending_email.in_reply_to,
-                references=pending_email.references,
-                attachments=attachments,
+            _deliver_pending_email(
+                session, email_service, pending_email, sender_account, payment_hash
             )
-
-            if success:
-                pending_email.delivery_status = DeliveryStatus.SENT
-                pending_email.delivery_error = None
-                pending_email.sent_at = utcnow()
-
-                # Update statistics
-                update_email_statistics(
-                    session, PaymentStatus.PAID, pending_email.price_sats
-                )
-
-                logger.info(
-                    f"Email sent successfully from {pending_email.sender_email}"
-                )
-            else:
-                # Email send failed, increment retry count
-                pending_email.delivery_error = message
-                # Keep status as PAID (payment successful), but delivery pending/failed
-                # The delivery_status remains PENDING until we exhaust retries or succeed,
-                # or we can explicitly set it if needed, but usually PENDING is fine for retries.
-                # However, the task logic below continues to retry.
-
-                pending_email.retry_count += 1
-                pending_email.last_retry_at = utcnow()
-
-                # Calculate retry delay
-                if pending_email.retry_count <= len(RETRY_DELAYS):
-                    # Use initial retry delays
-                    retry_delay = RETRY_DELAYS[pending_email.retry_count - 1]
-                else:
-                    # After initial retries, continue with hourly retries indefinitely
-                    retry_delay = ONGOING_RETRY_DELAY
-
-                logger.warning(
-                    f"Email send failed (attempt {pending_email.retry_count}), "
-                    f"retrying in {retry_delay}s: {message}"
-                )
-
-                # Schedule retry
-                queue.enqueue_in(
-                    timedelta(seconds=retry_delay),
-                    process_send_email_payment,
-                    payment_hash,
-                    True,  # is_retry
-                    job_timeout=600,
-                )
 
             session.add(pending_email)
             session.commit()

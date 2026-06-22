@@ -13,61 +13,24 @@ from email.mime.application import MIMEApplication
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Any, cast
+from typing import Any
+
+from lnemail.services.email_service import EmailService
+
+
+def _service() -> EmailService:
+    """An EmailService instance that skips __init__ (no filesystem setup)."""
+    service: EmailService = EmailService.__new__(EmailService)
+    return service
 
 
 def _extract_body(msg: email.message.Message) -> dict[str, Any]:
-    """Extract body fields from an email.message.Message.
+    """Extract body fields using the real EmailService logic.
 
-    This mirrors the extraction logic in EmailService.get_email_content()
-    so we can unit-test it without an IMAP connection.  Returns the same
-    dict shape: body, body_plain, body_html, content_type.
+    Returns the same dict shape produced by get_email_content():
+    body, body_plain, body_html, content_type.
     """
-    body_plain = ""
-    body_html = ""
-
-    if msg.is_multipart():
-        for part in msg.walk():
-            # Skip attachment parts (same logic as email_service.py)
-            if part.get_content_disposition() in ("attachment", "inline"):
-                if (
-                    part.get_content_disposition() == "inline"
-                    and part.get_content_type()
-                    in (
-                        "text/plain",
-                        "text/html",
-                    )
-                ):
-                    pass  # inline body parts are fine
-                else:
-                    continue
-
-            part_content_type = part.get_content_type()
-            if part_content_type in {"text/plain", "text/html"}:
-                payload = part.get_payload(decode=True)
-                if payload is None:
-                    continue
-                payload_bytes = cast(bytes, payload)
-                charset = part.get_content_charset() or "utf-8"
-                decoded = payload_bytes.decode(charset, errors="replace")
-
-                if part_content_type == "text/plain" and not body_plain:
-                    body_plain = decoded
-                elif part_content_type == "text/html" and not body_html:
-                    body_html = decoded
-
-            if body_plain and body_html:
-                break
-    else:
-        payload = msg.get_payload(decode=True)
-        if payload is not None:
-            payload_bytes = cast(bytes, payload)
-            charset = msg.get_content_charset() or "utf-8"
-            decoded = payload_bytes.decode(charset, errors="replace")
-            if msg.get_content_type() == "text/html":
-                body_html = decoded
-            else:
-                body_plain = decoded
+    body_plain, body_html = EmailService._extract_body_parts(msg)
 
     # Backward-compatible primary body (prefers HTML)
     if body_html:
@@ -86,61 +49,9 @@ def _extract_body(msg: email.message.Message) -> dict[str, Any]:
 
 
 def _extract_attachments(msg: email.message.Message) -> list[dict[str, Any]]:
-    """Extract attachments from an email.message.Message.
-
-    Mirrors EmailService._extract_attachments() for unit testing.
-    """
-    attachments: list[dict[str, Any]] = []
-
-    for part in msg.walk():
-        disposition = part.get_content_disposition()
-        if disposition not in ("attachment", "inline"):
-            continue
-        if disposition == "inline" and part.get_content_type() in (
-            "text/plain",
-            "text/html",
-        ):
-            continue
-
-        filename = part.get_filename()
-        if not filename:
-            ext = part.get_content_type().split("/")[-1]
-            filename = f"attachment.{ext}"
-
-        content_type = part.get_content_type()
-        payload = part.get_payload(decode=True)
-        if payload is None:
-            continue
-
-        raw_bytes = cast(bytes, payload)
-        size = len(raw_bytes)
-
-        is_text = content_type.startswith("text/") or filename.lower().endswith(
-            (".txt", ".asc", ".gpg", ".pgp", ".csv", ".json", ".xml", ".log")
-        )
-
-        if is_text:
-            charset = part.get_content_charset() or "utf-8"
-            try:
-                content = raw_bytes.decode(charset, errors="replace")
-            except (UnicodeDecodeError, LookupError):
-                content = raw_bytes.decode("latin-1", errors="replace")
-            encoding = "text"
-        else:
-            content = base64.b64encode(raw_bytes).decode("ascii")
-            encoding = "base64"
-
-        attachments.append(
-            {
-                "filename": filename,
-                "content_type": content_type,
-                "size": size,
-                "content": content,
-                "encoding": encoding,
-            }
-        )
-
-    return attachments
+    """Extract attachments using the real EmailService logic."""
+    result: list[dict[str, Any]] = _service()._extract_attachments(msg)
+    return result
 
 
 # ── Dual-body extraction tests ───────────────────────────────────────────

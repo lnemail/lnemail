@@ -152,6 +152,45 @@ class EmailService:
         except Exception as e:
             logger.error(f"Failed to set permissions on {file_path}: {e}")
 
+    def _cleanup_files(self, *paths: str) -> None:
+        """Best-effort removal of request/response/lock files."""
+        for path in paths:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception as cleanup_error:
+                logger.warning(f"Error cleaning up {path}: {cleanup_error}")
+
+    def _write_request(self, request_path: str, request_data: Dict[str, Any]) -> str:
+        """Write a request file under a lock; return the lock path."""
+        lock_path = f"{request_path}.lock"
+        with open(lock_path, "w"):
+            pass  # Just create the lock file
+        self._set_permissions(lock_path)
+        with FileLock(lock_path):
+            with open(request_path, "w") as f:
+                json.dump(request_data, f)
+            self._set_permissions(request_path)
+        return lock_path
+
+    def _try_read_response(
+        self, response_path: str, response_lock_path: str
+    ) -> Dict[str, Any]:
+        """Read and remove a response file under a lock.
+
+        Raises on a malformed/missing file; the caller treats that as a
+        transient condition and keeps polling.
+        """
+        if not os.path.exists(response_lock_path):
+            with open(response_lock_path, "w"):
+                pass
+            self._set_permissions(response_lock_path)
+        with FileLock(response_lock_path):
+            with open(response_path, "r") as f:
+                response_data: Dict[str, Any] = json.load(f)
+        self._cleanup_files(response_path, response_lock_path)
+        return response_data
+
     def _send_request(
         self, action: str, params: Dict[str, Any]
     ) -> Tuple[bool, Dict[str, Any]]:
@@ -164,10 +203,7 @@ class EmailService:
         Returns:
             Tuple of (success, response_data)
         """
-        # Create a unique request ID
         request_id = str(uuid.uuid4())
-
-        # Prepare request data
         request_data = {
             "id": request_id,
             "action": action,
@@ -175,102 +211,43 @@ class EmailService:
             "timestamp": time.time(),
         }
 
-        # Write request to file
         request_path = os.path.join(self.requests_dir, f"{request_id}.json")
-        lock_path = f"{request_path}.lock"
+        lock_path = self._write_request(request_path, request_data)
 
-        # Create lock file first with appropriate permissions
-        with open(lock_path, "w") as f:
-            pass  # Just create the file
-        self._set_permissions(lock_path)
-
-        # Now acquire the lock and write the request
-        with FileLock(lock_path):
-            with open(request_path, "w") as f:
-                json.dump(request_data, f)
-            # Set permissions on the request file
-            self._set_permissions(request_path)
-
-        # Wait for response (with timeout)
         response_path = os.path.join(self.responses_dir, f"{request_id}.json")
         response_lock_path = f"{response_path}.lock"
 
-        max_wait_time: float = 30.0  # seconds
-        wait_interval: float = 0.5  # seconds
-        total_waited: float = 0.0  # seconds
+        max_wait_time: float = 30.0
+        wait_interval: float = 0.5
+        total_waited: float = 0.0
 
         while total_waited < max_wait_time:
             if os.path.exists(response_path):
                 try:
-                    # Check if the lock file exists, create it if needed
-                    if not os.path.exists(response_lock_path):
-                        with open(response_lock_path, "w") as f:
-                            pass
-                        self._set_permissions(response_lock_path)
-
-                    with FileLock(response_lock_path):
-                        with open(response_path, "r") as f:
-                            response_data = json.load(f)
-
-                        # Clean up response file after reading
-                        try:
-                            os.remove(response_path)
-                            if os.path.exists(response_lock_path):
-                                os.remove(response_lock_path)
-                        except Exception as cleanup_error:
-                            logger.warning(
-                                f"Error cleaning up response files: {cleanup_error}"
-                            )
-
-                    # Clean up request file
-                    try:
-                        if os.path.exists(request_path):
-                            os.remove(request_path)
-                        if os.path.exists(lock_path):
-                            os.remove(lock_path)
-                    except Exception as cleanup_error:
-                        logger.warning(
-                            f"Error cleaning up request files: {cleanup_error}"
-                        )
-
-                    return response_data.get("success", False), response_data.get(
-                        "data", {}
+                    response_data = self._try_read_response(
+                        response_path, response_lock_path
+                    )
+                    self._cleanup_files(request_path, lock_path)
+                    return (
+                        response_data.get("success", False),
+                        response_data.get("data", {}),
                     )
                 except (json.JSONDecodeError, FileNotFoundError) as e:
                     logger.error(f"Error reading response file: {str(e)}")
-                    time.sleep(wait_interval)
-                    total_waited += wait_interval
-                    continue
                 except PermissionError as e:
                     logger.error(f"Permission error with response file: {str(e)}")
-                    # Try to fix the permissions
                     try:
                         self._set_permissions(response_path)
                         if os.path.exists(response_lock_path):
                             self._set_permissions(response_lock_path)
                     except Exception:
                         pass
-                    time.sleep(wait_interval)
-                    total_waited += wait_interval
-                    continue
 
             time.sleep(wait_interval)
             total_waited += wait_interval
 
-        # Timeout occurred
         logger.error(f"Timeout waiting for response to request {request_id}")
-
-        # Clean up request file
-        try:
-            if os.path.exists(request_path):
-                os.remove(request_path)
-            if os.path.exists(lock_path):
-                os.remove(lock_path)
-        except Exception as cleanup_error:
-            logger.warning(
-                f"Error cleaning up request files after timeout: {cleanup_error}"
-            )
-
+        self._cleanup_files(request_path, lock_path)
         return False, {"error": "Timeout waiting for response"}
 
     def create_account(self, email_address: str) -> Tuple[bool, str]:
@@ -302,6 +279,48 @@ class EmailService:
             logger.error(f"Error creating email account: {str(e)}")
             return False, ""
 
+    @staticmethod
+    def _attach_files(msg: MIMEMultipart, attachments: list[Dict[str, str]]) -> None:
+        """Attach base64-encoded files to a MIME message."""
+        for att in attachments:
+            maintype, _, subtype = att["content_type"].partition("/")
+            if not subtype:
+                maintype = "application"
+                subtype = "octet-stream"
+            mime_part = MIMEBase(maintype, subtype)
+            mime_part.set_payload(base64.b64decode(att["content"]))
+            encoders.encode_base64(mime_part)
+            mime_part.add_header(
+                "Content-Disposition", "attachment", filename=att["filename"]
+            )
+            msg.attach(mime_part)
+
+    def _build_outgoing_message(
+        self,
+        sender: str,
+        recipient: str,
+        subject: str,
+        body: str,
+        timestamp: datetime,
+        in_reply_to: str | None,
+        references: str | None,
+        attachments: list[Dict[str, str]] | None,
+    ) -> MIMEMultipart:
+        """Assemble the outgoing MIME message (headers, body, attachments)."""
+        msg = MIMEMultipart()
+        msg["From"] = sender
+        msg["To"] = recipient
+        msg["Subject"] = subject
+        msg["Date"] = timestamp.strftime("%a, %d %b %Y %H:%M:%S %z")
+        if in_reply_to:
+            msg["In-Reply-To"] = in_reply_to
+        if references:
+            msg["References"] = references
+        msg.attach(MIMEText(body, "plain"))
+        if attachments:
+            self._attach_files(msg, attachments)
+        return msg
+
     def send_email_with_auth(
         self,
         sender: str,
@@ -330,58 +349,28 @@ class EmailService:
             Tuple containing success status and an optional error message or confirmation
         """
         try:
-            # Get current UTC timestamp
             utc_timestamp = datetime.now(timezone.utc)
+            msg = self._build_outgoing_message(
+                sender,
+                recipient,
+                subject,
+                body,
+                utc_timestamp,
+                in_reply_to,
+                references,
+                attachments,
+            )
 
-            # Create the email message
-            msg = MIMEMultipart()
-            msg["From"] = sender
-            msg["To"] = recipient
-            msg["Subject"] = subject
-            msg["Date"] = utc_timestamp.strftime("%a, %d %b %Y %H:%M:%S %z")
-
-            if in_reply_to:
-                msg["In-Reply-To"] = in_reply_to
-            if references:
-                msg["References"] = references
-
-            msg.attach(MIMEText(body, "plain"))
-
-            # Attach files if provided
-            if attachments:
-                for att in attachments:
-                    maintype, _, subtype = att["content_type"].partition("/")
-                    if not subtype:
-                        maintype = "application"
-                        subtype = "octet-stream"
-
-                    mime_part = MIMEBase(maintype, subtype)
-                    mime_part.set_payload(base64.b64decode(att["content"]))
-                    encoders.encode_base64(mime_part)
-                    mime_part.add_header(
-                        "Content-Disposition",
-                        "attachment",
-                        filename=att["filename"],
-                    )
-                    msg.attach(mime_part)
-
-            # Create SMTP connection
             smtp = self._create_smtp_connection()
-
             try:
-                # Login with sender credentials
                 smtp.login(sender, sender_password)
-
-                # Send the email
                 smtp.send_message(msg)
-
                 logger.info(
-                    f"Successfully sent email from {sender} to {recipient} at {utc_timestamp.isoformat()}"
+                    f"Successfully sent email from {sender} to {recipient} "
+                    f"at {utc_timestamp.isoformat()}"
                 )
                 return True, f"Email sent successfully at {utc_timestamp.isoformat()}"
-
             finally:
-                # Always close the SMTP connection
                 smtp.quit()
 
         except smtplib.SMTPAuthenticationError as e:
@@ -551,6 +540,58 @@ class EmailService:
             logger.error(f"Error marking email {email_id} as unread: {e}")
             return False
 
+    @staticmethod
+    def _is_attachment_part(part: email_lib.message.Message) -> bool:
+        """Return True if a MIME part is an attachment (not a body part)."""
+        disposition = part.get_content_disposition()
+        if disposition not in ("attachment", "inline"):
+            return False
+        # Inline text parts are the email body itself, not attachments.
+        if disposition == "inline" and part.get_content_type() in (
+            "text/plain",
+            "text/html",
+        ):
+            return False
+        return True
+
+    def _build_attachment(
+        self, part: email_lib.message.Message
+    ) -> Optional[Dict[str, Any]]:
+        """Build a single attachment dict from a MIME part, or None to skip."""
+        filename = part.get_filename()
+        if not filename:
+            ext = part.get_content_type().split("/")[-1]
+            filename = f"attachment.{ext}"
+        filename = self._decode_header_value(filename)
+        content_type = part.get_content_type()
+
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            return None
+        raw_bytes = cast(bytes, payload)
+
+        is_text = content_type.startswith("text/") or filename.lower().endswith(
+            (".txt", ".asc", ".gpg", ".pgp", ".csv", ".json", ".xml", ".log")
+        )
+        if is_text:
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                content = raw_bytes.decode(charset, errors="replace")
+            except (UnicodeDecodeError, LookupError):
+                content = raw_bytes.decode("latin-1", errors="replace")
+            encoding = "text"
+        else:
+            content = base64.b64encode(raw_bytes).decode("ascii")
+            encoding = "base64"
+
+        return {
+            "filename": filename,
+            "content_type": content_type,
+            "size": len(raw_bytes),
+            "content": content,
+            "encoding": encoding,
+        }
+
     def _extract_attachments(
         self, msg: email_lib.message.Message
     ) -> List[Dict[str, Any]]:
@@ -570,62 +611,53 @@ class EmailService:
         attachments: List[Dict[str, Any]] = []
 
         for part in msg.walk():
-            disposition = part.get_content_disposition()
-            if disposition not in ("attachment", "inline"):
+            if not self._is_attachment_part(part):
                 continue
-            # Skip inline text parts that are the email body itself
-            if disposition == "inline" and part.get_content_type() in (
-                "text/plain",
-                "text/html",
-            ):
-                continue
-
-            filename = part.get_filename()
-            if not filename:
-                # Generate a fallback name from content type
-                ext = part.get_content_type().split("/")[-1]
-                filename = f"attachment.{ext}"
-
-            filename = self._decode_header_value(filename)
-            content_type = part.get_content_type()
-
             try:
-                payload = part.get_payload(decode=True)
-                if payload is None:
-                    continue
-
-                raw_bytes = cast(bytes, payload)
-                size = len(raw_bytes)
-
-                # For text-like files, provide plain text content
-                is_text = content_type.startswith("text/") or filename.lower().endswith(
-                    (".txt", ".asc", ".gpg", ".pgp", ".csv", ".json", ".xml", ".log")
-                )
-
-                if is_text:
-                    charset = part.get_content_charset() or "utf-8"
-                    try:
-                        content = raw_bytes.decode(charset, errors="replace")
-                    except (UnicodeDecodeError, LookupError):
-                        content = raw_bytes.decode("latin-1", errors="replace")
-                    encoding = "text"
-                else:
-                    content = base64.b64encode(raw_bytes).decode("ascii")
-                    encoding = "base64"
-
-                attachments.append(
-                    {
-                        "filename": filename,
-                        "content_type": content_type,
-                        "size": size,
-                        "content": content,
-                        "encoding": encoding,
-                    }
-                )
+                attachment = self._build_attachment(part)
+                if attachment is not None:
+                    attachments.append(attachment)
             except Exception as e:
-                logger.error(f"Error extracting attachment {filename}: {e}")
+                logger.error(f"Error extracting attachment: {e}")
 
         return attachments
+
+    def _fetch_email_summary(
+        self, mail: imaplib.IMAP4, email_id: bytes
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch one email's header-only summary, or None if unavailable.
+
+        Uses a header-only fetch so the message's read status is preserved.
+        """
+        email_id_str = email_id.decode("utf-8")
+        is_read = self._check_read_status(mail, email_id_str)
+
+        status, data = mail.fetch(email_id_str, "(RFC822.HEADER)")
+        if status != "OK" or not data or not data[0]:
+            return None
+        item = data[0]
+        if not isinstance(item, tuple) or len(item) < 2:
+            return None
+
+        msg = email_lib.message_from_bytes(item[1])
+        subject = self._decode_header_value(
+            self._safe_get_header(msg, "Subject", "(No Subject)")
+        )
+        sender = self._decode_header_value(
+            self._safe_get_header(msg, "From", "(Unknown Sender)")
+        )
+        date_str = (
+            self._safe_get_header(msg, "Date", "") or "Thu, 01 Jan 1970 00:00:00 +0000"
+        )
+        parsed_date = self._parse_email_date(date_str)
+        return {
+            "id": email_id_str,
+            "subject": subject,
+            "sender": sender,
+            "date": date_str,
+            "parsed_date": parsed_date.isoformat(),
+            "read": is_read,
+        }
 
     def list_emails(self, email_address: str, password: str) -> List[Dict[str, Any]]:
         """List emails for an account via IMAP with reverse chronological sorting.
@@ -643,12 +675,10 @@ class EmailService:
         emails: List[Dict[str, Any]] = []
 
         try:
-            # Connect to IMAP server with TLS
             mail = self._create_imap_connection()
             mail.login(email_address, password)
             mail.select("INBOX")
 
-            # Search for all emails
             status, data = mail.search(None, "ALL")
             if status != "OK":
                 logger.error(f"Failed to search emails: {status}")
@@ -656,69 +686,108 @@ class EmailService:
                 mail.logout()
                 return emails
 
-            email_ids = data[0].split()
-
-            # Process each email using header-only fetch to preserve read status
-            for email_id in email_ids:
+            for email_id in data[0].split():
                 try:
-                    email_id_str = email_id.decode("utf-8")
-
-                    # First, check the current read status before any fetching
-                    is_read = self._check_read_status(mail, email_id_str)
-
-                    # Fetch only headers to avoid marking as read
-                    status, data = mail.fetch(email_id_str, "(RFC822.HEADER)")
-                    if status != "OK" or not data or not data[0]:
-                        continue
-
-                    # Safely access the raw email headers
-                    item = data[0]
-                    if not isinstance(item, tuple) or len(item) < 2:
-                        continue
-
-                    raw_headers = item[1]
-                    msg = email_lib.message_from_bytes(raw_headers)
-
-                    # Extract and decode headers with safe fallbacks
-                    subject = self._decode_header_value(
-                        self._safe_get_header(msg, "Subject", "(No Subject)")
-                    )
-                    sender = self._decode_header_value(
-                        self._safe_get_header(msg, "From", "(Unknown Sender)")
-                    )
-                    date_str = self._safe_get_header(msg, "Date", "")
-
-                    # Provide fallback date string if empty
-                    if not date_str:
-                        date_str = "Thu, 01 Jan 1970 00:00:00 +0000"
-
-                    parsed_date = self._parse_email_date(date_str)
-
-                    emails.append(
-                        {
-                            "id": email_id_str,
-                            "subject": subject,
-                            "sender": sender,
-                            "date": date_str,
-                            "parsed_date": parsed_date.isoformat(),
-                            "read": is_read,
-                        }
-                    )
-
+                    summary = self._fetch_email_summary(mail, email_id)
+                    if summary is not None:
+                        emails.append(summary)
                 except Exception as e:
                     logger.error(f"Error processing email ID {email_id}: {str(e)}")
-                    continue
 
             mail.close()
             mail.logout()
 
-            # Sort emails by parsed date in reverse chronological order (newest first)
+            # Sort by parsed date, newest first.
             emails.sort(key=lambda x: x["parsed_date"], reverse=True)
 
         except Exception as e:
             logger.error(f"Error listing emails for {email_address}: {str(e)}")
 
         return emails
+
+    @staticmethod
+    def _decode_text_part(part: email_lib.message.Message) -> str | None:
+        """Decode a text/* MIME part to a string, or None if undecodable."""
+        try:
+            payload = part.get_payload(decode=True)
+            if payload is None:
+                return None
+            payload_bytes = cast(bytes, payload)
+            charset = part.get_content_charset() or "utf-8"
+            return payload_bytes.decode(charset, errors="replace")
+        except Exception as e:
+            logger.error(f"Error decoding email part: {str(e)}")
+            return None
+
+    @staticmethod
+    def _is_body_part(part: email_lib.message.Message) -> bool:
+        """Return True if a multipart member is a body part (not an attachment).
+
+        Inline text/plain and text/html parts count as body; everything
+        marked as an attachment (or inline non-text) is skipped.
+        """
+        disposition = part.get_content_disposition()
+        if disposition in ("attachment", "inline"):
+            return disposition == "inline" and part.get_content_type() in (
+                "text/plain",
+                "text/html",
+            )
+        return True
+
+    @classmethod
+    def _extract_multipart_body(cls, msg: email_lib.message.Message) -> tuple[str, str]:
+        """Walk a multipart message and return ``(body_plain, body_html)``."""
+        bodies: dict[str, str] = {}
+        for part in msg.walk():
+            if not cls._is_body_part(part):
+                continue
+            content_type = part.get_content_type()
+            if content_type in bodies or content_type not in (
+                "text/plain",
+                "text/html",
+            ):
+                continue
+            decoded = cls._decode_text_part(part)
+            if decoded is not None:
+                bodies[content_type] = decoded
+            if "text/plain" in bodies and "text/html" in bodies:
+                break
+        return bodies.get("text/plain", ""), bodies.get("text/html", "")
+
+    @classmethod
+    def _extract_body_parts(cls, msg: email_lib.message.Message) -> tuple[str, str]:
+        """Extract ``(body_plain, body_html)`` from a parsed email message."""
+        if msg.is_multipart():
+            return cls._extract_multipart_body(msg)
+
+        decoded = cls._decode_text_part(msg)
+        if decoded is None:
+            return "", ""
+        if msg.get_content_type() == "text/html":
+            return "", decoded
+        return decoded, ""
+
+    def _finalize_read_status(
+        self,
+        mail: imaplib.IMAP4,
+        email_id: str,
+        mark_as_read: bool,
+        initial_read_status: bool,
+    ) -> bool:
+        """Apply and return the email's read status after an RFC822 fetch.
+
+        The fetch itself marks the message read, so we only need to act
+        when the caller wants to preserve a previously-unread message.
+        """
+        if not mark_as_read and not initial_read_status:
+            if self._mark_as_unread(mail, email_id):
+                logger.debug(f"Restored unread status for email {email_id}")
+                return False
+            logger.warning(f"Failed to restore unread status for email {email_id}")
+            return True
+        if mark_as_read and not initial_read_status:
+            self._mark_as_read(mail, email_id)
+        return True
 
     def get_email_content(
         self,
@@ -778,58 +847,7 @@ class EmailService:
 
             # Extract body content - capture both plain and HTML versions
             # so the frontend can offer a toggle between formats.
-            body_plain = ""
-            body_html = ""
-
-            if msg.is_multipart():
-                for part in msg.walk():
-                    # Skip attachment parts
-                    if part.get_content_disposition() in ("attachment", "inline"):
-                        if (
-                            part.get_content_disposition() == "inline"
-                            and part.get_content_type()
-                            in (
-                                "text/plain",
-                                "text/html",
-                            )
-                        ):
-                            pass  # inline body parts are fine
-                        else:
-                            continue
-
-                    part_content_type = part.get_content_type()
-                    if part_content_type in {"text/plain", "text/html"}:
-                        try:
-                            payload = part.get_payload(decode=True)
-                            if payload is None:
-                                continue
-                            payload_bytes = cast(bytes, payload)
-                            charset = part.get_content_charset() or "utf-8"
-                            decoded = payload_bytes.decode(charset, errors="replace")
-
-                            if part_content_type == "text/plain" and not body_plain:
-                                body_plain = decoded
-                            elif part_content_type == "text/html" and not body_html:
-                                body_html = decoded
-                        except Exception as e:
-                            logger.error(f"Error decoding email part: {str(e)}")
-
-                    # Stop early if we have both
-                    if body_plain and body_html:
-                        break
-            else:
-                try:
-                    payload = msg.get_payload(decode=True)
-                    if payload is not None:
-                        payload_bytes = cast(bytes, payload)
-                        charset = msg.get_content_charset() or "utf-8"
-                        decoded = payload_bytes.decode(charset, errors="replace")
-                        if msg.get_content_type() == "text/html":
-                            body_html = decoded
-                        else:
-                            body_plain = decoded
-                except Exception as e:
-                    logger.error(f"Error decoding email: {str(e)}")
+            body_plain, body_html = self._extract_body_parts(msg)
 
             # Determine the primary body and content_type for backward compat
             if body_html:
@@ -843,24 +861,9 @@ class EmailService:
             attachments = self._extract_attachments(msg)
 
             # Handle read status based on parameters and initial state
-            final_read_status = True  # Default assumption after RFC822 fetch
-            if not mark_as_read and not initial_read_status:
-                # User doesn't want to mark as read and it wasn't read before
-                # Try to restore the unread state
-                if self._mark_as_unread(mail, email_id):
-                    final_read_status = False
-                    logger.debug(f"Restored unread status for email {email_id}")
-                else:
-                    logger.warning(
-                        f"Failed to restore unread status for email {email_id}"
-                    )
-            elif mark_as_read and not initial_read_status:
-                # Explicitly mark as read (though RFC822 fetch likely already did this)
-                self._mark_as_read(mail, email_id)
-                final_read_status = True
-            else:
-                # Email was already read, or we want to mark it as read
-                final_read_status = True
+            final_read_status = self._finalize_read_status(
+                mail, email_id, mark_as_read, initial_read_status
+            )
 
             mail.close()
             mail.logout()
