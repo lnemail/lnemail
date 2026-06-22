@@ -42,7 +42,7 @@ ONGOING_RETRY_DELAY = 3600  # After initial retries, retry every hour indefinite
 # expiry so the status endpoint does not mistake an abandoned invoice for a
 # settled one; the user can simply start a fresh renewal.
 RENEWAL_POLL_INTERVAL = 5  # seconds between checks
-RENEWAL_INVOICE_EXPIRY = 600  # must match LNDService.create_invoice expiry
+RENEWAL_INVOICE_EXPIRY = 600  # matches the backends' 600s invoice expiry
 RENEWAL_POLL_BUFFER = 30  # extra slack so a payment landing near expiry is seen
 MAX_RENEWAL_POLL_ATTEMPTS = (
     RENEWAL_INVOICE_EXPIRY + RENEWAL_POLL_BUFFER
