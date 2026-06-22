@@ -183,6 +183,9 @@ Exceeding these limits will result in failed sends (sats are **not** charged for
 | `/api/v1/emails/{id}` | GET | Bearer | Get message content |
 | `/api/v1/email/send` | POST | Bearer | Create send request (returns payment hash) |
 | `/api/v1/email/send/status/{hash}` | GET | No | Check send payment status + get invoice |
+| `/api/v1/email/{hash}/new-invoice` | POST | No | Re-issue the signup invoice from a different provider |
+| `/api/v1/email/send/{hash}/new-invoice` | POST | Bearer | Re-issue a send invoice from a different provider |
+| `/api/v1/account/renew/{hash}/new-invoice` | POST | Bearer | Re-issue a renewal invoice from a different provider |
 
 **Required headers for POST requests:**
 - `Content-Type: application/json`

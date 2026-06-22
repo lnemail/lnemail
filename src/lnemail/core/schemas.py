@@ -18,6 +18,18 @@ class InvoiceResponse(BaseModel):
     payment_hash: str
     expires_at: datetime
     price_sats: int
+    provider: str | None = None
+
+
+class NewInvoiceRequest(BaseModel):
+    """Request to re-issue a pending invoice from a different provider."""
+
+    # Name of the provider that issued the current (unpayable) invoice, so
+    # the new one is created from a different provider when available.
+    exclude_provider: str | None = None
+    # Renewal only: number of years (so the re-issued invoice matches the
+    # original amount). Ignored by the signup and send flows.
+    years: int | None = None
 
 
 class PaymentStatusResponse(BaseModel):
@@ -109,6 +121,7 @@ class EmailSendInvoiceResponse(BaseModel):
     sender_email: str
     recipient: str
     subject: str
+    provider: str | None = None
 
 
 class EmailSendStatusResponse(BaseModel):
@@ -178,6 +191,7 @@ class RenewalInvoiceResponse(BaseModel):
     price_sats: int
     years: int
     new_expires_at: datetime
+    provider: str | None = None
 
 
 class RenewalStatusResponse(BaseModel):

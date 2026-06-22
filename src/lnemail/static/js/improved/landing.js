@@ -1,4 +1,4 @@
-import { createEmailAccount, checkAccountPaymentStatus } from './api.js';
+import { createEmailAccount, checkAccountPaymentStatus, newAccountInvoice } from './api.js';
 import { tryAutoPayWebLN } from './webln.js';
 import { showStatus, initMobileMenu } from './ui.js';
 import { copyToClipboard, showCopyFeedback, formatDateDMY } from './utils.js';
@@ -29,10 +29,47 @@ document.addEventListener('DOMContentLoaded', () => {
     const qrContainer = document.getElementById('qrcode');
     let paymentHash = '';
     let checkInterval = null;
+    let currentProvider = null;
 
     // Create invoice when button is clicked
     if (createInvoiceBtn) {
         createInvoiceBtn.addEventListener('click', createInvoice);
+    }
+
+    // "Can't pay this invoice? Get a new one" - re-issue from another provider
+    const newInvoiceBtn = document.getElementById('new-invoice-btn');
+    if (newInvoiceBtn) {
+        newInvoiceBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            if (!paymentHash) return;
+            newInvoiceBtn.textContent = 'Generating...';
+            try {
+                const response = await newAccountInvoice(paymentHash, currentProvider);
+                if (!response || !response.payment_request) {
+                    throw new Error('No invoice returned');
+                }
+                const paymentData = {
+                    payment_hash: response.payment_hash,
+                    payment_request: response.payment_request,
+                    price_sats: response.price_sats,
+                    email_address: response.email_address,
+                    access_token: response.access_token,
+                    expires_at: response.expires_at,
+                    provider: response.provider || null,
+                    created_at: new Date().toISOString()
+                };
+                sessionStorage.setItem(STORAGE_KEYS.paymentData, JSON.stringify(paymentData));
+                displayPaymentScreen(paymentData);
+                paymentHash = response.payment_hash;
+                tryAutoPayWebLN(paymentData.payment_request);
+                showStatus('New invoice generated.', 'success');
+            } catch (err) {
+                console.error('Failed to get a new invoice:', err);
+                showStatus('Could not generate a new invoice.', 'error');
+            } finally {
+                newInvoiceBtn.textContent = 'Get a new one';
+            }
+        });
     }
 
     // Copy invoice to clipboard
@@ -142,6 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 email_address: response.email_address,
                 access_token: response.access_token,
                 expires_at: response.expires_at,
+                provider: response.provider || null,
                 created_at: new Date().toISOString()
             };
             sessionStorage.setItem(STORAGE_KEYS.paymentData, JSON.stringify(paymentData));
@@ -169,6 +207,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show payment screen
         prePaymentDiv.classList.add('hidden');
         paymentPendingDiv.classList.remove('hidden');
+
+        currentProvider = paymentData.provider || null;
 
         // Set payment details
         bolt11Invoice.textContent = paymentData.payment_request;

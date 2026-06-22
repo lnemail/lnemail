@@ -166,3 +166,26 @@ export async function checkRenewalStatus(paymentHash) {
         method: 'GET'
     });
 }
+
+// Re-issue an invoice from a different payment provider (when configured).
+// excludeProvider is the provider that issued the current, unpayable invoice.
+export async function newAccountInvoice(paymentHash, excludeProvider = null) {
+    return await makeRequest(`/email/${paymentHash}/new-invoice`, {
+        method: 'POST',
+        body: JSON.stringify({ exclude_provider: excludeProvider })
+    });
+}
+
+export async function newSendInvoice(paymentHash, excludeProvider = null) {
+    return await makeRequest(`/email/send/${paymentHash}/new-invoice`, {
+        method: 'POST',
+        body: JSON.stringify({ exclude_provider: excludeProvider })
+    });
+}
+
+export async function newRenewalInvoice(paymentHash, excludeProvider = null, years = 1) {
+    return await makeRequest(`/account/renew/${paymentHash}/new-invoice`, {
+        method: 'POST',
+        body: JSON.stringify({ exclude_provider: excludeProvider, years })
+    });
+}

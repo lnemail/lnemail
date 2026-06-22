@@ -36,11 +36,14 @@ class InvoiceResult(TypedDict):
     """Minimal invoice shape every backend must return.
 
     Mirrors the subset of ``LNDService.create_invoice``'s return value
-    that the rest of the application actually consumes.
+    that the rest of the application actually consumes. ``provider`` is
+    the name of the backend that issued the invoice so callers can later
+    ask for a fresh invoice from a *different* provider.
     """
 
     payment_hash: str
     payment_request: str
+    provider: str
 
 
 @runtime_checkable
@@ -55,11 +58,15 @@ class PaymentBackend(Protocol):
     #: Short identifier used in logs (never include secrets).
     name: str
 
-    def create_invoice(self, amount_sats: int, memo: str) -> InvoiceResult:
+    def create_invoice(
+        self, amount_sats: int, memo: str, exclude_provider: str | None = None
+    ) -> InvoiceResult:
         """Create an invoice for ``amount_sats`` with ``memo``.
 
-        Implementations may raise on failure; the dispatcher handles
-        fallback to another provider.
+        ``exclude_provider`` names a provider to avoid when possible (used
+        to re-issue an invoice from a *different* provider). Single-backend
+        implementations may ignore it. Implementations may raise on
+        failure; the dispatcher handles fallback to another provider.
         """
         ...
 

@@ -314,6 +314,7 @@ class TestSendEmailResponseFormat:
             "sender_email",
             "recipient",
             "subject",
+            "provider",
         }
         assert set(data.keys()) == expected_keys
         assert data["price_sats"] == 100

@@ -110,7 +110,9 @@ class NWCBackend(PaymentBackend):
         # avoids sharing a relay connection across threads/loops.
         return Nwc(self._uri)
 
-    def create_invoice(self, amount_sats: int, memo: str) -> InvoiceResult:
+    def create_invoice(
+        self, amount_sats: int, memo: str, exclude_provider: str | None = None
+    ) -> InvoiceResult:
         async def _make() -> InvoiceResult:
             nwc = self._client()
             request = MakeInvoiceRequest(
@@ -124,6 +126,7 @@ class NWCBackend(PaymentBackend):
             return {
                 "payment_hash": payment_hash,
                 "payment_request": response.invoice,
+                "provider": self.name,
             }
 
         result = _run(_make())

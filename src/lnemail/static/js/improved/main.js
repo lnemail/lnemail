@@ -1,4 +1,4 @@
-import { sendEmail, checkApiHealth, deleteEmails, checkPaymentStatus, renewAccount, checkRenewalStatus } from './api.js';
+import { sendEmail, checkApiHealth, deleteEmails, checkPaymentStatus, renewAccount, checkRenewalStatus, newSendInvoice, newRenewalInvoice } from './api.js';
 import {
     showStatus,
     showView,
@@ -235,6 +235,7 @@ async function handleSendEmail(e) {
             sender_email: invoiceResponse.sender_email,
             recipient: invoiceResponse.recipient,
             subject: invoiceResponse.subject,
+            provider: invoiceResponse.provider || null,
             originalFormData: { recipient, subject, body }
         };
 
@@ -387,6 +388,37 @@ async function handleCopyInvoice() {
         showStatus('Lightning invoice copied to clipboard!', 'success');
     } catch (error) {
         showStatus('Failed to copy invoice to clipboard', 'error');
+    }
+}
+
+async function handleNewSendInvoice(e) {
+    if (e) e.preventDefault();
+    if (!state.currentPayment || !state.currentPayment.payment_hash) return;
+
+    const link = document.getElementById('newSendInvoiceBtn');
+    if (link) link.textContent = 'Generating...';
+    try {
+        const response = await newSendInvoice(
+            state.currentPayment.payment_hash,
+            state.currentPayment.provider || null
+        );
+        if (!response || !response.payment_request) {
+            throw new Error('No invoice returned');
+        }
+        state.currentPayment = {
+            ...state.currentPayment,
+            payment_hash: response.payment_hash,
+            payment_request: response.payment_request,
+            provider: response.provider || null
+        };
+        updatePaymentModal(response);
+        startPaymentPolling();
+        tryAutoPayWebLN(response.payment_request);
+        showStatus('New invoice generated.', 'success');
+    } catch (error) {
+        showStatus('Could not generate a new invoice.', 'error');
+    } finally {
+        if (link) link.textContent = 'Get a new one';
     }
 }
 
@@ -581,6 +613,8 @@ function bindEvents() {
     if (cancelPaymentBtn) cancelPaymentBtn.addEventListener('click', handleCancelPayment);
     const copyInvoiceBtn = document.getElementById('copyInvoiceBtn');
     if (copyInvoiceBtn) copyInvoiceBtn.addEventListener('click', handleCopyInvoice);
+    const newSendInvoiceBtn = document.getElementById('newSendInvoiceBtn');
+    if (newSendInvoiceBtn) newSendInvoiceBtn.addEventListener('click', handleNewSendInvoice);
 
     // Renewal events
     const renewBtn = document.getElementById('renewBtn');
@@ -593,6 +627,8 @@ function bindEvents() {
     if (cancelRenewalBtn) cancelRenewalBtn.addEventListener('click', handleCancelRenewal);
     const copyRenewalInvoiceBtn = document.getElementById('copyRenewalInvoiceBtn');
     if (copyRenewalInvoiceBtn) copyRenewalInvoiceBtn.addEventListener('click', handleCopyRenewalInvoice);
+    const newRenewalInvoiceBtn = document.getElementById('newRenewalInvoiceBtn');
+    if (newRenewalInvoiceBtn) newRenewalInvoiceBtn.addEventListener('click', handleNewRenewalInvoice);
     const renewalYears = document.getElementById('renewalYears');
     if (renewalYears) renewalYears.addEventListener('change', handleRenewalYearsChange);
     const renewalBannerBtn = document.getElementById('renewalBannerBtn');
@@ -690,7 +726,8 @@ async function handleRenewAccount() {
             payment_request: invoiceResponse.payment_request,
             price_sats: invoiceResponse.price_sats,
             years: invoiceResponse.years,
-            new_expires_at: invoiceResponse.new_expires_at
+            new_expires_at: invoiceResponse.new_expires_at,
+            provider: invoiceResponse.provider || null
         };
 
         updateRenewalModal(invoiceResponse);
@@ -820,6 +857,38 @@ async function handleCopyRenewalInvoice() {
         showStatus('Lightning invoice copied to clipboard!', 'success');
     } catch (error) {
         showStatus('Failed to copy invoice to clipboard', 'error');
+    }
+}
+
+async function handleNewRenewalInvoice(e) {
+    if (e) e.preventDefault();
+    if (!state.currentRenewal || !state.currentRenewal.payment_hash) return;
+
+    const link = document.getElementById('newRenewalInvoiceBtn');
+    if (link) link.textContent = 'Generating...';
+    try {
+        const response = await newRenewalInvoice(
+            state.currentRenewal.payment_hash,
+            state.currentRenewal.provider || null,
+            state.currentRenewal.years || 1
+        );
+        if (!response || !response.payment_request) {
+            throw new Error('No invoice returned');
+        }
+        state.currentRenewal = {
+            ...state.currentRenewal,
+            payment_hash: response.payment_hash,
+            payment_request: response.payment_request,
+            provider: response.provider || null
+        };
+        updateRenewalModal(response);
+        startRenewalPolling();
+        tryAutoPayWebLN(response.payment_request);
+        showStatus('New invoice generated.', 'success');
+    } catch (error) {
+        showStatus('Could not generate a new invoice.', 'error');
+    } finally {
+        if (link) link.textContent = 'Get a new one';
     }
 }
 

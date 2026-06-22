@@ -42,7 +42,9 @@ class _FakeBackend(PaymentBackend):
         self.seen_memos: list[str] = []
         self.created = 0
 
-    def create_invoice(self, amount_sats: int, memo: str) -> dict[str, str]:
+    def create_invoice(
+        self, amount_sats: int, memo: str, exclude_provider: str | None = None
+    ) -> dict[str, str]:
         self.seen_memos.append(memo)
         self.created += 1
         if self.fail_create:
@@ -50,6 +52,7 @@ class _FakeBackend(PaymentBackend):
         return {
             "payment_hash": f"{self.name}_hash",
             "payment_request": f"lnbc_{self.name}",
+            "provider": self.name,
         }
 
     def check_invoice(self, payment_hash: str) -> bool:
@@ -80,6 +83,28 @@ class TestMultiProviderCreate:
         assert result["payment_hash"] == "primary_hash"
         assert primary.created == 1
         assert other.created == 0
+
+    def test_result_includes_provider_name(self) -> None:
+        a = _FakeBackend("alpha")
+        multi = MultiProviderBackend([a], primary=a)
+        result = multi.create_invoice(1000, "memo")
+        assert result["provider"] == "alpha"
+
+    def test_exclude_provider_prefers_a_different_one(self) -> None:
+        a = _FakeBackend("alpha")
+        b = _FakeBackend("beta")
+        multi = MultiProviderBackend([a, b])
+        # Excluding alpha must yield beta even across repeated calls.
+        for _ in range(10):
+            result = multi.create_invoice(1000, "memo", exclude_provider="alpha")
+            assert result["provider"] == "beta"
+
+    def test_exclude_provider_falls_back_when_only_option(self) -> None:
+        only = _FakeBackend("solo")
+        multi = MultiProviderBackend([only], primary=only)
+        # Even when excluded, the sole provider is still used as a last resort.
+        result = multi.create_invoice(1000, "memo", exclude_provider="solo")
+        assert result["provider"] == "solo"
 
     def test_falls_back_when_a_provider_fails(self) -> None:
         bad = _FakeBackend("bad", fail_create=True)
@@ -119,7 +144,9 @@ class TestMultiProviderCreate:
 
     def test_incomplete_invoice_triggers_fallback(self) -> None:
         class _Incomplete(_FakeBackend):
-            def create_invoice(self, amount_sats: int, memo: str) -> dict[str, str]:
+            def create_invoice(
+                self, amount_sats: int, memo: str, exclude_provider: str | None = None
+            ) -> dict[str, str]:
                 self.created += 1
                 return {"payment_hash": "", "payment_request": ""}
 

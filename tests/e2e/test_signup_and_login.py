@@ -72,3 +72,35 @@ def test_signup_pay_and_token_works_on_other_device(
         assert response.json()["email_address"] == account.email
     finally:
         other.close()
+
+
+def test_signup_get_a_new_invoice_then_pay(page: Page, pay_invoice: Any) -> None:
+    """A user who can't pay the first invoice clicks 'Get a new one' and
+    pays the freshly-issued (different-provider) invoice instead."""
+    page.goto("/")
+    expect(page.locator("#create-invoice")).to_be_visible()
+
+    with page.expect_response(
+        lambda r: r.url.endswith("/api/v1/email") and r.request.method == "POST"
+    ) as first:
+        page.locator("#create-invoice").click()
+    first_hash = first.value.json()["payment_hash"]
+
+    expect(page.locator("#payment-pending")).to_be_visible()
+
+    # "Can't pay this invoice? Get a new one."
+    with page.expect_response(
+        lambda r: r.url.endswith(f"/api/v1/email/{first_hash}/new-invoice")
+        and r.request.method == "POST"
+    ) as reissue:
+        page.locator("#new-invoice-btn").click()
+    new_payload = reissue.value.json()
+    new_bolt11 = new_payload["payment_request"]
+    assert new_bolt11
+    assert new_payload["payment_hash"] != first_hash
+
+    # Paying the NEW invoice completes signup.
+    pay_invoice(new_bolt11)
+    expect(page.locator("#payment-success")).to_be_visible(timeout=30_000)
+    token = page.locator("#access-token-input").input_value()
+    assert token

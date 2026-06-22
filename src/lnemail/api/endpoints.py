@@ -34,6 +34,7 @@ from ..core.schemas import (
     HealthResponse,
     InvoiceResponse,
     MAX_TOTAL_ATTACHMENT_SIZE_BYTES,
+    NewInvoiceRequest,
     PaymentStatusResponse,
     RecentSendItem,
     RecentSendsResponse,
@@ -278,12 +279,77 @@ async def create_email_account(
             payment_hash=invoice["payment_hash"],
             expires_at=account.expires_at,
             price_sats=settings.EMAIL_PRICE,
+            provider=invoice.get("provider"),
         )
 
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create email account",
+        )
+
+
+@router.post(
+    "/email/{payment_hash}/new-invoice",
+    response_model=InvoiceResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Pending payment not found"},
+        409: {"model": ErrorResponse, "description": "Account already paid"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def new_account_invoice(
+    payment_hash: str,
+    request_body: NewInvoiceRequest | None = None,
+    db: Session = Depends(get_db),
+) -> InvoiceResponse:
+    """Re-issue the signup invoice from a different payment provider.
+
+    Lets a user who cannot pay the current invoice get a fresh one (from
+    another provider when configured) for the same pending account. The
+    old invoice's ``payment_hash`` is replaced.
+    """
+    try:
+        account = db.exec(
+            select(EmailAccount).where(EmailAccount.payment_hash == payment_hash)
+        ).first()
+        if not account:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found"
+            )
+        if account.payment_status == PaymentStatus.PAID:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="Account already paid"
+            )
+
+        exclude = request_body.exclude_provider if request_body else None
+        invoice = payment_backend.create_invoice(
+            settings.EMAIL_PRICE, "LNemail account", exclude_provider=exclude
+        )
+
+        account.payment_hash = invoice["payment_hash"]
+        db.add(account)
+        db.commit()
+        db.refresh(account)
+
+        queue.enqueue(check_payment_status, invoice["payment_hash"], job_timeout=600)
+
+        return InvoiceResponse(
+            email_address=account.email_address,
+            access_token=account.access_token,
+            payment_request=invoice["payment_request"],
+            payment_hash=invoice["payment_hash"],
+            expires_at=account.expires_at,
+            price_sats=settings.EMAIL_PRICE,
+            provider=invoice.get("provider"),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error re-issuing account invoice: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to re-issue invoice",
         )
 
 
@@ -437,6 +503,7 @@ async def send_email(
             sender_email=sender_email,
             recipient=send_request.recipient,
             subject=send_request.subject,
+            provider=invoice.get("provider"),
         )
 
     except HTTPException:
@@ -446,6 +513,73 @@ async def send_email(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to initiate email send",
+        )
+
+
+@router.post(
+    "/email/send/{payment_hash}/new-invoice",
+    response_model=EmailSendInvoiceResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Pending send not found"},
+        409: {"model": ErrorResponse, "description": "Send already paid"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def new_send_invoice(
+    payment_hash: str,
+    request_body: NewInvoiceRequest | None = None,
+    account: EmailAccount = Depends(get_current_active_account),
+    db: Session = Depends(get_db),
+) -> EmailSendInvoiceResponse:
+    """Re-issue an outgoing-email invoice from a different provider."""
+    try:
+        pending = db.exec(
+            select(PendingOutgoingEmail).where(
+                PendingOutgoingEmail.payment_hash == payment_hash
+            )
+        ).first()
+        if not pending or pending.sender_email != account.email_address:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found"
+            )
+        if pending.status == PaymentStatus.PAID:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="Send already paid"
+            )
+
+        exclude = request_body.exclude_provider if request_body else None
+        memo = f"Send email from {pending.sender_email} to {pending.recipient}"
+        invoice = payment_backend.create_invoice(
+            settings.EMAIL_SEND_PRICE, memo, exclude_provider=exclude
+        )
+
+        pending.payment_hash = invoice["payment_hash"]
+        pending.payment_request = invoice["payment_request"]
+        db.add(pending)
+        db.commit()
+        db.refresh(pending)
+
+        queue.enqueue(
+            process_send_email_payment, invoice["payment_hash"], False, job_timeout=600
+        )
+
+        return EmailSendInvoiceResponse(
+            payment_request=invoice["payment_request"],
+            payment_hash=invoice["payment_hash"],
+            price_sats=settings.EMAIL_SEND_PRICE,
+            sender_email=pending.sender_email,
+            recipient=pending.recipient,
+            subject=pending.subject or "",
+            provider=invoice.get("provider"),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error re-issuing send invoice: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to re-issue invoice",
         )
 
 
@@ -910,6 +1044,7 @@ async def renew_account(
             price_sats=total_price,
             years=years,
             new_expires_at=new_expires_at,
+            provider=invoice.get("provider"),
         )
 
     except HTTPException:
@@ -919,6 +1054,71 @@ async def renew_account(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to initiate account renewal",
+        )
+
+
+@router.post(
+    "/account/renew/{payment_hash}/new-invoice",
+    response_model=RenewalInvoiceResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        404: {"model": ErrorResponse, "description": "Renewal payment not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def new_renewal_invoice(
+    payment_hash: str,
+    request_body: NewInvoiceRequest | None = None,
+    account: EmailAccount = Depends(get_current_account),
+    db: Session = Depends(get_db),
+) -> RenewalInvoiceResponse:
+    """Re-issue a renewal invoice from a different provider."""
+    try:
+        if account.renewal_payment_hash != payment_hash:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Renewal payment not found",
+            )
+
+        years = (request_body.years if request_body else None) or 1
+        exclude = request_body.exclude_provider if request_body else None
+        total_price = settings.RENEWAL_PRICE * years
+
+        now = utcnow()
+        base_date = max(account.expires_at, now)
+        new_expires_at = base_date + timedelta(days=365 * years)
+
+        memo = f"LNemail renewal ({years} year{'s' if years > 1 else ''})"
+        invoice = payment_backend.create_invoice(
+            total_price, memo, exclude_provider=exclude
+        )
+
+        account.renewal_payment_hash = invoice["payment_hash"]
+        db.add(account)
+        db.commit()
+
+        queue.enqueue(
+            check_renewal_payment_status,
+            invoice["payment_hash"],
+            years,
+            job_timeout=600,
+        )
+
+        return RenewalInvoiceResponse(
+            payment_request=invoice["payment_request"],
+            payment_hash=invoice["payment_hash"],
+            price_sats=total_price,
+            years=years,
+            new_expires_at=new_expires_at,
+            provider=invoice.get("provider"),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error re-issuing renewal invoice: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to re-issue invoice",
         )
 
 

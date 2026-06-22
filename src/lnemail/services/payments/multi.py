@@ -47,22 +47,36 @@ class MultiProviderBackend(PaymentBackend):
         self._providers = list(providers)
         self._primary = primary
 
-    def _ordered_for_create(self) -> list[PaymentBackend]:
-        """Primary first (if set), then the rest shuffled."""
+    def _ordered_for_create(
+        self, exclude_provider: str | None = None
+    ) -> list[PaymentBackend]:
+        """Primary first (if set), then the rest shuffled.
+
+        If ``exclude_provider`` is given, providers with that name are
+        moved to the end so a *different* one is tried first - but they are
+        still kept as a last resort (e.g. when it is the only provider).
+        """
         rest = [p for p in self._providers if p is not self._primary]
         random.shuffle(rest)
-        if self._primary is not None:
-            return [self._primary, *rest]
-        return rest
+        ordered = [self._primary, *rest] if self._primary is not None else rest
 
-    def create_invoice(self, amount_sats: int, memo: str) -> InvoiceResult:
+        if exclude_provider:
+            preferred = [p for p in ordered if p.name != exclude_provider]
+            excluded = [p for p in ordered if p.name == exclude_provider]
+            ordered = [*preferred, *excluded]
+        return ordered
+
+    def create_invoice(
+        self, amount_sats: int, memo: str, exclude_provider: str | None = None
+    ) -> InvoiceResult:
         errors: list[str] = []
-        for provider in self._ordered_for_create():
+        for provider in self._ordered_for_create(exclude_provider):
             try:
                 safe_memo = public_memo(provider, memo)
                 result = provider.create_invoice(amount_sats, safe_memo)
                 if not result.get("payment_request") or not result.get("payment_hash"):
                     raise ValueError("provider returned an incomplete invoice")
+                result["provider"] = provider.name
                 logger.info(f"Invoice created via provider '{provider.name}'")
                 return result
             except Exception as exc:

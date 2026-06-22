@@ -22,11 +22,15 @@ class LNDBackend(PaymentBackend):
         # never opens a gRPC channel (mirrors how LNDService was used before).
         self._service = service or LNDService()
 
-    def create_invoice(self, amount_sats: int, memo: str) -> InvoiceResult:
+    def create_invoice(
+        self, amount_sats: int, memo: str, exclude_provider: str | None = None
+    ) -> InvoiceResult:
+        # Single self-hosted backend: exclude_provider is not applicable.
         result = self._service.create_invoice(amount_sats, memo)
         return {
             "payment_hash": result["payment_hash"],
             "payment_request": result["payment_request"],
+            "provider": self.name,
         }
 
     def check_invoice(self, payment_hash: str) -> bool:

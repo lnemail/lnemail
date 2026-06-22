@@ -75,6 +75,17 @@ Fast anonymous email accounts powered by Bitcoin Lightning Network payments. Get
    - `GET /api/v1/email/send/status/{payment_hash}`
    - Returns status of outgoing email Lightning payment
 
+7. **Get a New Invoice (different provider)**
+   - `POST /api/v1/email/{payment_hash}/new-invoice` (signup)
+   - `POST /api/v1/email/send/{payment_hash}/new-invoice` (send, authenticated)
+   - `POST /api/v1/account/renew/{payment_hash}/new-invoice` (renewal, authenticated)
+   - Re-issues the invoice for a still-pending payment from a *different*
+     payment provider when one is configured, so a user who cannot pay the
+     current invoice can get a fresh one ("Can't pay this invoice? Get a
+     new one"). Optional JSON body: `{"exclude_provider": "<name>"}` (and
+     `"years"` for renewals). The invoice responses include a `provider`
+     field naming the issuing provider.
+
 ### Authentication
 
 All email access endpoints require a valid access token passed in the Authorization header:
