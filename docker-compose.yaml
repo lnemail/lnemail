@@ -462,6 +462,12 @@ services:
       - "587:587" # SMTP with TLS
       - "993:993" # IMAP with SSL
       - "465:465" # SMTP with SSL
+      # Non-privileged aliases so the host can reach SMTP/IMAP under
+      # rootless Docker (which cannot forward privileged ports <1024).
+      # e.g. swaks --server localhost:2525
+      - "2525:25" # SMTP (rootless-friendly)
+      - "1143:143" # IMAP (rootless-friendly)
+      - "1587:587" # SMTP+TLS (rootless-friendly)
     networks:
       - lnemail
     healthcheck:

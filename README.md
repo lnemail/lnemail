@@ -244,12 +244,15 @@ docker exec router_lnd lncli --network=regtest --rpcserver=router_lnd:10010 --tl
 
 #### Send test email
 
-Once you have an email account, you can send a test email to it:
+Once you have an email account, you can send a test email to it. Use the
+rootless-friendly SMTP port `2525` (privileged ports like `25` are not
+reachable from the host under rootless Docker; `25` still works when
+running as root):
 
 ```bash
 swaks --to sereneforest630@lnemail.test \
       --from sender@lnemail.test \
-      --server localhost:25 \
+      --server localhost:2525 \
       --body "Test email body" \
       --header "Subject: Test Email"
 ```
