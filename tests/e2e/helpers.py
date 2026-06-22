@@ -111,6 +111,12 @@ def open_inbox_view(page: Page) -> None:
     expect(page.locator("#inboxView")).to_be_visible()
 
 
+def open_compose_view(page: Page) -> None:
+    """Switch to the compose view via the primary nav."""
+    page.locator('[data-view="compose"]').first.click()
+    expect(page.locator("#composeView")).to_be_visible()
+
+
 def compose_and_send(
     page: Page,
     pay_invoice: Callable[[str], str],
@@ -120,8 +126,7 @@ def compose_and_send(
     body: str,
 ) -> None:
     """Open the compose view, fill it, pay the send invoice, wait for delivery."""
-    page.locator("#composeBtn").click()
-    expect(page.locator("#composeForm")).to_be_visible()
+    open_compose_view(page)
 
     page.locator("#recipient").fill(recipient)
     page.locator("#subject").fill(subject)
@@ -130,7 +135,7 @@ def compose_and_send(
     with page.expect_response(
         lambda r: r.url.endswith("/api/v1/email/send") and r.request.method == "POST"
     ) as resp_info:
-        page.locator('#composeForm button[type="submit"]').click()
+        page.locator("#composeSubmitBtn").click()
     payload = resp_info.value.json()
     bolt11 = payload["payment_request"]
     assert bolt11, payload
@@ -158,17 +163,17 @@ def wait_for_email(page: Page, *, subject_contains: str) -> None:
     refresh button to nudge it, which is what an impatient user would do.
     """
     open_inbox_view(page)
-    item = page.locator(".inbox-email-row", has_text=subject_contains).first
+    item = page.locator(".email-snippet", has_text=subject_contains).first
     try:
         expect(item).to_be_visible(timeout=INBOX_TIMEOUT_MS)
     except AssertionError:
         # One last manual refresh before failing.
-        page.locator("#refreshBtn").click()
+        page.locator("#refreshSidebarBtn").click()
         expect(item).to_be_visible(timeout=10_000)
 
 
 def open_email(page: Page, *, subject_contains: str) -> None:
-    item = page.locator(".inbox-email-row", has_text=subject_contains).first
+    item = page.locator(".email-snippet", has_text=subject_contains).first
     expect(item).to_be_visible()
     item.click()
     expect(page.locator("#emailDetailView")).to_be_visible()

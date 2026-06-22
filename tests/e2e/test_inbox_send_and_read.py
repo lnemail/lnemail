@@ -56,7 +56,7 @@ def test_send_to_self_read_and_reply(page: Page, pay_invoice: Any) -> None:
     # Reply: the UI prefills recipient + Re: subject, we add a body and
     # submit a new send (which requires another Lightning payment).
     page.locator("#replyBtn").click()
-    expect(page.locator("#composeForm")).to_be_visible()
+    expect(page.locator("#composeView")).to_be_visible()
     expect(page.locator("#recipient")).to_have_value(account.email)
     expect(page.locator("#subject")).to_have_value(f"Re: {subject}")
 
@@ -66,7 +66,7 @@ def test_send_to_self_read_and_reply(page: Page, pay_invoice: Any) -> None:
     with page.expect_response(
         lambda r: r.url.endswith("/api/v1/email/send") and r.request.method == "POST"
     ) as resp_info:
-        page.locator('#composeForm button[type="submit"]').click()
+        page.locator("#composeSubmitBtn").click()
     bolt11 = resp_info.value.json()["payment_request"]
     pay_invoice(bolt11)
 
