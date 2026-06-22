@@ -32,6 +32,21 @@ queue = Queue("lnemail", connection=redis_conn)
 RETRY_DELAYS = [30, 60, 300, 900, 3600]  # 30s, 1m, 5m, 15m, 1h
 ONGOING_RETRY_DELAY = 3600  # After initial retries, retry every hour indefinitely
 
+# Renewal payment polling. The renewal invoice is created with a 600s (10 min)
+# expiry in LNDService.create_invoice, so there is no point polling beyond that:
+# once the invoice expires it can never be settled. We poll every
+# RENEWAL_POLL_INTERVAL seconds and stop after the invoice lifetime (plus a
+# small buffer) to avoid an unpaid invoice spawning an immortal self-requeueing
+# job. The account's renewal_payment_hash is intentionally left untouched on
+# expiry so the status endpoint does not mistake an abandoned invoice for a
+# settled one; the user can simply start a fresh renewal.
+RENEWAL_POLL_INTERVAL = 5  # seconds between checks
+RENEWAL_INVOICE_EXPIRY = 600  # must match LNDService.create_invoice expiry
+RENEWAL_POLL_BUFFER = 30  # extra slack so a payment landing near expiry is seen
+MAX_RENEWAL_POLL_ATTEMPTS = (
+    RENEWAL_INVOICE_EXPIRY + RENEWAL_POLL_BUFFER
+) // RENEWAL_POLL_INTERVAL
+
 
 def check_payment_status(payment_hash: str) -> None:
     """Check if a Lightning invoice has been paid and set up email if it has.
@@ -350,31 +365,49 @@ def retry_failed_emails() -> None:
         logger.error(f"Error in retry_failed_emails: {str(e)}")
 
 
-def check_renewal_payment_status(payment_hash: str, years: int = 1) -> None:
+def check_renewal_payment_status(
+    payment_hash: str, years: int = 1, attempt: int = 0
+) -> None:
     """Check if a renewal Lightning invoice has been paid and extend the account.
 
     If the account is currently expired (within the grace period), the new
     expiration is calculated from the old expiration date. If the account is
     still active, the extension is added from the current expiration.
 
+    The task re-queues itself every ``RENEWAL_POLL_INTERVAL`` seconds while the
+    invoice is unpaid, but stops after ``MAX_RENEWAL_POLL_ATTEMPTS`` (derived
+    from the invoice's 10-minute expiry). This prevents an abandoned, never-paid
+    invoice from spawning a self-requeueing job that polls LND forever.
+
     Args:
         payment_hash: The hash of the renewal invoice to check.
         years: Number of years to extend the account.
+        attempt: Zero-based poll attempt counter (managed by the re-queue).
     """
-    logger.info(f"Checking renewal payment status for hash: {payment_hash}")
+    logger.info(
+        f"Checking renewal payment status for hash: {payment_hash} "
+        f"(attempt {attempt + 1}/{MAX_RENEWAL_POLL_ATTEMPTS})"
+    )
 
     lnd_service = LNDService()
 
     try:
         paid = lnd_service.check_invoice(payment_hash)
         if not paid:
+            if attempt + 1 >= MAX_RENEWAL_POLL_ATTEMPTS:
+                logger.info(
+                    f"Renewal invoice expired without payment, giving up on "
+                    f"hash: {payment_hash} after {attempt + 1} checks"
+                )
+                return
             logger.info(f"Renewal payment not received yet for hash: {payment_hash}")
             # Re-queue to check again
             queue.enqueue_in(
-                timedelta(seconds=5),
+                timedelta(seconds=RENEWAL_POLL_INTERVAL),
                 check_renewal_payment_status,
                 payment_hash,
                 years,
+                attempt + 1,
                 job_timeout=600,
             )
             return
