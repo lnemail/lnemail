@@ -4,7 +4,7 @@ This module contains functions to be executed by the Redis Queue (RQ) worker,
 handling asynchronous operations like payment verification and cleanup.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 import json
 from loguru import logger
 from redis import Redis
@@ -12,6 +12,7 @@ from rq import Queue
 from sqlmodel import Session, select, func
 
 from ..config import settings
+from ..core.timeutils import utcnow
 from ..core.models import (
     DeliveryStatus,
     EmailAccount,
@@ -131,7 +132,7 @@ def update_email_statistics(
         elif status == PaymentStatus.FAILED:
             stats.total_failed += 1
 
-        stats.updated_at = datetime.utcnow()
+        stats.updated_at = utcnow()
         session.add(stats)
         session.commit()
 
@@ -187,7 +188,7 @@ def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> Non
 
             if not paid:
                 # Invoice not paid yet
-                if datetime.utcnow() > pending_email.expires_at:
+                if utcnow() > pending_email.expires_at:
                     pending_email.status = PaymentStatus.EXPIRED
                     session.add(pending_email)
                     session.commit()
@@ -266,7 +267,7 @@ def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> Non
             if success:
                 pending_email.delivery_status = DeliveryStatus.SENT
                 pending_email.delivery_error = None
-                pending_email.sent_at = datetime.utcnow()
+                pending_email.sent_at = utcnow()
 
                 # Update statistics
                 update_email_statistics(
@@ -285,7 +286,7 @@ def process_send_email_payment(payment_hash: str, is_retry: bool = False) -> Non
                 # However, the task logic below continues to retry.
 
                 pending_email.retry_count += 1
-                pending_email.last_retry_at = datetime.utcnow()
+                pending_email.last_retry_at = utcnow()
 
                 # Calculate retry delay
                 if pending_email.retry_count <= len(RETRY_DELAYS):
@@ -333,7 +334,7 @@ def retry_failed_emails() -> None:
                 & (PendingOutgoingEmail.body != None)  # noqa: E711
                 & (
                     PendingOutgoingEmail.created_at
-                    > datetime.utcnow() - timedelta(days=7)  # Keep trying for 7 days
+                    > utcnow() - timedelta(days=7)  # Keep trying for 7 days
                 )
             )
             failed_emails = session.exec(statement).all()
@@ -427,7 +428,7 @@ def check_renewal_payment_status(
             # Extend expiration from the current expiration date (not from now)
             # This preserves remaining time for early renewals and calculates
             # from expiration for grace-period renewals
-            now = datetime.utcnow()
+            now = utcnow()
             base_date = max(account.expires_at, now)
             account.expires_at = base_date + timedelta(days=365 * years)
 
@@ -465,7 +466,7 @@ def cleanup_expired_accounts() -> None:
         email_service = EmailService()
 
         with Session(engine) as session:
-            now = datetime.utcnow()
+            now = utcnow()
 
             # Find accounts that expired more than 1 year ago
             # Grace period: Allow 1 year AFTER expiration for renewal
@@ -507,7 +508,7 @@ def cleanup_old_pending_accounts() -> None:
 
     try:
         with Session(engine) as session:
-            cutoff_date = datetime.utcnow() - timedelta(days=1)
+            cutoff_date = utcnow() - timedelta(days=1)
 
             # Find old pending accounts
             statement = select(EmailAccount).where(
@@ -539,7 +540,7 @@ def cleanup_expired_pending_emails() -> None:
 
     try:
         with Session(engine) as session:
-            now = datetime.utcnow()
+            now = utcnow()
 
             # Find pending emails whose invoices have expired
             statement = select(PendingOutgoingEmail).where(
@@ -572,7 +573,7 @@ def cleanup_old_outgoing_emails() -> None:
 
     try:
         with Session(engine) as session:
-            cutoff_date = datetime.utcnow() - timedelta(days=30)
+            cutoff_date = utcnow() - timedelta(days=30)
 
             # Count records before deletion
             count_statement = (

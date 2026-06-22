@@ -16,6 +16,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from sqlalchemy.pool import StaticPool
 
 from lnemail.core.models import EmailAccount, PaymentStatus
+from lnemail.core.timeutils import utcnow
 import lnemail.services.tasks as tasks
 
 
@@ -98,7 +99,7 @@ class TestRenewalPollBounding:
         email = _seed_account(
             engine,
             renewal_hash="hash_expired",
-            expires_at=datetime.utcnow() + timedelta(days=10),
+            expires_at=utcnow() + timedelta(days=10),
         )
         mock_queue = MagicMock()
         mock_backend = MagicMock()
@@ -123,7 +124,7 @@ class TestRenewalPollBounding:
 
     def test_paid_extends_account_and_clears_hash_without_requeue(self) -> None:
         engine = _make_engine()
-        original_expiry = datetime.utcnow() + timedelta(days=30)
+        original_expiry = utcnow() + timedelta(days=30)
         email = _seed_account(
             engine, renewal_hash="hash_paid", expires_at=original_expiry
         )

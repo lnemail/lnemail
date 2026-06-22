@@ -6,13 +6,14 @@ focusing on the race condition where the background task clears the
 renewal_payment_hash before the frontend's next status poll.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from lnemail.core.models import EmailAccount
+from lnemail.core.timeutils import utcnow
 
 
 class TestRenewalStatusPending:
@@ -92,7 +93,7 @@ class TestRenewalStatusPaidHashCleared:
         # Simulate the state AFTER the background task has processed the payment:
         # renewal_payment_hash is None (cleared), expires_at extended.
         test_account.renewal_payment_hash = None
-        test_account.expires_at = datetime.utcnow() + timedelta(days=730)
+        test_account.expires_at = utcnow() + timedelta(days=730)
         db.add(test_account)
         db.commit()
 

@@ -13,6 +13,7 @@ from sqlalchemy import Column
 from sqlmodel import AutoString, Field, SQLModel
 
 from lnemail.core.tokens import generate_access_token as _generate_access_token
+from lnemail.core.timeutils import utcnow
 
 
 class PaymentStatus(str, Enum):
@@ -41,10 +42,8 @@ class EmailAccount(SQLModel, table=True):
     email_address: str = Field(unique=True, index=True)
     access_token: str = Field(unique=True, index=True)
     email_password: str = Field(default="")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    expires_at: datetime = Field(
-        default_factory=lambda: datetime.utcnow() + timedelta(days=365)
-    )
+    created_at: datetime = Field(default_factory=utcnow)
+    expires_at: datetime = Field(default_factory=lambda: utcnow() + timedelta(days=365))
     original_payment_request: str | None = Field(default=None)
     payment_hash: str = Field(index=True)
     payment_status: PaymentStatus = Field(default=PaymentStatus.PENDING)
@@ -318,7 +317,7 @@ class Email(SQLModel, table=True):
     message_id: str = Field(index=True)
     sender: str = Field()
     subject: str = Field(default="")
-    received_at: datetime = Field(default_factory=datetime.utcnow)
+    received_at: datetime = Field(default_factory=utcnow)
     read: bool = Field(default=False)
 
 
@@ -351,10 +350,8 @@ class PendingOutgoingEmail(SQLModel, table=True):
     retry_count: int = Field(default=0, sa_column_kwargs={"server_default": "0"})
     last_retry_at: datetime | None = Field(default=None)
     # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-    expires_at: datetime = Field(
-        default_factory=lambda: datetime.utcnow() + timedelta(hours=1)
-    )
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    expires_at: datetime = Field(default_factory=lambda: utcnow() + timedelta(hours=1))
     sent_at: datetime | None = Field(default=None)
 
 
@@ -367,9 +364,10 @@ class EmailSendStatistics(SQLModel, table=True):
     total_sent: int = Field(default=0)
     total_failed: int = Field(default=0)
     total_revenue_sats: int = Field(default=0)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
     @classmethod
     def get_current_year_month(cls) -> str:
         """Get the current year-month string."""
-        return datetime.utcnow().strftime("%Y-%m")
+        result: str = utcnow().strftime("%Y-%m")
+        return result

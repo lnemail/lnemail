@@ -7,7 +7,7 @@ for all the LNemail API endpoints.
 
 import base64
 import json
-from datetime import datetime, timedelta
+from datetime import timedelta
 from email.utils import formatdate
 from typing import Annotated
 
@@ -42,6 +42,7 @@ from ..core.schemas import (
     RenewalStatusResponse,
 )
 from ..db import get_db
+from ..core.timeutils import utcnow
 from ..services.email_service import EmailService
 from ..services.payments import get_payment_backend
 from ..services.tasks import (
@@ -73,7 +74,7 @@ _EXPIRY_WARNING_DAYS = 90
 
 def _build_expiry_warning_header(account: EmailAccount) -> EmailHeader:
     """Build a synthetic EmailHeader for the expiration warning."""
-    now = datetime.utcnow()
+    now = utcnow()
     days_left = max(0, (account.expires_at - now).days)
     return EmailHeader(
         id=f"{_EXPIRY_WARNING_ID_PREFIX}-{int(account.expires_at.timestamp())}",
@@ -86,7 +87,7 @@ def _build_expiry_warning_header(account: EmailAccount) -> EmailHeader:
 
 def _build_expiry_warning_content(account: EmailAccount) -> EmailContent:
     """Build a synthetic EmailContent for the expiration warning."""
-    now = datetime.utcnow()
+    now = utcnow()
     days_left = max(0, (account.expires_at - now).days)
     body = (
         f"Hello,\n\n"
@@ -175,7 +176,7 @@ async def get_current_account(
 
     # Allow expired-but-within-grace-period accounts to authenticate
     # so they can renew. The grace period is 1 year after expiration.
-    now = datetime.utcnow()
+    now = utcnow()
     if account.expires_at < now:
         grace_period_end = account.expires_at + timedelta(days=365)
         if now > grace_period_end:
@@ -206,7 +207,7 @@ async def get_current_active_account(
     Raises:
         HTTPException: 403 if the account has expired.
     """
-    now = datetime.utcnow()
+    now = utcnow()
     if account.expires_at < now:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -564,7 +565,7 @@ async def get_account(
     account: EmailAccount = Depends(get_current_account),
 ) -> AccountResponse:
     """Get account details for the authenticated user."""
-    now = datetime.utcnow()
+    now = utcnow()
     is_expired = account.expires_at < now
     days_until_expiry = max(0, (account.expires_at - now).days) if not is_expired else 0
 
@@ -618,7 +619,7 @@ async def list_emails(
         email_headers = [EmailHeader(**email) for email in emails]
 
         # Prepend a virtual expiration warning if account expires soon
-        now = datetime.utcnow()
+        now = utcnow()
         days_left = (account.expires_at - now).days
         if 0 < days_left <= _EXPIRY_WARNING_DAYS:
             email_headers.insert(0, _build_expiry_warning_header(account))
@@ -868,7 +869,7 @@ async def renew_account(
         if renewal_request:
             years = renewal_request.years
 
-        now = datetime.utcnow()
+        now = utcnow()
         grace_period_end = account.expires_at + timedelta(days=365)
         if now > grace_period_end:
             raise HTTPException(
