@@ -63,3 +63,7 @@ poetry.lock
 # dev
 dev-data/
 .bash_history
+.mypy_cache
+
+# frontend (Tailwind build tooling); the compiled CSS is committed
+frontend/node_modules/
