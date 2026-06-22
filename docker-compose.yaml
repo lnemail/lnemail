@@ -557,6 +557,9 @@ services:
       - IMAP_PORT=143
       - SMTP_HOST=mail.lnemail.test
       - SMTP_PORT=587
+      # Use both the NWC wallet and LND (with LND as fallback). The NWC
+      # URI is published at runtime by the nwc-wallet service.
+      - PAYMENT_BACKEND=multi
     ports:
       - "8000:8000"
     networks:
@@ -567,6 +570,7 @@ services:
       - mailserver
       - lnd
       - lnd-setup
+      - nwc-wallet
     command: >
       bash -c "
         echo 'Waiting for LND certificates to be available...'
@@ -574,7 +578,15 @@ services:
           echo 'Certificates not ready, waiting 5 seconds...'
           sleep 5
         done
-        echo 'Certificates found, starting API...'
+        echo 'Waiting (up to 60s) for the NWC wallet URI...'
+        for i in $$(seq 1 20); do [ -s /shared/nwc.uri ] && break; sleep 3; done
+        if [ -s /shared/nwc.uri ]; then
+          export NWC_CONNECTIONS=\"$$(cat /shared/nwc.uri)\"
+          echo 'NWC provider configured; using NWC + LND fallback.'
+        else
+          echo 'NWC URI not ready; falling back to LND only.'
+        fi
+        echo 'Starting API...'
         alembic upgrade head
         uvicorn src.lnemail.main:app --host 0.0.0.0 --port 8000 --reload --proxy-headers
       "
@@ -624,6 +636,7 @@ services:
       - IMAP_PORT=143
       - SMTP_HOST=mail.lnemail.test
       - SMTP_PORT=587
+      - PAYMENT_BACKEND=multi
     networks:
       - lnd
       - lnemail
@@ -632,6 +645,7 @@ services:
       - mailserver
       - lnd
       - lnd-setup
+      - nwc-wallet
     command: >
       bash -c "
         echo 'Waiting for LND certificates to be available...'
@@ -639,7 +653,10 @@ services:
           echo 'Certificates not ready, waiting 5 seconds...'
           sleep 5
         done
-        echo 'Certificates found, starting worker...'
+        echo 'Waiting (up to 60s) for the NWC wallet URI...'
+        for i in $$(seq 1 20); do [ -s /shared/nwc.uri ] && break; sleep 3; done
+        [ -s /shared/nwc.uri ] && export NWC_CONNECTIONS=\"$$(cat /shared/nwc.uri)\"
+        echo 'Starting worker...'
         rq worker lnemail --with-scheduler
       "
     develop:
@@ -653,6 +670,58 @@ services:
           path: ./Dockerfile
         - action: rebuild
           path: ./pyproject.toml
+
+  # ── Nostr Wallet Connect (NWC) provider ──────────────────────────────
+  # A local Nostr relay plus a NIP-47 wallet service (backed by the
+  # regtest merchant LND). lnemail uses this NWC wallet as an additional
+  # payment provider alongside LND (with LND as fallback), so the dev
+  # stack exercises the multi-provider path out of the box. The wallet is
+  # a dev/test harness, not a production wallet.
+  relay:
+    image: docker.io/scsibug/nostr-rs-relay:0.10.0
+    container_name: relay
+    restart: unless-stopped
+    volumes:
+      - ./scripts/nwc-wallet/relay-config.toml:/usr/src/app/config.toml:ro
+    networks:
+      - lnd
+    expose:
+      - "8080"
+
+  nwc-wallet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: nwc-wallet
+    restart: unless-stopped
+    depends_on:
+      - relay
+      - lnd
+      - lnd-setup
+    environment:
+      # Throwaway regtest keys (NOT secrets). The wallet authorises the
+      # client (lnemail) identified by CLIENT_SECRET and writes the
+      # client-facing URI to /shared/nwc.uri.
+      - WALLET_SECRET=37f30b67a72719a751ab49fca3dde426199c97ecf44caca5d79dbd41d39c9d84
+      - CLIENT_SECRET=e98d6daa1f28d5a29007e1ed27cc43c8924f56c4f84d8975ad163b28d75c8446
+      - RELAY_URL=ws://relay:8080
+      - NWC_URI_FILE=/shared/nwc.uri
+      - LND_GRPC_HOST=lnd:10009
+      - LND_CERT_PATH=/shared/tls.cert
+      - LND_MACAROON_PATH=/shared/invoice.macaroon
+    volumes:
+      - ./:/app
+      - ./dev-data/shared:/shared
+    networks:
+      - lnd
+    command: >
+      bash -c "
+        echo 'NWC wallet: waiting for LND certs...'
+        while [ ! -f /shared/tls.cert ] || [ ! -f /shared/invoice.macaroon ]; do sleep 3; done
+        rm -f /shared/nwc.uri
+        python scripts/nwc-wallet/wallet.py
+      "
 
 networks:
   lnd:

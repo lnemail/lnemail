@@ -21,16 +21,14 @@ The suite is intentionally small: the priority is detecting regressions
 in the core paying / sending / receiving / reading / replying loop, not
 covering every UI permutation.
 
-### NWC payment backend
+### NWC payment provider
 
-The same suite can run against the Nostr Wallet Connect (NIP-47) payment
-backend instead of LND, exercising the multi-provider path with real
-invoices over a real Nostr relay. See
-[`nwc_wallet/README.md`](nwc_wallet/README.md):
-
-```bash
-./tests/e2e/nwc_wallet/run-nwc.sh
-```
+The dev stack runs lnemail with **both** payment providers - a Nostr
+Wallet Connect (NIP-47) wallet plus LND as a fallback
+(`PAYMENT_BACKEND=multi`) - so this suite already exercises the
+multi-provider path with real invoices over a real Nostr relay. No extra
+setup is needed; the `relay` and `nwc-wallet` services start with the
+stack. See [`scripts/nwc-wallet/README.md`](../../scripts/nwc-wallet/README.md).
 
 ## Prerequisites
 

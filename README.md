@@ -200,6 +200,9 @@ docker exec lnd lncli --network=regtest {walletbalance|channelbalance|pendingcha
 The development environment includes:
 - Bitcoin regtest node with automatic mining
 - Two LND nodes with channels for Lightning payments
+- A Nostr relay + NIP-47 wallet so the stack runs with both payment
+  providers (NWC + LND fallback) by default (see
+  [`scripts/nwc-wallet/`](scripts/nwc-wallet/))
 - Mail server for email handling with SMTP support
 - Redis for background job processing
 - LNemail API and worker services

@@ -11,14 +11,12 @@ name: e2e
 # each other on a 2-CPU runner.
 #
 # Until we have a beefier self-hosted runner, this workflow is
-# manual-only via workflow_dispatch. It runs the suite twice: once
-# against the self-hosted LND backend, then again against the Nostr
-# Wallet Connect (NWC) backend (a relay + NIP-47 wallet are layered in;
-# see tests/e2e/nwc_wallet/). Locally:
+# manual-only via workflow_dispatch. The dev stack runs lnemail with both
+# payment providers (a NWC wallet + LND fallback), so the single suite run
+# exercises the multi-provider path. Locally:
 #
 #   docker compose --env-file .env.development up -d
-#   ./tests/e2e/run.sh                      # LND backend
-#   ./tests/e2e/nwc_wallet/run-nwc.sh       # NWC backend
+#   ./tests/e2e/run.sh
 on:
   workflow_dispatch:
 
@@ -80,45 +78,28 @@ jobs:
           docker compose --env-file .env.development logs --tail=200 lnemail-api
           exit 1
 
-      - name: Run Playwright e2e tests (LND backend)
-        run: pytest tests/e2e -v
-
-      - name: Switch lnemail to the NWC backend (relay + NIP-47 wallet)
+      - name: Wait for the multi-provider (NWC + LND) backend
         run: |
           set -euo pipefail
-          BASE=docker-compose.yaml
-          OVERRIDE=tests/e2e/nwc_wallet/docker-compose.e2e-nwc.yaml
-          docker compose --env-file .env.development -f "$BASE" -f "$OVERRIDE" \
-            build lnemail-api lnemail-worker nwc-wallet
-          docker compose --env-file .env.development -f "$BASE" -f "$OVERRIDE" \
-            up -d --force-recreate relay nwc-wallet lnemail-api lnemail-worker
           for i in $(seq 1 40); do
-            if curl -fsS http://localhost:8000/api/health >/dev/null 2>&1 \
-              && docker logs lnemail-api 2>&1 | grep -q "Payment backend: multi-provider"; then
-              echo "API is up on the NWC backend."
+            if docker logs lnemail-api 2>&1 | grep -q "Payment backend: multi-provider"; then
+              echo "lnemail is up on the multi-provider backend."
               exit 0
             fi
-            echo "Waiting for NWC backend (attempt $i)..."
+            echo "Waiting for the NWC wallet / multi-provider backend (attempt $i)..."
             sleep 5
           done
-          echo "Timed out waiting for the NWC backend."
-          docker logs nwc-wallet --tail=100 || true
-          docker logs lnemail-api --tail=100 || true
+          echo "Timed out waiting for the multi-provider backend."
+          docker compose --env-file .env.development logs --tail=200 nwc-wallet lnemail-api
           exit 1
 
-      - name: Run Playwright e2e tests (NWC backend)
+      - name: Run Playwright e2e tests (NWC + LND)
         run: pytest tests/e2e -v
 
       - name: Dump compose logs on failure
         if: failure()
-        run: |
-          docker compose --env-file .env.development \
-            -f docker-compose.yaml -f tests/e2e/nwc_wallet/docker-compose.e2e-nwc.yaml \
-            logs --tail=400
+        run: docker compose --env-file .env.development logs --tail=400
 
       - name: Tear down the stack
         if: always()
-        run: |
-          docker compose --env-file .env.development \
-            -f docker-compose.yaml -f tests/e2e/nwc_wallet/docker-compose.e2e-nwc.yaml \
-            down -v --remove-orphans
+        run: docker compose --env-file .env.development down -v --remove-orphans
