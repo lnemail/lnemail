@@ -314,3 +314,84 @@ class TestParseConnections:
 
         assert _parse_connections("") == []
         assert _parse_connections('""') == []
+
+
+class TestNWCToleranceParsing:
+    """NWCBackend tolerates wallet responses that omit fields like 'amount'.
+
+    These drive NWCBackend.check_invoice/create_invoice through a stubbed
+    _nip47_call so no relay/network is touched, verifying the parsing is
+    tolerant of the real-world (coinos) response shapes that broke the
+    strict nostr-sdk client.
+    """
+
+    def _backend(self) -> Any:
+        from unittest.mock import patch
+
+        from lnemail.services.payments import nwc_backend as nb
+
+        # Skip real URI parsing/keys.
+        backend = nb.NWCBackend.__new__(nb.NWCBackend)
+        backend.name = "nwc:test"
+        backend.trusted = False
+        return backend, nb, patch
+
+    def test_check_invoice_settled_via_settled_at_without_amount(self) -> None:
+        backend, nb, patch = self._backend()
+
+        async def fake_call(method: str, params: dict) -> dict:
+            # coinos-style: no 'amount' field, settled_at set when paid.
+            return {
+                "result": {
+                    "type": "incoming",
+                    "payment_hash": params["payment_hash"],
+                    "settled_at": 1781630298,
+                    "state": "settled",
+                }
+            }
+
+        with patch.object(backend, "_nip47_call", fake_call):
+            assert backend.check_invoice("abc") is True
+
+    def test_check_invoice_pending_without_amount(self) -> None:
+        backend, nb, patch = self._backend()
+
+        async def fake_call(method: str, params: dict) -> dict:
+            return {
+                "result": {
+                    "type": "incoming",
+                    "payment_hash": params["payment_hash"],
+                    "settled_at": None,
+                    "state": "pending",
+                }
+            }
+
+        with patch.object(backend, "_nip47_call", fake_call):
+            assert backend.check_invoice("abc") is False
+
+    def test_check_invoice_swallows_errors(self) -> None:
+        backend, nb, patch = self._backend()
+
+        async def boom(method: str, params: dict) -> dict:
+            raise RuntimeError("relay down")
+
+        with patch.object(backend, "_nip47_call", boom):
+            assert backend.check_invoice("abc") is False
+
+    def test_create_invoice_reads_invoice_field(self) -> None:
+        backend, nb, patch = self._backend()
+
+        async def fake_call(method: str, params: dict) -> dict:
+            return {
+                "result": {
+                    "type": "incoming",
+                    "invoice": "lnbc_test",
+                    "payment_hash": "deadbeef",
+                }
+            }
+
+        with patch.object(backend, "_nip47_call", fake_call):
+            result = backend.create_invoice(10, "memo")
+        assert result["payment_request"] == "lnbc_test"
+        assert result["payment_hash"] == "deadbeef"
+        assert result["provider"] == "nwc:test"

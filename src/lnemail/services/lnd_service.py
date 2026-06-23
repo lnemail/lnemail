@@ -114,6 +114,17 @@ class LNDService:
             lookup_request = PaymentHash(r_hash=r_hash_bytes)
             invoice = self.stub.LookupInvoice(lookup_request)
             return bool(invoice.state == _INVOICE_STATE_SETTLED)
+        except grpc.RpcError as e:
+            # "invoice not found" is an expected, benign outcome when this
+            # node did not issue the invoice (e.g. in a multi-provider setup
+            # where another wallet did). Log it quietly; report not-settled.
+            if e.code() == grpc.StatusCode.NOT_FOUND:
+                logger.debug(f"Invoice {payment_hash[:16]}... not found on this node")
+            else:
+                logger.error(
+                    f"Error checking invoice {payment_hash}: {e.code()}: {e.details()}"
+                )
+            return False
         except Exception as e:
             logger.error(f"Error checking invoice {payment_hash}: {str(e)}")
             return False
