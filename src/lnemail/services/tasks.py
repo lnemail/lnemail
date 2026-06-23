@@ -50,56 +50,83 @@ MAX_RENEWAL_POLL_ATTEMPTS = (
     RENEWAL_INVOICE_EXPIRY + RENEWAL_POLL_BUFFER
 ) // RENEWAL_POLL_INTERVAL
 
+# Account-creation payment polling. Done in the worker (not on the web
+# request) so a slow/flaky provider lookup (e.g. an NWC wallet) never
+# blocks the status endpoint. Bounded by the invoice lifetime like the
+# renewal poll.
+ACCOUNT_POLL_INTERVAL = 5
+MAX_ACCOUNT_POLL_ATTEMPTS = (
+    RENEWAL_INVOICE_EXPIRY + RENEWAL_POLL_BUFFER
+) // ACCOUNT_POLL_INTERVAL
 
-def check_payment_status(payment_hash: str) -> None:
-    """Check if a Lightning invoice has been paid and set up email if it has.
+
+def check_payment_status(payment_hash: str, attempt: int = 0) -> None:
+    """Check if a signup invoice has been paid and set up email if so.
+
+    Re-queues itself every ``ACCOUNT_POLL_INTERVAL`` seconds while the
+    invoice is unpaid, stopping after ``MAX_ACCOUNT_POLL_ATTEMPTS`` (the
+    invoice lifetime). Running this in the worker keeps the slow/flaky
+    provider lookup off the web ``GET /payment/{hash}`` request path.
 
     Args:
-        payment_hash: The hash of the invoice to check
+        payment_hash: The hash of the invoice to check.
+        attempt: Zero-based poll attempt counter (managed by the re-queue).
     """
-    logger.info(f"Checking payment status for hash: {payment_hash}")
+    logger.info(
+        f"Checking payment status for hash: {payment_hash} "
+        f"(attempt {attempt + 1}/{MAX_ACCOUNT_POLL_ATTEMPTS})"
+    )
 
-    # Initialize services
     payment_backend = get_payment_backend()
     email_service = EmailService()
 
     try:
-        # Check if payment is received
-        paid = payment_backend.check_invoice(payment_hash)
-        if not paid:
-            logger.info(f"Payment not received yet for hash: {payment_hash}")
+        if not payment_backend.check_invoice(payment_hash):
+            _reschedule_account_poll(payment_hash, attempt)
             return
-
-        # Payment received, update account
-        with Session(engine) as session:
-            statement = select(EmailAccount).where(
-                EmailAccount.payment_hash == payment_hash
-            )
-            account = session.exec(statement).first()
-
-            if not account:
-                logger.error(f"Account not found for payment hash: {payment_hash}")
-                return
-
-            if account.payment_status == PaymentStatus.PAID:
-                logger.info(f"Payment already processed for: {account.email_address}")
-                return
-
-            # Create the actual email account
-            success, password = email_service.create_account(account.email_address)
-
-            if success:
-                # Store the password in the database
-                account.email_password = password
-                account.payment_status = PaymentStatus.PAID
-                session.add(account)
-                session.commit()
-                logger.info(f"Email account activated: {account.email_address}")
-            else:
-                logger.error(f"Failed to create email account: {account.email_address}")
-
+        _activate_paid_account(email_service, payment_hash)
     except Exception as e:
         logger.error(f"Error in check_payment_status: {str(e)}")
+
+
+def _reschedule_account_poll(payment_hash: str, attempt: int) -> None:
+    """Re-queue the signup payment check, or stop once the invoice expired."""
+    if attempt + 1 < MAX_ACCOUNT_POLL_ATTEMPTS:
+        logger.info(f"Payment not received yet for hash: {payment_hash}")
+        queue.enqueue_in(
+            timedelta(seconds=ACCOUNT_POLL_INTERVAL),
+            check_payment_status,
+            payment_hash,
+            attempt + 1,
+            job_timeout=600,
+        )
+    else:
+        logger.info(f"Signup invoice expired without payment: {payment_hash}")
+
+
+def _activate_paid_account(email_service: EmailService, payment_hash: str) -> None:
+    """Create the mailbox for a paid signup invoice and mark it PAID."""
+    with Session(engine) as session:
+        account = session.exec(
+            select(EmailAccount).where(EmailAccount.payment_hash == payment_hash)
+        ).first()
+
+        if not account:
+            logger.error(f"Account not found for payment hash: {payment_hash}")
+            return
+        if account.payment_status == PaymentStatus.PAID:
+            logger.info(f"Payment already processed for: {account.email_address}")
+            return
+
+        success, password = email_service.create_account(account.email_address)
+        if success:
+            account.email_password = password
+            account.payment_status = PaymentStatus.PAID
+            session.add(account)
+            session.commit()
+            logger.info(f"Email account activated: {account.email_address}")
+        else:
+            logger.error(f"Failed to create email account: {account.email_address}")
 
 
 def update_email_statistics(

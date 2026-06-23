@@ -153,3 +153,46 @@ class TestRenewalPollBounding:
         """The poll budget should at least span the invoice's expiry window."""
         budget_seconds = tasks.MAX_RENEWAL_POLL_ATTEMPTS * tasks.RENEWAL_POLL_INTERVAL
         assert budget_seconds >= tasks.RENEWAL_INVOICE_EXPIRY
+
+
+class TestAccountPaymentPollBounding:
+    """check_payment_status re-queues itself while unpaid, bounded by the
+    invoice lifetime, and runs the slow provider lookup in the worker."""
+
+    def test_unpaid_reenqueues_with_incremented_attempt(self) -> None:
+        engine = _make_engine()
+        mock_queue = MagicMock()
+        mock_backend = MagicMock()
+        mock_backend.check_invoice.return_value = False
+
+        with (
+            patch.object(tasks, "engine", engine),
+            patch.object(tasks, "queue", mock_queue),
+            patch.object(tasks, "get_payment_backend", return_value=mock_backend),
+            patch.object(tasks, "EmailService", return_value=MagicMock()),
+        ):
+            tasks.check_payment_status("hash_unpaid", attempt=0)
+
+        mock_queue.enqueue_in.assert_called_once()
+        args = mock_queue.enqueue_in.call_args.args
+        assert args[1] is tasks.check_payment_status
+        assert args[2] == "hash_unpaid"
+        assert args[3] == 1
+
+    def test_unpaid_at_last_attempt_stops(self) -> None:
+        engine = _make_engine()
+        mock_queue = MagicMock()
+        mock_backend = MagicMock()
+        mock_backend.check_invoice.return_value = False
+
+        with (
+            patch.object(tasks, "engine", engine),
+            patch.object(tasks, "queue", mock_queue),
+            patch.object(tasks, "get_payment_backend", return_value=mock_backend),
+            patch.object(tasks, "EmailService", return_value=MagicMock()),
+        ):
+            tasks.check_payment_status(
+                "hash_expired", attempt=tasks.MAX_ACCOUNT_POLL_ATTEMPTS - 1
+            )
+
+        mock_queue.enqueue_in.assert_not_called()

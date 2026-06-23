@@ -56,7 +56,9 @@ _KIND_REQUEST = 23194
 _KIND_RESPONSE = 23195
 
 # How long to wait for a wallet's response before giving up (per call).
-_RESPONSE_TIMEOUT_S = 12
+# Kept short so a flaky/unresponsive wallet does not stall the worker; the
+# background poll retries every few seconds.
+_RESPONSE_TIMEOUT_S = 6
 # How long to let relays connect before sending.
 _CONNECT_GRACE_S = 1.5
 

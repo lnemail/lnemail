@@ -54,28 +54,33 @@ class TestRenewalStatusPending:
 
 
 class TestRenewalStatusProcessing:
-    """Tests for the processing state (paid but not yet extended)."""
+    """While the renewal hash is still set, the web endpoint reports
+    'pending' (the background worker drives the actual settlement and
+    clears the hash); it no longer blocks on a provider lookup."""
 
-    def test_returns_processing_when_paid_but_not_yet_cleared(
+    def test_returns_pending_while_hash_still_set(
         self,
         client: TestClient,
         db: Session,
         test_account: EmailAccount,
     ) -> None:
-        """Status is 'processing' when LND confirms payment but hash is not cleared."""
         test_account.renewal_payment_hash = "renewal_hash_processing"
         db.add(test_account)
         db.commit()
 
         import lnemail.api.endpoints as ep
 
+        # Even if a (slow) provider would say paid, the web request does not
+        # call it while the hash is set; it just reads state.
         ep.payment_backend.check_invoice.return_value = True
 
         response = client.get("/api/v1/account/renew/status/renewal_hash_processing")
 
         assert response.status_code == 200
         data: dict[str, Any] = response.json()
-        assert data["payment_status"] == "processing"
+        assert data["payment_status"] == "pending"
+        # The web path must not have blocked on a provider lookup here.
+        ep.payment_backend.check_invoice.assert_not_called()
 
 
 class TestRenewalStatusPaidHashCleared:

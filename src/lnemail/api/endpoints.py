@@ -385,14 +385,10 @@ async def check_payment(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found"
             )
 
-        # If still pending, check the current status with LND
-        if account.payment_status == PaymentStatus.PENDING:
-            paid = payment_backend.check_invoice(payment_hash)
-            if paid and account.payment_status != PaymentStatus.PAID:
-                # Payment just received, trigger the account setup
-                queue.enqueue(check_payment_status, payment_hash, job_timeout=600)
-
-        # Return appropriate response based on payment status
+        # Settlement is detected by the background check_payment_status job
+        # (enqueued when the invoice is created/re-issued). The web request
+        # only reads the current DB state so a slow/flaky provider lookup
+        # never blocks this endpoint.
         response = PaymentStatusResponse(payment_status=account.payment_status)
 
         if account.payment_status == PaymentStatus.PAID:
@@ -607,10 +603,9 @@ async def check_send_email_payment_status(
                 detail="Outgoing email payment not found",
             )
 
-        if pending_email.status == PaymentStatus.PENDING:
-            paid = payment_backend.check_invoice(payment_hash)
-            if paid:
-                queue.enqueue(process_send_email_payment, payment_hash, job_timeout=600)
+        # Settlement + delivery are driven by the background
+        # process_send_email_payment job; the web request only reads state
+        # so a slow/flaky provider lookup never blocks it.
 
         # Sanitize delivery error for security
         delivery_error = pending_email.delivery_error
@@ -1149,47 +1144,31 @@ async def check_renewal_status(
         account = db.exec(statement).first()
 
         if not account:
-            # Account not found by renewal_payment_hash. This can happen when
-            # the background task already processed the payment and cleared the
-            # hash. Check with LND to distinguish from a truly invalid hash.
+            # Not found by renewal_payment_hash. The background task clears
+            # the hash only after a successful renewal, so this is almost
+            # always "paid + cleared". Confirm with a provider lookup to tell
+            # it apart from a truly invalid hash. This branch is rare (only
+            # after settlement), so it does not block the frequent polls.
             paid = payment_backend.check_invoice(payment_hash)
             if paid:
-                # Payment was settled and the hash was already cleared by the
-                # background task — renewal was processed successfully.
                 return RenewalStatusResponse(
                     payment_status="paid",
                     new_expires_at=None,
                 )
-
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Renewal payment not found",
             )
 
-        # If still pending, check with LND
-        paid = payment_backend.check_invoice(payment_hash)
-        if paid and account.renewal_payment_hash == payment_hash:
-            # Payment detected but not yet processed — re-enqueue the task
-            # The task itself is idempotent and will handle the actual extension
-            queue.enqueue(
-                check_renewal_payment_status,
-                payment_hash,
-                1,  # Default to 1 year; the task reads actual years from context
-                job_timeout=600,
-            )
-
-        # Determine status: if the renewal_payment_hash has been cleared,
-        # the renewal was processed successfully
+        # While the hash is still set, settlement is handled by the
+        # background check_renewal_payment_status job (started when the
+        # invoice is created/re-issued). The web request only reads state so
+        # a slow/flaky provider lookup never blocks the frequent polls.
         if account.renewal_payment_hash != payment_hash:
-            # Hash was cleared after successful processing
+            # Hash was cleared after successful processing.
             return RenewalStatusResponse(
                 payment_status="paid",
                 new_expires_at=account.expires_at,
-            )
-
-        if paid:
-            return RenewalStatusResponse(
-                payment_status="processing",
             )
 
         return RenewalStatusResponse(
