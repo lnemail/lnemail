@@ -38,11 +38,28 @@ __all__ = [
 ]
 
 
+def _clean_uri(value: str) -> str:
+    """Trim whitespace and any surrounding quotes from a connection URI.
+
+    Tolerates the common docker-compose mistake of writing
+    ``- NWC_CONNECTIONS="nostr+walletconnect://..."`` in the list form of
+    ``environment:``, where the quotes become part of the value.
+    """
+    uri = value.strip()
+    if len(uri) >= 2 and uri[0] == uri[-1] and uri[0] in ("'", '"'):
+        uri = uri[1:-1].strip()
+    return uri
+
+
 def _parse_connections(raw: str) -> list[str]:
     """Split a newline/comma separated list of NWC URIs into clean entries."""
+    # Strip wrapping quotes around the whole value first (compose list form),
+    # then split. A single quoted entry like "a,b" would otherwise keep its
+    # quotes around the first/last item only.
+    cleaned = _clean_uri(raw)
     parts: list[str] = []
-    for chunk in raw.replace("\n", ",").split(","):
-        uri = chunk.strip()
+    for chunk in cleaned.replace("\n", ",").split(","):
+        uri = _clean_uri(chunk)
         if uri:
             parts.append(uri)
     return parts
@@ -69,7 +86,7 @@ def get_payment_backend() -> PaymentBackend:
         # Default / "lnd": preserve the original single-LND behaviour.
         return LNDBackend()
 
-    primary_uri = settings.NWC_PRIMARY_CONNECTION.strip()
+    primary_uri = _clean_uri(settings.NWC_PRIMARY_CONNECTION)
     uris = _parse_connections(settings.NWC_CONNECTIONS)
     if primary_uri and primary_uri not in uris:
         uris.insert(0, primary_uri)

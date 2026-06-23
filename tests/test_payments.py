@@ -280,3 +280,37 @@ class TestFactory:
         assert isinstance(backend, MultiProviderBackend)
         assert all(not p.trusted for p in backend._providers)
         assert backend._primary is not None
+
+
+class TestParseConnections:
+    """NWC connection parsing tolerates quoting/whitespace quirks."""
+
+    def test_strips_surrounding_double_quotes(self) -> None:
+        from lnemail.services.payments import _parse_connections
+
+        raw = '"nostr+walletconnect://abc?relay=wss%3A%2F%2Fr&secret=def"'
+        assert _parse_connections(raw) == [
+            "nostr+walletconnect://abc?relay=wss%3A%2F%2Fr&secret=def"
+        ]
+
+    def test_strips_surrounding_single_quotes(self) -> None:
+        from lnemail.services.payments import _parse_connections
+
+        assert _parse_connections("'nostr+walletconnect://abc'") == [
+            "nostr+walletconnect://abc"
+        ]
+
+    def test_splits_and_trims_multiple(self) -> None:
+        from lnemail.services.payments import _parse_connections
+
+        raw = " nostr+walletconnect://a , nostr+walletconnect://b \n"
+        assert _parse_connections(raw) == [
+            "nostr+walletconnect://a",
+            "nostr+walletconnect://b",
+        ]
+
+    def test_empty_is_empty(self) -> None:
+        from lnemail.services.payments import _parse_connections
+
+        assert _parse_connections("") == []
+        assert _parse_connections('""') == []

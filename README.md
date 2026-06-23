@@ -128,7 +128,11 @@ Selected via environment variables:
 - `PAYMENT_BACKEND` - `lnd` (default) for the self-hosted node, or
   `nwc`/`multi` to use NWC wallet(s).
 - `NWC_CONNECTIONS` - newline- or comma-separated `nostr+walletconnect://`
-  URIs. These are third-party providers.
+  URIs. These are third-party providers. Do not wrap the value in quotes
+  in the docker-compose `environment:` list form (`- KEY=value`): the
+  quotes become part of the value. Surrounding quotes are stripped
+  defensively, but prefer an unquoted value or the `KEY: "value"` mapping
+  form.
 - `NWC_PRIMARY_CONNECTION` - optional preferred URI, always tried first
   with the rest used only as fallback on error.
 - `NWC_ONLY` - if true, do not include the LND node as a provider.
