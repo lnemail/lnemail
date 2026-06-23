@@ -324,7 +324,10 @@ async def new_account_invoice(
 
         exclude = request_body.exclude_provider if request_body else None
         invoice = payment_backend.create_invoice(
-            settings.EMAIL_PRICE, "LNemail account", exclude_provider=exclude
+            settings.EMAIL_PRICE,
+            "LNemail account",
+            exclude_provider=exclude,
+            untrusted_only=True,
         )
 
         account.payment_hash = invoice["payment_hash"]
@@ -547,7 +550,10 @@ async def new_send_invoice(
         exclude = request_body.exclude_provider if request_body else None
         memo = f"Send email from {pending.sender_email} to {pending.recipient}"
         invoice = payment_backend.create_invoice(
-            settings.EMAIL_SEND_PRICE, memo, exclude_provider=exclude
+            settings.EMAIL_SEND_PRICE,
+            memo,
+            exclude_provider=exclude,
+            untrusted_only=True,
         )
 
         pending.payment_hash = invoice["payment_hash"]
@@ -1085,7 +1091,10 @@ async def new_renewal_invoice(
 
         memo = f"LNemail renewal ({years} year{'s' if years > 1 else ''})"
         invoice = payment_backend.create_invoice(
-            total_price, memo, exclude_provider=exclude
+            total_price,
+            memo,
+            exclude_provider=exclude,
+            untrusted_only=True,
         )
 
         account.renewal_payment_hash = invoice["payment_hash"]

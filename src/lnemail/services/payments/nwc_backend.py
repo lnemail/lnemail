@@ -59,6 +59,9 @@ _KIND_RESPONSE = 23195
 # Kept short so a flaky/unresponsive wallet does not stall the worker; the
 # background poll retries every few seconds.
 _RESPONSE_TIMEOUT_S = 6
+# Quick in-call retries for a settlement lookup, since a flaky relay can
+# drop a single request even when the invoice is actually settled.
+_LOOKUP_ATTEMPTS = 2
 # How long to let relays connect before sending.
 _CONNECT_GRACE_S = 1.5
 
@@ -234,7 +237,11 @@ class NWCBackend(PaymentBackend):
                 pass
 
     def create_invoice(
-        self, amount_sats: int, memo: str, exclude_provider: str | None = None
+        self,
+        amount_sats: int,
+        memo: str,
+        exclude_provider: str | None = None,
+        untrusted_only: bool = False,
     ) -> InvoiceResult:
         async def _make() -> InvoiceResult:
             data = await self._nip47_call(
@@ -269,21 +276,27 @@ class NWCBackend(PaymentBackend):
                 "lookup_invoice", {"payment_hash": payment_hash}
             )
             result = data.get("result") or {}
-            # Tolerant settled detection: prefer settled_at, then a settled
-            # state/status string. We never depend on fields wallets may omit
-            # (e.g. coinos omits 'amount').
-            if result.get("settled_at"):
+            # Tolerant settled detection: prefer settled_at / preimage, then a
+            # settled/paid state string. We never depend on fields wallets may
+            # omit (e.g. coinos omits 'amount').
+            if result.get("settled_at") or result.get("preimage"):
                 return True
             state = str(result.get("state") or result.get("status") or "").lower()
-            return state == "settled"
+            return state in ("settled", "paid")
 
-        try:
-            return _run(_lookup())
-        except Exception as exc:
-            # Match LNDService.check_invoice: never raise on a lookup, just
-            # report "not settled" so polling can retry / fall back.
-            logger.warning(
-                f"NWC lookup_invoice failed via {self.name} for "
-                f"{payment_hash[:16]}...: {exc}"
-            )
-            return False
+        # A single lookup against a flaky third-party relay can time out even
+        # when the invoice is settled; a quick retry within the poll cycle
+        # makes detection far more reliable.
+        last_exc: Exception | None = None
+        for _ in range(_LOOKUP_ATTEMPTS):
+            try:
+                return _run(_lookup())
+            except Exception as exc:
+                last_exc = exc
+        # Match LNDService.check_invoice: never raise on a lookup, just
+        # report "not settled" so the next poll retries / falls back.
+        logger.warning(
+            f"NWC lookup_invoice failed via {self.name} for "
+            f"{payment_hash[:16]}...: {last_exc}"
+        )
+        return False

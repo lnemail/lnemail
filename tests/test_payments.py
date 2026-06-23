@@ -106,6 +106,25 @@ class TestMultiProviderCreate:
         result = multi.create_invoice(1000, "memo", exclude_provider="solo")
         assert result["provider"] == "solo"
 
+    def test_untrusted_only_prefers_nwc_over_lnd(self) -> None:
+        lnd = _FakeBackend("lnd", trusted=True)
+        nwc = _FakeBackend("nwc", trusted=False)
+        multi = MultiProviderBackend([lnd, nwc], primary=lnd)
+        # 'Get a new one' should rotate among NWC (untrusted) providers,
+        # never returning LND while an NWC provider works.
+        for _ in range(10):
+            result = multi.create_invoice(1000, "memo", untrusted_only=True)
+            assert result["provider"] == "nwc"
+
+    def test_untrusted_only_falls_back_to_lnd_if_nwc_fails(self) -> None:
+        lnd = _FakeBackend("lnd", trusted=True)
+        nwc = _FakeBackend("nwc", trusted=False, fail_create=True)
+        multi = MultiProviderBackend([lnd, nwc], primary=lnd)
+        # If the only NWC provider can't issue an invoice, fall back to LND so
+        # the user still gets one.
+        result = multi.create_invoice(1000, "memo", untrusted_only=True)
+        assert result["provider"] == "lnd"
+
     def test_falls_back_when_a_provider_fails(self) -> None:
         bad = _FakeBackend("bad", fail_create=True)
         good = _FakeBackend("good")

@@ -48,13 +48,18 @@ class MultiProviderBackend(PaymentBackend):
         self._primary = primary
 
     def _ordered_for_create(
-        self, exclude_provider: str | None = None
+        self,
+        exclude_provider: str | None = None,
+        untrusted_only: bool = False,
     ) -> list[PaymentBackend]:
-        """Primary first (if set), then the rest shuffled.
+        """Order providers for invoice creation.
 
-        If ``exclude_provider`` is given, providers with that name are
-        moved to the end so a *different* one is tried first - but they are
-        still kept as a last resort (e.g. when it is the only provider).
+        Primary first (if set), then the rest shuffled. ``exclude_provider``
+        moves a matching provider to the end (tried only as a last resort).
+        ``untrusted_only`` puts untrusted (third-party, e.g. NWC) providers
+        first and trusted (self-hosted LND) providers last, so a re-issue
+        rotates among the NWC wallets and only uses LND if no NWC provider
+        can produce an invoice.
         """
         rest = [p for p in self._providers if p is not self._primary]
         random.shuffle(rest)
@@ -64,13 +69,22 @@ class MultiProviderBackend(PaymentBackend):
             preferred = [p for p in ordered if p.name != exclude_provider]
             excluded = [p for p in ordered if p.name == exclude_provider]
             ordered = [*preferred, *excluded]
+
+        if untrusted_only:
+            untrusted = [p for p in ordered if not getattr(p, "trusted", False)]
+            trusted = [p for p in ordered if getattr(p, "trusted", False)]
+            ordered = [*untrusted, *trusted]
         return ordered
 
     def create_invoice(
-        self, amount_sats: int, memo: str, exclude_provider: str | None = None
+        self,
+        amount_sats: int,
+        memo: str,
+        exclude_provider: str | None = None,
+        untrusted_only: bool = False,
     ) -> InvoiceResult:
         errors: list[str] = []
-        for provider in self._ordered_for_create(exclude_provider):
+        for provider in self._ordered_for_create(exclude_provider, untrusted_only):
             try:
                 safe_memo = public_memo(provider, memo)
                 result = provider.create_invoice(amount_sats, safe_memo)

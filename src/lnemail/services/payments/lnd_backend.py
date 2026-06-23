@@ -23,9 +23,13 @@ class LNDBackend(PaymentBackend):
         self._service = service or LNDService()
 
     def create_invoice(
-        self, amount_sats: int, memo: str, exclude_provider: str | None = None
+        self,
+        amount_sats: int,
+        memo: str,
+        exclude_provider: str | None = None,
+        untrusted_only: bool = False,
     ) -> InvoiceResult:
-        # Single self-hosted backend: exclude_provider is not applicable.
+        # Single self-hosted backend: exclude_provider/untrusted_only do not apply.
         result = self._service.create_invoice(amount_sats, memo)
         return {
             "payment_hash": result["payment_hash"],
