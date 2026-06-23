@@ -115,3 +115,9 @@ class MultiProviderBackend(PaymentBackend):
                     f"{payment_hash[:16]}...: {exc}"
                 )
         return False
+
+    def reissue_available(self) -> bool:
+        # "Get a new one" rotates among untrusted (NWC) providers, so it is
+        # only useful when there are at least two of them to choose from.
+        untrusted = sum(1 for p in self._providers if not getattr(p, "trusted", False))
+        return untrusted >= 2

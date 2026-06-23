@@ -414,3 +414,31 @@ class TestNWCToleranceParsing:
         assert result["payment_request"] == "lnbc_test"
         assert result["payment_hash"] == "deadbeef"
         assert result["provider"] == "nwc:test"
+
+
+class TestReissueAvailable:
+    """reissue_available is True only with >=2 untrusted (NWC) providers."""
+
+    def test_false_with_single_nwc_plus_lnd(self) -> None:
+        lnd = _FakeBackend("lnd", trusted=True)
+        nwc = _FakeBackend("nwc", trusted=False)
+        multi = MultiProviderBackend([lnd, nwc])
+        assert multi.reissue_available() is False
+
+    def test_true_with_two_nwc(self) -> None:
+        nwc1 = _FakeBackend("nwc1", trusted=False)
+        nwc2 = _FakeBackend("nwc2", trusted=False)
+        multi = MultiProviderBackend([nwc1, nwc2])
+        assert multi.reissue_available() is True
+
+    def test_false_with_only_lnd(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from lnemail.services.payments.lnd_backend import LNDBackend
+
+        with patch(
+            "lnemail.services.payments.lnd_backend.LNDService",
+            return_value=MagicMock(),
+        ):
+            backend = LNDBackend()
+        assert backend.reissue_available() is False

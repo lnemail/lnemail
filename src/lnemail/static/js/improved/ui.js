@@ -558,12 +558,26 @@ export function clearComposeForm() {
     if (attachmentList) attachmentList.innerHTML = '';
 }
 
+/**
+ * Show or hide the "Can't pay this invoice? Get a new one" actions based
+ * on whether the backend can re-issue from a different provider (i.e. it
+ * has several NWC providers configured). ``ids`` defaults to the inbox
+ * send/renewal wrappers.
+ */
+export function applyReissueAvailability(available, ids = ['newSendInvoiceWrap', 'newRenewalInvoiceWrap']) {
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = available ? '' : 'none';
+    });
+}
+
 export function updateHealthStatus(healthData) {
     const healthStatusValue = document.getElementById('healthStatusValue');
     const healthVersionValue = document.getElementById('healthVersionValue');
     const healthTimestampValue = document.getElementById('healthTimestampValue');
 
     if (healthData.success && healthData.data) {
+        applyReissueAvailability(!!healthData.data.reissue_available);
         if (healthStatusValue) {
             healthStatusValue.textContent = healthData.data.status || 'OK';
             healthStatusValue.style.color = '#28a745';

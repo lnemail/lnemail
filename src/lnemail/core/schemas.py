@@ -167,6 +167,10 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # Whether re-issuing an invoice from a different provider is possible
+    # (i.e. several NWC providers are configured). The UI uses this to show
+    # or hide the "Can't pay this invoice? Get a new one" action.
+    reissue_available: bool = False
 
 
 class AccountResponse(BaseModel):

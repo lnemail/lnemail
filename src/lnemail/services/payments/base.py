@@ -84,6 +84,16 @@ class PaymentBackend(Protocol):
         """
         ...
 
+    def reissue_available(self) -> bool:
+        """Whether re-issuing an invoice from a *different* provider helps.
+
+        True only when there is more than one third-party (untrusted)
+        provider to rotate among, so a "Get a new one" action can land on a
+        genuinely different wallet. Single-backend implementations return
+        ``False``.
+        """
+        ...
+
 
 def public_memo(backend: PaymentBackend, memo: str) -> str:
     """Return the memo that is safe to expose to ``backend``.

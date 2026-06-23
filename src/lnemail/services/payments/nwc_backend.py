@@ -300,3 +300,7 @@ class NWCBackend(PaymentBackend):
             f"{payment_hash[:16]}...: {last_exc}"
         )
         return False
+
+    def reissue_available(self) -> bool:
+        # A single wallet connection: nothing to rotate to.
+        return False

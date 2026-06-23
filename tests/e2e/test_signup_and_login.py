@@ -88,6 +88,14 @@ def test_signup_get_a_new_invoice_then_pay(page: Page, pay_invoice: Any) -> None
 
     expect(page.locator("#payment-pending")).to_be_visible()
 
+    # The "Get a new one" link is only shown when several NWC providers are
+    # configured (so re-issuing can land on a different one); the dev stack
+    # has a single NWC provider, so force-reveal it to exercise the flow.
+    # (The visibility gating itself is covered by unit/UI checks.)
+    page.evaluate(
+        "document.getElementById('new-invoice-wrap')?.style.removeProperty('display')"
+    )
+
     # "Can't pay this invoice? Get a new one."
     with page.expect_response(
         lambda r: r.url.endswith(f"/api/v1/email/{first_hash}/new-invoice")

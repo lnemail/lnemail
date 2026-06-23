@@ -1,10 +1,17 @@
-import { createEmailAccount, checkAccountPaymentStatus, newAccountInvoice } from './api.js';
+import { createEmailAccount, checkAccountPaymentStatus, newAccountInvoice, checkApiHealth } from './api.js';
 import { tryAutoPayWebLN } from './webln.js';
-import { showStatus, initMobileMenu } from './ui.js';
+import { showStatus, initMobileMenu, applyReissueAvailability } from './ui.js';
 import { copyToClipboard, showCopyFeedback, formatDateDMY } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     initMobileMenu();
+
+    // Show the "Get a new one" link only when the backend can re-issue from
+    // a different provider (several NWC providers configured).
+    checkApiHealth().then(result => {
+        const available = !!(result && result.success && result.data && result.data.reissue_available);
+        applyReissueAvailability(available, ['new-invoice-wrap']);
+    }).catch(() => {});
 
     // Local storage keys definition
     const STORAGE_KEYS = {

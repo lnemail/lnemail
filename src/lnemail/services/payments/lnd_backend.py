@@ -39,3 +39,7 @@ class LNDBackend(PaymentBackend):
 
     def check_invoice(self, payment_hash: str) -> bool:
         return self._service.check_invoice(payment_hash)
+
+    def reissue_available(self) -> bool:
+        # A single self-hosted backend: nothing to rotate to.
+        return False

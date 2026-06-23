@@ -1201,4 +1201,8 @@ async def health_check() -> HealthResponse:
     Returns:
         Health status information
     """
-    return HealthResponse(status="ok", version=settings.APP_VERSION)
+    return HealthResponse(
+        status="ok",
+        version=settings.APP_VERSION,
+        reissue_available=payment_backend.reissue_available(),
+    )
