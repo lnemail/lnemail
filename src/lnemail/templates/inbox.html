@@ -75,6 +75,18 @@
     transform: translateX(400px); animation: slideIn 0.3s ease forwards;
     display: flex; align-items: center; gap: 10px; max-width: 350px; min-width: 220px;
   }
+  /* Keep toasts inside the viewport on small screens. */
+  @media (max-width: 480px) {
+    .status-container {
+      left: 10px !important; right: 10px !important;
+    }
+    .status-message {
+      max-width: none; min-width: 0; width: 100%;
+      transform: translateY(-20px);
+      animation: slideInTop 0.3s ease forwards;
+    }
+  }
+  @keyframes slideInTop { to { transform: translateY(0); } }
   .status-message.success { background: #10B981; }
   .status-message.error { background: #EF4444; }
   .status-message.info { background: #38bdf8; }
@@ -447,7 +459,7 @@
                     <button id="cancelPaymentBtn" class="btn-secondary">Cancel</button>
                     <button type="button" id="copyInvoiceBtn" class="btn-secondary">Copy Invoice</button>
                 </div>
-                <p id="newSendInvoiceWrap" style="text-align:center;margin-top:10px;font-size:12px;color:#64748b;">
+                <p id="newSendInvoiceWrap" style="display:none;text-align:center;margin-top:10px;font-size:12px;color:#64748b;">
                     Can't pay this invoice?
                     <a href="#" id="newSendInvoiceBtn" style="color:#38bdf8;text-decoration:underline;">Get a new one</a>
                 </p>
@@ -507,7 +519,7 @@
                         <button id="cancelRenewalBtn" class="btn-secondary">Cancel</button>
                         <button type="button" id="copyRenewalInvoiceBtn" class="btn-secondary">Copy Invoice</button>
                     </div>
-                    <p id="newRenewalInvoiceWrap" style="text-align:center;margin-top:10px;font-size:12px;color:#64748b;">
+                    <p id="newRenewalInvoiceWrap" style="display:none;text-align:center;margin-top:10px;font-size:12px;color:#64748b;">
                         Can't pay this invoice?
                         <a href="#" id="newRenewalInvoiceBtn" style="color:#38bdf8;text-decoration:underline;">Get a new one</a>
                     </p>
@@ -555,41 +567,41 @@
     <div id="mainApp" class="main-app" style="flex-direction:column;min-height:100vh;">
 
         <!-- POC: MainHeader -->
-        <header class="h-16 flex items-center justify-between px-6 border-b border-sky-900/30 bg-tech-black/90 backdrop-blur-md sticky top-0 z-50" style="background:rgba(8,20,37,0.9);">
+        <header class="flex flex-wrap items-center justify-between gap-y-2 gap-x-3 px-3 md:px-6 py-2 md:h-16 border-b border-sky-900/30 bg-tech-black/90 backdrop-blur-md sticky top-0 z-50" style="background:rgba(8,20,37,0.9);">
             <!-- Brand -->
             <div class="flex items-center gap-2">
                 <h1 class="text-xl font-bold tracking-tight text-white">LNemail</h1>
             </div>
 
-            <!-- POC: PrimaryNavigation -->
-            <nav id="primaryNav" class="mobile-hidden md:flex items-center gap-1 bg-sky-950/20 p-1 rounded-lg border border-sky-900/40">
-                <button class="flex items-center gap-2 px-4 py-1.5 rounded-md bg-sky-500/10 border border-sky-500/20 text-cyber-blue shadow-[0_0_15px_rgba(56,189,248,0.1)]" data-view="inbox" style="transition:all 0.15s;">
+            <!-- POC: PrimaryNavigation (visible on all sizes) -->
+            <nav id="primaryNav" class="order-3 md:order-2 w-full md:w-auto flex items-center justify-center gap-1 bg-sky-950/20 p-1 rounded-lg border border-sky-900/40">
+                <button class="flex items-center gap-2 px-3 md:px-4 py-1.5 rounded-md bg-sky-500/10 border border-sky-500/20 text-cyber-blue shadow-[0_0_15px_rgba(56,189,248,0.1)]" data-view="inbox" style="transition:all 0.15s;">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
                     <span class="text-sm font-medium">Inbox</span>
                 </button>
-                <button class="flex items-center gap-2 px-4 py-1.5 rounded-md hover:bg-sky-900/30 text-sky-200 transition-all" data-view="compose" id="composeNavBtn">
+                <button class="flex items-center gap-2 px-3 md:px-4 py-1.5 rounded-md hover:bg-sky-900/30 text-sky-200 transition-all" data-view="compose" id="composeNavBtn">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
                     <span class="text-sm font-medium">Compose</span>
                 </button>
-                <button class="flex items-center gap-2 px-4 py-1.5 rounded-md hover:bg-sky-900/30 text-sky-200 transition-all" data-view="sent" id="sentNavBtn">
+                <button class="flex items-center gap-2 px-3 md:px-4 py-1.5 rounded-md hover:bg-sky-900/30 text-sky-200 transition-all" data-view="sent" id="sentNavBtn">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
                     <span class="text-sm font-medium">Sent</span>
                 </button>
             </nav>
 
             <!-- POC: SystemStatus -->
-            <div class="flex items-center gap-6">
-                <div class="flex items-center bg-tech-black border border-sky-900/50 rounded px-3 py-1 gap-2" style="background:#081425;" id="subscriptionDaysBox" title="">
+            <div class="order-2 md:order-3 flex items-center gap-2 md:gap-6 min-w-0">
+                <div class="flex items-center bg-tech-black border border-sky-900/50 rounded px-2 md:px-3 py-1 gap-2 flex-shrink-0" style="background:#081425;" id="subscriptionDaysBox" title="">
                     <svg class="w-4 h-4 text-sky-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     <span class="text-sm text-cyber-blue font-mono font-bold flex-shrink-0" id="subscriptionDays" style="font-family:'JetBrains Mono',monospace;">--d</span>
                 </div>
-                <div class="flex items-center bg-tech-black border border-sky-900/50 rounded px-3 py-1 gap-2" style="background:#081425;">
-                    <span class="text-sm text-sky-100 font-mono" id="accountEmail" style="font-family:'JetBrains Mono',monospace;">Loading...</span>
-                    <button type="button" class="text-sky-500 hover:text-white" id="accountEmailContainer" title="Copy email">
+                <div class="hidden lg:flex items-center bg-tech-black border border-sky-900/50 rounded px-3 py-1 gap-2 min-w-0" style="background:#081425;">
+                    <span class="text-sm text-sky-100 font-mono truncate" id="accountEmail" style="font-family:'JetBrains Mono',monospace;">Loading...</span>
+                    <button type="button" class="text-sky-500 hover:text-white flex-shrink-0" id="accountEmailContainer" title="Copy email">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
                     </button>
                 </div>
-                <div class="flex items-center gap-4 text-[11px] font-medium text-slate-400">
+                <div class="flex items-center gap-3 md:gap-4 text-[11px] font-medium text-slate-400 flex-shrink-0">
                     <button class="flex flex-col items-center gap-0.5 hover:text-sky-400 transition-colors" id="showTokenBtn">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
                         <span>Token</span>

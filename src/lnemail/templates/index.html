@@ -52,7 +52,7 @@
 <!-- Hero Section -->
 <section class="w-full max-w-[1100px] mx-auto px-gutter pt-24 pb-16 flex flex-col items-center text-center relative">
     <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary-container/10 blur-[100px] rounded-full pointer-events-none -z-10"></div>
-    <h1 class="text-5xl md:text-7xl font-extrabold text-on-surface mb-6 leading-tight tracking-tight whitespace-nowrap">
+    <h1 class="text-4xl sm:text-5xl md:text-7xl font-extrabold text-on-surface mb-6 leading-tight tracking-tight md:whitespace-nowrap break-words">
         Fast <span style="color: #38bdf8;">Anonymous</span> Email Accounts
     </h1>
     <p class="font-body-md text-body-md text-on-surface-variant max-w-2xl mb-12 text-lg">
@@ -100,7 +100,7 @@
                     <div class="w-6 h-6 border-2 border-primary-container border-t-primary rounded-full animate-spin"></div>
                     <p class="text-on-surface-variant text-sm">Waiting for Lightning payment...</p>
                 </div>
-                <p class="text-xs text-on-surface-variant text-center mt-1">
+                <p id="new-invoice-wrap" class="text-xs text-on-surface-variant text-center mt-1" style="display:none;">
                     Can't pay this invoice?
                     <a href="#" id="new-invoice-btn" class="text-primary underline">Get a new one</a>
                 </p>
