@@ -241,7 +241,6 @@ class NWCBackend(PaymentBackend):
         amount_sats: int,
         memo: str,
         exclude_provider: str | None = None,
-        untrusted_only: bool = False,
     ) -> InvoiceResult:
         async def _make() -> InvoiceResult:
             data = await self._nip47_call(

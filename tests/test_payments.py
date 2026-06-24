@@ -106,24 +106,15 @@ class TestMultiProviderCreate:
         result = multi.create_invoice(1000, "memo", exclude_provider="solo")
         assert result["provider"] == "solo"
 
-    def test_untrusted_only_prefers_nwc_over_lnd(self) -> None:
+    def test_reissue_rotates_to_a_different_provider_incl_lnd(self) -> None:
         lnd = _FakeBackend("lnd", trusted=True)
         nwc = _FakeBackend("nwc", trusted=False)
         multi = MultiProviderBackend([lnd, nwc], primary=lnd)
-        # 'Get a new one' should rotate among NWC (untrusted) providers,
-        # never returning LND while an NWC provider works.
+        # 'Get a new one' on an NWC invoice rotates to a different provider;
+        # with LND + one NWC, excluding NWC yields LND.
         for _ in range(10):
-            result = multi.create_invoice(1000, "memo", untrusted_only=True)
-            assert result["provider"] == "nwc"
-
-    def test_untrusted_only_falls_back_to_lnd_if_nwc_fails(self) -> None:
-        lnd = _FakeBackend("lnd", trusted=True)
-        nwc = _FakeBackend("nwc", trusted=False, fail_create=True)
-        multi = MultiProviderBackend([lnd, nwc], primary=lnd)
-        # If the only NWC provider can't issue an invoice, fall back to LND so
-        # the user still gets one.
-        result = multi.create_invoice(1000, "memo", untrusted_only=True)
-        assert result["provider"] == "lnd"
+            result = multi.create_invoice(1000, "memo", exclude_provider="nwc")
+            assert result["provider"] == "lnd"
 
     def test_falls_back_when_a_provider_fails(self) -> None:
         bad = _FakeBackend("bad", fail_create=True)
@@ -417,19 +408,24 @@ class TestNWCToleranceParsing:
 
 
 class TestReissueAvailable:
-    """reissue_available is True only with >=2 untrusted (NWC) providers."""
+    """reissue_available is True with >=2 providers (LND + NWC, or several NWC)."""
 
-    def test_false_with_single_nwc_plus_lnd(self) -> None:
+    def test_true_with_lnd_plus_one_nwc(self) -> None:
         lnd = _FakeBackend("lnd", trusted=True)
         nwc = _FakeBackend("nwc", trusted=False)
         multi = MultiProviderBackend([lnd, nwc])
-        assert multi.reissue_available() is False
+        assert multi.reissue_available() is True
 
     def test_true_with_two_nwc(self) -> None:
         nwc1 = _FakeBackend("nwc1", trusted=False)
         nwc2 = _FakeBackend("nwc2", trusted=False)
         multi = MultiProviderBackend([nwc1, nwc2])
         assert multi.reissue_available() is True
+
+    def test_false_with_single_provider(self) -> None:
+        only = _FakeBackend("solo", trusted=False)
+        multi = MultiProviderBackend([only])
+        assert multi.reissue_available() is False
 
     def test_false_with_only_lnd(self) -> None:
         from unittest.mock import MagicMock, patch

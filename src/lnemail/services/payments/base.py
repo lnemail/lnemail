@@ -63,16 +63,13 @@ class PaymentBackend(Protocol):
         amount_sats: int,
         memo: str,
         exclude_provider: str | None = None,
-        untrusted_only: bool = False,
     ) -> InvoiceResult:
         """Create an invoice for ``amount_sats`` with ``memo``.
 
         ``exclude_provider`` names a provider to avoid when possible (used
-        to re-issue an invoice from a *different* provider).
-        ``untrusted_only`` asks to use only untrusted (third-party)
-        providers when possible. Single-backend implementations may ignore
-        both. Implementations may raise on failure; the dispatcher handles
-        fallback to another provider.
+        to re-issue an invoice from a *different* provider). Single-backend
+        implementations may ignore it. Implementations may raise on
+        failure; the dispatcher handles fallback to another provider.
         """
         ...
 

@@ -27,9 +27,8 @@ class LNDBackend(PaymentBackend):
         amount_sats: int,
         memo: str,
         exclude_provider: str | None = None,
-        untrusted_only: bool = False,
     ) -> InvoiceResult:
-        # Single self-hosted backend: exclude_provider/untrusted_only do not apply.
+        # Single self-hosted backend: exclude_provider does not apply.
         result = self._service.create_invoice(amount_sats, memo)
         return {
             "payment_hash": result["payment_hash"],
