@@ -114,16 +114,16 @@
                 <div class="detail-item">
                     <p class="label text-on-surface-variant text-sm mb-1"><label for="email-address-input">Your Email Address:</label></p>
                     <div class="copy-wrapper flex items-center gap-2 bg-surface-container rounded p-2">
-                        <input id="email-address-input" type="email" readonly class="copy-text credentials-input flex-grow bg-transparent border-none text-on-surface font-code-sm text-sm" />
-                        <button type="button" class="copy-btn bg-outline-variant/30 hover:bg-outline-variant/50 text-on-surface-variant px-3 py-1 rounded text-xs transition-colors" data-copy-target="#email-address-input">Copy</button>
+                        <input id="email-address-input" type="email" readonly class="copy-text credentials-input flex-1 min-w-0 w-0 bg-transparent border-none text-on-surface font-code-sm text-sm" />
+                        <button type="button" class="copy-btn shrink-0 bg-outline-variant/30 hover:bg-outline-variant/50 text-on-surface-variant px-3 py-1 rounded text-xs transition-colors" data-copy-target="#email-address-input">Copy</button>
                     </div>
                 </div>
                 <div class="detail-item">
                     <p class="label text-on-surface-variant text-sm mb-1"><label for="access-token-input">Access Token:</label></p>
                     <div class="copy-wrapper flex items-center gap-2 bg-surface-container rounded p-2">
-                        <input id="access-token-input" type="password" readonly class="copy-text credentials-input flex-grow bg-transparent border-none text-on-surface font-code-sm text-sm" />
-                        <button type="button" id="toggle-token-visibility" class="bg-outline-variant/30 hover:bg-outline-variant/50 text-on-surface-variant px-3 py-1 rounded text-xs transition-colors">Show</button>
-                        <button type="button" class="copy-btn bg-outline-variant/30 hover:bg-outline-variant/50 text-on-surface-variant px-3 py-1 rounded text-xs transition-colors" data-copy-target="#access-token-input">Copy</button>
+                        <input id="access-token-input" type="password" readonly class="copy-text credentials-input flex-1 min-w-0 w-0 bg-transparent border-none text-on-surface font-code-sm text-sm" />
+                        <button type="button" id="toggle-token-visibility" class="shrink-0 bg-outline-variant/30 hover:bg-outline-variant/50 text-on-surface-variant px-3 py-1 rounded text-xs transition-colors">Show</button>
+                        <button type="button" class="copy-btn shrink-0 bg-outline-variant/30 hover:bg-outline-variant/50 text-on-surface-variant px-3 py-1 rounded text-xs transition-colors" data-copy-target="#access-token-input">Copy</button>
                     </div>
                     <p class="note text-xs text-on-surface-variant mt-2">Store this token safely. You'll need it to access your inbox.</p>
                     <p class="note text-xs text-on-surface-variant">
@@ -242,9 +242,7 @@
                     <span class="material-symbols-outlined text-sm">content_copy</span>
                 </button>
             </div>
-            <div class="p-4 overflow-x-auto font-code-sm text-code-sm whitespace-pre bg-black">
-                <span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X POST</span> <span class="syntax-url">'https://lnemail.net/api/v1/email'</span>
-            </div>
+            <div class="p-4 overflow-x-auto font-code-sm text-code-sm bg-black code-body" data-copy="curl -X POST 'https://lnemail.net/api/v1/email'"><div class="break-all"><span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X POST</span> <span class="syntax-url">'https://lnemail.net/api/v1/email'</span></div></div>
         </div>
 
         <div class="code-block rounded-xl overflow-hidden shadow-lg">
@@ -254,10 +252,8 @@
                     <span class="material-symbols-outlined text-sm">content_copy</span>
                 </button>
             </div>
-            <div class="p-4 overflow-x-auto font-code-sm text-code-sm whitespace-pre bg-black">
-                <span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X GET</span> <span class="syntax-url">'https://lnemail.net/api/v1/emails'</span> \
-                <span class="syntax-method">-H</span> <span class="syntax-header">'Authorization: Bearer YOUR_ACCESS_TOKEN'</span>
-            </div>
+            <div class="p-4 overflow-x-auto font-code-sm text-code-sm bg-black code-body" data-copy="curl -X GET 'https://lnemail.net/api/v1/emails' \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'"><div class="break-all"><span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X GET</span> <span class="syntax-url">'https://lnemail.net/api/v1/emails'</span> \</div><div class="break-all"><span class="syntax-method">-H</span> <span class="syntax-header">'Authorization: Bearer YOUR_ACCESS_TOKEN'</span></div></div>
         </div>
 
         <div class="code-block rounded-xl overflow-hidden shadow-lg">
@@ -267,10 +263,8 @@
                     <span class="material-symbols-outlined text-sm">content_copy</span>
                 </button>
             </div>
-            <div class="p-4 overflow-x-auto font-code-sm text-code-sm whitespace-pre bg-black">
-                <span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X GET</span> <span class="syntax-url">'https://lnemail.net/api/v1/emails/EMAIL_ID'</span> \
-                <span class="syntax-method">-H</span> <span class="syntax-header">'Authorization: Bearer YOUR_ACCESS_TOKEN'</span>
-            </div>
+            <div class="p-4 overflow-x-auto font-code-sm text-code-sm bg-black code-body" data-copy="curl -X GET 'https://lnemail.net/api/v1/emails/EMAIL_ID' \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'"><div class="break-all"><span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X GET</span> <span class="syntax-url">'https://lnemail.net/api/v1/emails/EMAIL_ID'</span> \</div><div class="break-all"><span class="syntax-method">-H</span> <span class="syntax-header">'Authorization: Bearer YOUR_ACCESS_TOKEN'</span></div></div>
         </div>
 
         <div class="code-block rounded-xl overflow-hidden shadow-lg">
@@ -280,11 +274,9 @@
                     <span class="material-symbols-outlined text-sm">content_copy</span>
                 </button>
             </div>
-            <div class="p-4 overflow-x-auto font-code-sm text-code-sm whitespace-pre bg-black">
-                <span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X POST</span> <span class="syntax-url">'https://lnemail.net/api/v1/email/send'</span> \
-                <span class="syntax-method">-H</span> <span class="syntax-header">'Authorization: Bearer YOUR_ACCESS_TOKEN'</span> \
-                <span class="syntax-method">-d</span> <span class="syntax-string">'{"recipient": "example@example.com", "subject": "Test", "body": "Hello World!"}'</span>
-            </div>
+            <div class="p-4 overflow-x-auto font-code-sm text-code-sm bg-black code-body" data-copy="curl -X POST 'https://lnemail.net/api/v1/email/send' \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+  -d '{&quot;recipient&quot;: &quot;example@example.com&quot;, &quot;subject&quot;: &quot;Test&quot;, &quot;body&quot;: &quot;Hello World!&quot;}'"><div class="break-all"><span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X POST</span> <span class="syntax-url">'https://lnemail.net/api/v1/email/send'</span> \</div><div class="break-all"><span class="syntax-method">-H</span> <span class="syntax-header">'Authorization: Bearer YOUR_ACCESS_TOKEN'</span> \</div><div class="break-all"><span class="syntax-method">-d</span> <span class="syntax-string">'{"recipient": "example@example.com", "subject": "Test", "body": "Hello World!"}'</span></div></div>
         </div>
 
         <div class="code-block rounded-xl overflow-hidden shadow-lg">
@@ -294,9 +286,7 @@
                     <span class="material-symbols-outlined text-sm">content_copy</span>
                 </button>
             </div>
-            <div class="p-4 overflow-x-auto font-code-sm text-code-sm whitespace-pre bg-black">
-                <span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X GET</span> <span class="syntax-url">'https://lnemail.net/api/v1/email/send/status/PAYMENT_HASH'</span>
-            </div>
+            <div class="p-4 overflow-x-auto font-code-sm text-code-sm bg-black code-body" data-copy="curl -X GET 'https://lnemail.net/api/v1/email/send/status/PAYMENT_HASH'"><div class="break-all"><span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X GET</span> <span class="syntax-url">'https://lnemail.net/api/v1/email/send/status/PAYMENT_HASH'</span></div></div>
         </div>
 
         <div class="code-block rounded-xl overflow-hidden shadow-lg">
@@ -306,9 +296,7 @@
                     <span class="material-symbols-outlined text-sm">content_copy</span>
                 </button>
             </div>
-            <div class="p-4 overflow-x-auto font-code-sm text-code-sm whitespace-pre bg-black">
-                <span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X GET</span> <span class="syntax-url">'https://lnemail.net/api/v1/payment/PAYMENT_HASH'</span>
-            </div>
+            <div class="p-4 overflow-x-auto font-code-sm text-code-sm bg-black code-body" data-copy="curl -X GET 'https://lnemail.net/api/v1/payment/PAYMENT_HASH'"><div class="break-all"><span class="text-on-surface-variant">curl</span> <span class="syntax-method">-X GET</span> <span class="syntax-url">'https://lnemail.net/api/v1/payment/PAYMENT_HASH'</span></div></div>
         </div>
     </div>
 </section>
@@ -318,7 +306,8 @@
     document.querySelectorAll('.code-block button').forEach(button => {
         button.addEventListener('click', function() {
             const codeBlock = this.closest('.code-block');
-            const codeText = codeBlock.querySelector('.whitespace-pre, .p-4').textContent.trim();
+            const body = codeBlock.querySelector('.code-body, .whitespace-pre, .p-4');
+            const codeText = (body.dataset.copy || body.textContent).trim();
             navigator.clipboard.writeText(codeText).then(() => {
                 const icon = this.querySelector('.material-symbols-outlined');
                 const originalText = icon.textContent;
