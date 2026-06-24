@@ -124,6 +124,12 @@ export function showView(viewName) {
         targetView.classList.add('active');
         state.currentView = viewName;
     }
+
+    // On mobile the sidebar (email list) and the reading pane stack
+    // vertically; record the active view so CSS can show only the relevant
+    // one (the inbox list for 'inbox', otherwise the reading pane).
+    const mainApp = document.getElementById('mainApp');
+    if (mainApp) mainApp.dataset.mview = viewName;
 }
 
 export function renderEmailList() {
