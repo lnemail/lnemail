@@ -47,7 +47,6 @@ from ..core.timeutils import utcnow
 from ..services.email_service import EmailService
 from ..services.payments import get_payment_backend
 from ..services.tasks import (
-    check_payment_status,
     check_renewal_payment_status,
     process_send_email_payment,
     queue,
@@ -264,12 +263,9 @@ async def create_email_account(
         db.commit()
         db.refresh(account)
 
-        # Schedule background task to check payment status
-        queue.enqueue(
-            check_payment_status,
-            invoice["payment_hash"],
-            job_timeout=600,  # 10 minute timeout
-        )
+        # Settlement is detected by the always-on signup-payment poller
+        # (poll_signup_payments), which sweeps all pending invoices in one
+        # job; no per-invoice background task is enqueued here.
 
         # Return invoice information to client
         return InvoiceResponse(
@@ -334,7 +330,8 @@ async def new_account_invoice(
         db.commit()
         db.refresh(account)
 
-        queue.enqueue(check_payment_status, invoice["payment_hash"], job_timeout=600)
+        # The re-issued invoice is picked up by the always-on signup-payment
+        # poller; no per-invoice background task is needed.
 
         return InvoiceResponse(
             email_address=account.email_address,
@@ -387,10 +384,9 @@ async def check_payment(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Payment not found"
             )
 
-        # Settlement is detected by the background check_payment_status job
-        # (enqueued when the invoice is created/re-issued). The web request
-        # only reads the current DB state so a slow/flaky provider lookup
-        # never blocks this endpoint.
+        # Settlement is detected by the always-on signup-payment poller
+        # (poll_signup_payments). The web request only reads the current DB
+        # state so a slow/flaky provider lookup never blocks this endpoint.
         response = PaymentStatusResponse(payment_status=account.payment_status)
 
         if account.payment_status == PaymentStatus.PAID:

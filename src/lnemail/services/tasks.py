@@ -50,58 +50,71 @@ MAX_RENEWAL_POLL_ATTEMPTS = (
     RENEWAL_INVOICE_EXPIRY + RENEWAL_POLL_BUFFER
 ) // RENEWAL_POLL_INTERVAL
 
-# Account-creation payment polling. Done in the worker (not on the web
-# request) so a slow/flaky provider lookup (e.g. an NWC wallet) never
-# blocks the status endpoint. Bounded by the invoice lifetime like the
-# renewal poll.
-ACCOUNT_POLL_INTERVAL = 5
-MAX_ACCOUNT_POLL_ATTEMPTS = (
-    RENEWAL_INVOICE_EXPIRY + RENEWAL_POLL_BUFFER
-) // ACCOUNT_POLL_INTERVAL
+# Signup-payment polling. A single always-on "batched" poller checks every
+# pending signup invoice in one job, reusing one backend connection, instead
+# of spawning a self-rescheduling job per invoice. This keeps worker CPU flat
+# no matter how many unpaid invoices exist: an uptime monitor (or an attacker)
+# hammering the public POST /email endpoint no longer creates one polling chain
+# per invoice that pile up and saturate the worker. Only invoices still inside
+# their validity window are checked, so abandoned ones drop out on their own.
+SIGNUP_POLL_INTERVAL = 5  # seconds between batched sweeps
+SIGNUP_INVOICE_WINDOW = RENEWAL_INVOICE_EXPIRY + RENEWAL_POLL_BUFFER  # seconds
+SIGNUP_POLLER_JOB_ID = "signup_payment_poller"
 
 
-def check_payment_status(payment_hash: str, attempt: int = 0) -> None:
-    """Check if a signup invoice has been paid and set up email if so.
+def poll_signup_payments() -> None:
+    """Detect paid signup invoices and activate their mailboxes.
 
-    Re-queues itself every ``ACCOUNT_POLL_INTERVAL`` seconds while the
-    invoice is unpaid, stopping after ``MAX_ACCOUNT_POLL_ATTEMPTS`` (the
-    invoice lifetime). Running this in the worker keeps the slow/flaky
-    provider lookup off the web ``GET /payment/{hash}`` request path.
-
-    Args:
-        payment_hash: The hash of the invoice to check.
-        attempt: Zero-based poll attempt counter (managed by the re-queue).
+    Runs as one always-on recurring job: it checks every pending account
+    whose invoice is still within its validity window in a single pass
+    (reusing one backend connection), then re-schedules itself. Replaces the
+    old one-job-per-invoice polling that let unpaid invoices accumulate and
+    peg the worker at 100% CPU.
     """
-    logger.info(
-        f"Checking payment status for hash: {payment_hash} "
-        f"(attempt {attempt + 1}/{MAX_ACCOUNT_POLL_ATTEMPTS})"
-    )
+    try:
+        _check_pending_signups()
+    except Exception as e:
+        logger.error(f"Error in poll_signup_payments: {str(e)}")
+    finally:
+        # Keep the single poller chain alive. The fixed job_id collapses any
+        # duplicate chains (e.g. when the API restart re-seeds it) into one.
+        queue.enqueue_in(
+            timedelta(seconds=SIGNUP_POLL_INTERVAL),
+            poll_signup_payments,
+            job_id=SIGNUP_POLLER_JOB_ID,
+            job_timeout=300,
+        )
 
+
+def _pending_signup_hashes() -> list[str]:
+    """Payment hashes of pending signups whose invoice is still payable."""
+    cutoff = utcnow() - timedelta(seconds=SIGNUP_INVOICE_WINDOW)
+    with Session(engine) as session:
+        accounts = session.exec(
+            select(EmailAccount).where(
+                (EmailAccount.payment_status == PaymentStatus.PENDING)
+                & (EmailAccount.created_at > cutoff)
+            )
+        ).all()
+    return [account.payment_hash for account in accounts]
+
+
+def _check_pending_signups() -> None:
+    """Check each in-window pending signup invoice and activate paid ones."""
+    hashes = _pending_signup_hashes()
+    if not hashes:
+        # Nothing pending: don't even open a backend connection.
+        return
+
+    logger.info(f"Polling {len(hashes)} pending signup invoice(s)")
     payment_backend = get_payment_backend()
     email_service = EmailService()
-
-    try:
-        if not payment_backend.check_invoice(payment_hash):
-            _reschedule_account_poll(payment_hash, attempt)
-            return
-        _activate_paid_account(email_service, payment_hash)
-    except Exception as e:
-        logger.error(f"Error in check_payment_status: {str(e)}")
-
-
-def _reschedule_account_poll(payment_hash: str, attempt: int) -> None:
-    """Re-queue the signup payment check, or stop once the invoice expired."""
-    if attempt + 1 < MAX_ACCOUNT_POLL_ATTEMPTS:
-        logger.info(f"Payment not received yet for hash: {payment_hash}")
-        queue.enqueue_in(
-            timedelta(seconds=ACCOUNT_POLL_INTERVAL),
-            check_payment_status,
-            payment_hash,
-            attempt + 1,
-            job_timeout=600,
-        )
-    else:
-        logger.info(f"Signup invoice expired without payment: {payment_hash}")
+    for payment_hash in hashes:
+        try:
+            if payment_backend.check_invoice(payment_hash):
+                _activate_paid_account(email_service, payment_hash)
+        except Exception as e:
+            logger.error(f"Error checking signup invoice {payment_hash[:16]}...: {e}")
 
 
 def _activate_paid_account(email_service: EmailService, payment_hash: str) -> None:
@@ -694,4 +707,13 @@ def schedule_regular_tasks() -> None:
         job_timeout=600,
     )
 
-    logger.info("Scheduled regular maintenance tasks and startup retry job")
+    # Start the single always-on signup-payment poller. Enqueuing with a
+    # fixed job_id is idempotent across restarts (it just reschedules the one
+    # chain), and the job re-enqueues itself from then on.
+    queue.enqueue(
+        poll_signup_payments,
+        job_id=SIGNUP_POLLER_JOB_ID,
+        job_timeout=300,
+    )
+
+    logger.info("Scheduled regular maintenance tasks, startup retry and payment poller")
