@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LNemail settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main class="container">
+    <h1>LNemail settings</h1>
+
+    <section class="card">
+      <h2>Service</h2>
+      <label class="field">
+        <span>API base URL</span>
+        <input id="apiBase" type="url" placeholder="https://lnemail.net">
+        <small>Point to your own instance if you self-host LNemail.</small>
+      </label>
+      <label class="field checkbox">
+        <input id="autofillEnabled" type="checkbox">
+        <span>Show the LNemail button on email fields</span>
+      </label>
+      <button id="grantPermissionsBtn" class="btn">Grant site access</button>
+      <small id="permissionState" class="dim"></small>
+    </section>
+
+    <section class="card">
+      <h2>Wallet (Nostr Wallet Connect)</h2>
+      <label class="field">
+        <span>NWC connection string</span>
+        <input id="nwcUri" type="password"
+               placeholder="nostr+walletconnect://...">
+        <small>
+          Create a dedicated connection with a small budget in your wallet
+          (Alby Hub, Coinos, Primal, ...). It is stored locally in this
+          browser profile.
+        </small>
+      </label>
+      <button id="testNwcBtn" class="btn">Test connection</button>
+      <span id="nwcTestResult" class="dim"></span>
+
+      <label class="field checkbox">
+        <input id="autoPayEnabled" type="checkbox">
+        <span>Automatically pay LNemail invoices within the allowance</span>
+      </label>
+      <div class="grid">
+        <label class="field">
+          <span>Max sats per payment</span>
+          <input id="maxSatsPerPayment" type="number" min="0" step="1">
+        </label>
+        <label class="field">
+          <span>30-day budget (sats)</span>
+          <input id="monthlyBudgetSats" type="number" min="0" step="1">
+        </label>
+      </div>
+      <p id="spendSummary" class="dim"></p>
+    </section>
+
+    <section class="card">
+      <h2>Renewals</h2>
+      <label class="field checkbox">
+        <input id="autoRenewEnabled" type="checkbox">
+        <span>Auto-renew accounts with the connected wallet (uses the allowance above)</span>
+      </label>
+      <label class="field">
+        <span>Start renewals this many days before expiry</span>
+        <input id="renewDaysBefore" type="number" min="1" max="365" step="1">
+      </label>
+      <small class="dim">
+        Without a wallet or with auto-pay off, you get a notification
+        instead so you can pay manually.
+      </small>
+    </section>
+
+    <section class="card">
+      <h2>Backup</h2>
+      <p class="dim">
+        Access tokens are the only way into an account. Export them
+        regularly or save each one in your password manager.
+      </p>
+      <div class="row">
+        <button id="exportBtn" class="btn">Export accounts (JSON)</button>
+        <button id="importBtn" class="btn">Import accounts</button>
+        <input id="importFile" type="file" accept="application/json" hidden>
+      </div>
+      <span id="backupStatus" class="dim"></span>
+    </section>
+
+    <div class="savebar">
+      <button id="saveBtn" class="btn btn-primary">Save settings</button>
+      <span id="saveStatus" class="dim"></span>
+    </div>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

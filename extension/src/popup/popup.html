@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LNemail</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <img src="icons/icon32.png" alt="" width="20" height="20">
+      <span>LNemail</span>
+    </div>
+    <div class="header-actions">
+      <button id="newAccountBtn" class="btn btn-primary btn-sm">New address</button>
+      <button id="settingsBtn" class="btn btn-icon" title="Settings" aria-label="Settings">&#9881;</button>
+    </div>
+  </header>
+
+  <div id="permissionBanner" class="banner hidden">
+    <p>Site access is not granted, so autofill and API calls may fail.</p>
+    <button id="grantPermissionsBtn" class="btn btn-sm">Grant access</button>
+  </div>
+
+  <main id="viewList" class="view">
+    <input id="searchInput" class="search" type="search"
+           placeholder="Filter by email or site domain">
+    <p id="listStatus" class="status"></p>
+    <ul id="accountList" class="account-list"></ul>
+    <p id="emptyState" class="empty hidden">
+      No accounts yet. Click "New address" to create one, or use the
+      LNemail button on email fields when signing up on any site.
+    </p>
+  </main>
+
+  <main id="viewPayment" class="view hidden">
+    <button id="backBtn" class="btn btn-link">&larr; Back</button>
+    <h2 id="paymentTitle" class="payment-title"></h2>
+    <p id="paymentSubtitle" class="payment-subtitle"></p>
+    <div id="qrContainer" class="qr"></div>
+    <div class="payment-actions">
+      <button id="copyInvoiceBtn" class="btn">Copy invoice</button>
+      <a id="walletLink" class="btn" href="#">Open in wallet</a>
+      <button id="payNwcBtn" class="btn btn-primary hidden">Pay with connected wallet</button>
+      <button id="reissueBtn" class="btn btn-link hidden">Can't pay this invoice? Get a new one</button>
+    </div>
+    <p id="paymentStatus" class="status"></p>
+  </main>
+
+  <main id="viewRenew" class="view hidden">
+    <button id="renewBackBtn" class="btn btn-link">&larr; Back</button>
+    <h2 class="payment-title">Renew account</h2>
+    <p id="renewEmail" class="payment-subtitle"></p>
+    <label class="field">
+      <span>Years</span>
+      <select id="renewYears">
+        <option value="1" selected>1 year</option>
+        <option value="2">2 years</option>
+        <option value="3">3 years</option>
+        <option value="5">5 years</option>
+      </select>
+    </label>
+    <button id="renewStartBtn" class="btn btn-primary">Create renewal invoice</button>
+    <p id="renewStatus" class="status"></p>
+  </main>
+
+  <footer class="footer">
+    <span id="footerHint">Tokens stay on this device. Back them up in your password manager.</span>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

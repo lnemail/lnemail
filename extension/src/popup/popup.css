@@ -1,0 +1,179 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f1115;
+  --bg-raised: #171a21;
+  --border: #2a2f3a;
+  --text: #e6e8ec;
+  --text-dim: #9aa1ad;
+  --accent: #f7931a;
+  --accent-dark: #d97c06;
+  --success: #3fb950;
+  --error: #f85149;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  width: 380px;
+  min-height: 420px;
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.header-actions { display: flex; gap: 6px; }
+
+.view { padding: 12px; flex: 1; }
+.hidden { display: none !important; }
+
+.btn {
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  text-align: center;
+}
+.btn:hover { border-color: var(--accent); }
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #14100a;
+  font-weight: 600;
+}
+.btn-primary:hover { background: var(--accent-dark); }
+.btn-sm { padding: 4px 8px; }
+.btn-icon { padding: 4px 8px; font-size: 14px; }
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 4px 0;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.banner {
+  margin: 10px 12px 0;
+  padding: 8px 10px;
+  background: #2a2010;
+  border: 1px solid var(--accent-dark);
+  border-radius: 6px;
+}
+.banner p { margin: 0 0 6px; color: var(--text-dim); }
+
+.search {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.search:focus { outline: none; border-color: var(--accent); }
+
+.account-list { list-style: none; margin: 0; padding: 0; }
+
+.account {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--bg-raised);
+}
+.account-email {
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+.account-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  align-items: center;
+}
+.chip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+.tag { border-radius: 10px; padding: 1px 8px; font-weight: 600; }
+.tag-pending { background: #2a2010; color: var(--accent); }
+.tag-active { background: #12261a; color: var(--success); }
+.tag-expiring { background: #2a2010; color: var(--accent); }
+.tag-expired { background: #2b1516; color: var(--error); }
+
+.account-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.empty { color: var(--text-dim); text-align: center; padding: 24px 8px; }
+
+.payment-title { margin: 8px 0 2px; font-size: 15px; }
+.payment-subtitle {
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.qr {
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+.qr svg { width: 240px; height: 240px; display: block; }
+
+.payment-actions { display: flex; flex-direction: column; gap: 6px; }
+
+.status { min-height: 18px; margin: 10px 0 0; color: var(--text-dim); }
+.status.success { color: var(--success); }
+.status.error { color: var(--error); }
+
+.field { display: block; margin-bottom: 10px; }
+.field span { display: block; margin-bottom: 4px; color: var(--text-dim); }
+.field select, .field input {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  color: var(--text-dim);
+  font-size: 11px;
+}

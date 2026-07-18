@@ -1,0 +1,398 @@
+/**
+ * Popup UI: account list with domain filtering, payment view with QR
+ * and NWC pay button, and the renewal starter. Also used as a
+ * standalone payment window via `popup.html?pay=<hash>` or
+ * `popup.html?renew=<email>`.
+ */
+
+import { renderSVG } from "uqr";
+import { ext } from "../lib/browser.js";
+
+const $ = (id) => document.getElementById(id);
+
+let state = { settings: null, accounts: [], spendHistory: [] };
+let currentPayment = null; // {paymentHash, kind, email}
+let pollTimer = null;
+let reissueAvailable = false;
+
+/**
+ * Send a typed message to the background worker.
+ *
+ * @param {string} type Message type.
+ * @param {object} [payload] Message payload.
+ * @returns {Promise<object>} Handler result.
+ */
+async function send(type, payload = {}) {
+  const response = await ext.runtime.sendMessage({ type, ...payload });
+  if (!response?.ok) throw new Error(response?.error ?? "Unknown error");
+  return response.result;
+}
+
+/** Reload state from the background worker. */
+async function refreshState() {
+  state = await send("state:get");
+}
+
+/* ------------------------------------------------------------------ */
+/* View switching                                                      */
+/* ------------------------------------------------------------------ */
+
+function showView(name) {
+  for (const id of ["viewList", "viewPayment", "viewRenew"]) {
+    $(id).classList.toggle("hidden", id !== name);
+  }
+  if (name !== "viewPayment") stopPolling();
+}
+
+function setStatus(elementId, message, kind = "") {
+  const el = $(elementId);
+  el.textContent = message;
+  el.className = `status ${kind}`.trim();
+}
+
+/* ------------------------------------------------------------------ */
+/* Account list                                                        */
+/* ------------------------------------------------------------------ */
+
+function accountTag(account) {
+  if (account.status === "pending") return ["tag-pending", "awaiting payment"];
+  if (account.status === "expired") return ["tag-expired", "expired"];
+  const remaining = account.expiresAt
+    ? new Date(account.expiresAt).getTime() - Date.now()
+    : null;
+  if (remaining !== null) {
+    const days = Math.floor(remaining / (24 * 60 * 60 * 1000));
+    if (days <= (state.settings?.renewDaysBefore ?? 30)) {
+      return ["tag-expiring", `expires in ${Math.max(days, 0)}d`];
+    }
+    return ["tag-active", `${days}d left`];
+  }
+  return ["tag-active", "active"];
+}
+
+function matchesFilter(account, filter) {
+  if (!filter) return true;
+  const haystack = [
+    account.email,
+    account.sourceDomain ?? "",
+    ...(account.usedOn ?? []).map((use) => use.domain),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(filter.toLowerCase());
+}
+
+function renderAccounts() {
+  const filter = $("searchInput").value.trim();
+  const list = $("accountList");
+  list.innerHTML = "";
+  const accounts = [...state.accounts]
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    .filter((account) => matchesFilter(account, filter));
+
+  $("emptyState").classList.toggle("hidden", accounts.length > 0);
+
+  for (const account of accounts) {
+    const item = document.createElement("li");
+    item.className = "account";
+
+    const email = document.createElement("div");
+    email.className = "account-email";
+    email.textContent = account.email;
+    item.appendChild(email);
+
+    const meta = document.createElement("div");
+    meta.className = "account-meta";
+    const [tagClass, tagText] = accountTag(account);
+    const tag = document.createElement("span");
+    tag.className = `tag ${tagClass}`;
+    tag.textContent = tagText;
+    meta.appendChild(tag);
+    for (const use of (account.usedOn ?? []).slice(-3)) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = use.domain;
+      meta.appendChild(chip);
+    }
+    item.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "account-actions";
+    const addButton = (label, onClick, primary = false) => {
+      const button = document.createElement("button");
+      button.className = primary ? "btn btn-sm btn-primary" : "btn btn-sm";
+      button.textContent = label;
+      button.addEventListener("click", onClick);
+      actions.appendChild(button);
+      return button;
+    };
+
+    if (account.status === "pending") {
+      addButton("Pay invoice", () => openPaymentView(account.paymentHash, "signup"), true);
+    } else {
+      addButton("Inbox", () => {
+        send("inbox:open", { email: account.email }).then(() => window.close());
+      }, true);
+    }
+    addButton("Copy email", async (event) => {
+      await navigator.clipboard.writeText(account.email);
+      event.target.textContent = "Copied";
+      setTimeout(() => (event.target.textContent = "Copy email"), 1200);
+    });
+    addButton("Copy token", async (event) => {
+      await navigator.clipboard.writeText(account.token);
+      event.target.textContent = "Copied";
+      setTimeout(() => (event.target.textContent = "Copy token"), 1200);
+    });
+    if (account.status !== "pending") {
+      if (account.renewal) {
+        addButton("Pay renewal", () =>
+          openPaymentView(account.renewal.paymentHash, "renewal"),
+        );
+      } else {
+        addButton("Renew", () => openRenewView(account.email));
+      }
+    }
+    // Two-step inline confirmation: window.confirm is unreliable in
+    // Firefox extension popups.
+    const forgetBtn = addButton("Forget", async () => {
+      if (forgetBtn.dataset.armed !== "true") {
+        forgetBtn.dataset.armed = "true";
+        forgetBtn.textContent = "Really forget?";
+        setTimeout(() => {
+          forgetBtn.dataset.armed = "false";
+          forgetBtn.textContent = "Forget";
+        }, 3000);
+        return;
+      }
+      await send("accounts:delete", { email: account.email });
+      await refreshState();
+      renderAccounts();
+    });
+
+    item.appendChild(actions);
+    list.appendChild(item);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Payment view                                                        */
+/* ------------------------------------------------------------------ */
+
+function findPayment(paymentHash) {
+  for (const account of state.accounts) {
+    if (account.paymentHash === paymentHash && account.status === "pending") {
+      return {
+        kind: "signup",
+        email: account.email,
+        request: account.paymentRequest,
+        sats: account.priceSats,
+        provider: account.provider,
+      };
+    }
+    if (account.renewal?.paymentHash === paymentHash) {
+      return {
+        kind: "renewal",
+        email: account.email,
+        request: account.renewal.paymentRequest,
+        sats: account.renewal.priceSats,
+        provider: account.renewal.provider,
+      };
+    }
+  }
+  return null;
+}
+
+function openPaymentView(paymentHash, kind) {
+  const payment = findPayment(paymentHash);
+  if (!payment) {
+    showView("viewList");
+    renderAccounts();
+    return;
+  }
+  currentPayment = { paymentHash, kind: kind ?? payment.kind, email: payment.email };
+
+  $("paymentTitle").textContent =
+    payment.kind === "renewal"
+      ? `Renew for ${payment.sats} sats`
+      : `Pay ${payment.sats} sats to activate`;
+  $("paymentSubtitle").textContent = payment.email;
+
+  const invoice = payment.request ?? "";
+  $("qrContainer").innerHTML = renderSVG(invoice.toUpperCase(), { ecc: "L" });
+  $("walletLink").href = `lightning:${invoice}`;
+  $("copyInvoiceBtn").onclick = async () => {
+    await navigator.clipboard.writeText(invoice);
+    setStatus("paymentStatus", "Invoice copied to clipboard", "success");
+  };
+  $("payNwcBtn").classList.toggle("hidden", !state.settings?.nwcUri);
+  $("payNwcBtn").onclick = async () => {
+    $("payNwcBtn").disabled = true;
+    setStatus("paymentStatus", "Paying with connected wallet...");
+    try {
+      await send("payments:payNwc", { paymentHash: currentPayment.paymentHash });
+      setStatus("paymentStatus", "Payment sent, waiting for confirmation...", "success");
+    } catch (error) {
+      setStatus("paymentStatus", error.message, "error");
+      $("payNwcBtn").disabled = false;
+    }
+  };
+  $("reissueBtn").classList.toggle("hidden", !reissueAvailable);
+  $("reissueBtn").onclick = async () => {
+    setStatus("paymentStatus", "Requesting a new invoice...");
+    try {
+      await send("payments:reissue", {
+        paymentHash: currentPayment.paymentHash,
+        excludeProvider: payment.provider,
+      });
+      await refreshState();
+      const account = state.accounts.find((item) => item.email === payment.email);
+      const newHash =
+        payment.kind === "renewal"
+          ? account?.renewal?.paymentHash
+          : account?.paymentHash;
+      if (newHash) openPaymentView(newHash, payment.kind);
+    } catch (error) {
+      setStatus("paymentStatus", error.message, "error");
+    }
+  };
+
+  setStatus("paymentStatus", "Waiting for payment...");
+  showView("viewPayment");
+  startPolling();
+}
+
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(async () => {
+    if (!currentPayment) return;
+    try {
+      await send("payments:check", {
+        paymentHash: currentPayment.paymentHash,
+        kind: currentPayment.kind,
+      });
+      await refreshState();
+      const stillPending = findPayment(currentPayment.paymentHash);
+      if (!stillPending) {
+        setStatus(
+          "paymentStatus",
+          currentPayment.kind === "renewal"
+            ? "Renewal confirmed."
+            : "Payment confirmed. Your inbox is ready.",
+          "success",
+        );
+        stopPolling();
+        setTimeout(() => {
+          showView("viewList");
+          renderAccounts();
+        }, 1500);
+      }
+    } catch {
+      // Transient errors: keep polling.
+    }
+  }, 3000);
+}
+
+function stopPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Renewal view                                                        */
+/* ------------------------------------------------------------------ */
+
+function openRenewView(email) {
+  $("renewEmail").textContent = email;
+  setStatus("renewStatus", "");
+  $("renewStartBtn").disabled = false;
+  $("renewStartBtn").onclick = async () => {
+    $("renewStartBtn").disabled = true;
+    setStatus("renewStatus", "Creating renewal invoice...");
+    try {
+      const years = Number($("renewYears").value);
+      const { account } = await send("renewal:create", { email, years });
+      await refreshState();
+      openPaymentView(account.renewal.paymentHash, "renewal");
+    } catch (error) {
+      setStatus("renewStatus", error.message, "error");
+      $("renewStartBtn").disabled = false;
+    }
+  };
+  showView("viewRenew");
+}
+
+/* ------------------------------------------------------------------ */
+/* Header actions and boot                                             */
+/* ------------------------------------------------------------------ */
+
+async function checkPermissions() {
+  try {
+    const granted = await ext.permissions.contains({
+      origins: ["<all_urls>"],
+    });
+    $("permissionBanner").classList.toggle("hidden", granted);
+  } catch {
+    $("permissionBanner").classList.add("hidden");
+  }
+}
+
+async function boot() {
+  await refreshState();
+  renderAccounts();
+  checkPermissions();
+
+  send("health:get")
+    .then((health) => {
+      reissueAvailable = Boolean(health?.reissue_available);
+    })
+    .catch(() => {});
+
+  $("searchInput").addEventListener("input", renderAccounts);
+  $("settingsBtn").addEventListener("click", () => ext.runtime.openOptionsPage());
+  $("backBtn").addEventListener("click", () => {
+    showView("viewList");
+    renderAccounts();
+  });
+  $("renewBackBtn").addEventListener("click", () => {
+    showView("viewList");
+    renderAccounts();
+  });
+  $("grantPermissionsBtn").addEventListener("click", async () => {
+    await ext.permissions.request({ origins: ["<all_urls>"] });
+    checkPermissions();
+  });
+  $("newAccountBtn").addEventListener("click", async () => {
+    $("newAccountBtn").disabled = true;
+    setStatus("listStatus", "Creating a new address...");
+    try {
+      const { account, autoPay } = await send("accounts:create", {});
+      await refreshState();
+      if (autoPay.ok) {
+        setStatus("listStatus", "Address created and paid with your wallet.", "success");
+        renderAccounts();
+      } else {
+        setStatus("listStatus", "");
+        openPaymentView(account.paymentHash, "signup");
+      }
+    } catch (error) {
+      setStatus("listStatus", `Could not create an address: ${error.message}`, "error");
+    } finally {
+      $("newAccountBtn").disabled = false;
+    }
+  });
+
+  // Standalone payment window deep links.
+  const params = new URLSearchParams(window.location.search);
+  const payHash = params.get("pay");
+  const renewEmail = params.get("renew");
+  if (payHash) {
+    openPaymentView(payHash);
+  } else if (renewEmail) {
+    openRenewView(renewEmail);
+  }
+}
+
+boot().catch((error) => {
+  document.body.textContent = `Failed to load: ${error.message}`;
+});

@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "LNemail",
+  "version": "0.1.0",
+  "description": "Anonymous Lightning-paid email: create fresh LNemail addresses while signing up, autofill them, open inboxes in one click, and auto-pay renewals with Nostr Wallet Connect.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "extension@lnemail.net",
+      "strict_min_version": "121.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["inbox-bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["autofill.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -67,3 +67,9 @@ dev-data/
 
 # frontend (Tailwind build tooling); the compiled CSS is committed
 frontend/node_modules/
+
+# browser extension: source lives under extension/src/lib and must not be
+# caught by the generic Python "lib/" and "dist/" ignores above
+!extension/src/lib/
+extension/node_modules/
+extension/dist/
