@@ -108,7 +108,16 @@ function renderAccounts() {
     tag.className = `tag ${tagClass}`;
     tag.textContent = tagText;
     meta.appendChild(tag);
-    for (const use of (account.usedOn ?? []).slice(-3)) {
+    if (account.status === "active" && Number.isInteger(account.unreadCount)) {
+      const unread = document.createElement("span");
+      unread.className = account.unreadCount > 0 ? "tag tag-unread" : "chip";
+      unread.textContent =
+        account.unreadCount === 1 ? "1 unread" : `${account.unreadCount} unread`;
+      meta.appendChild(unread);
+    }
+    // Every site this address was used on (newest last), so accounts
+    // can be told apart and reused on the right services.
+    for (const use of [...(account.usedOn ?? [])].sort((a, b) => a.at - b.at)) {
       const chip = document.createElement("span");
       chip.className = "chip";
       chip.textContent = use.domain;
@@ -262,6 +271,23 @@ function openPaymentView(paymentHash, kind) {
   startPolling();
 }
 
+function onPaymentSettled() {
+  if (!currentPayment) return;
+  setStatus(
+    "paymentStatus",
+    currentPayment.kind === "renewal"
+      ? "Renewal confirmed."
+      : "Payment confirmed. Your inbox is ready.",
+    "success",
+  );
+  currentPayment = null;
+  stopPolling();
+  setTimeout(() => {
+    showView("viewList");
+    renderAccounts();
+  }, 1500);
+}
+
 function startPolling() {
   stopPolling();
   pollTimer = setInterval(async () => {
@@ -272,20 +298,8 @@ function startPolling() {
         kind: currentPayment.kind,
       });
       await refreshState();
-      const stillPending = findPayment(currentPayment.paymentHash);
-      if (!stillPending) {
-        setStatus(
-          "paymentStatus",
-          currentPayment.kind === "renewal"
-            ? "Renewal confirmed."
-            : "Payment confirmed. Your inbox is ready.",
-          "success",
-        );
-        stopPolling();
-        setTimeout(() => {
-          showView("viewList");
-          renderAccounts();
-        }, 1500);
+      if (!findPayment(currentPayment.paymentHash)) {
+        onPaymentSettled();
       }
     } catch {
       // Transient errors: keep polling.
@@ -342,6 +356,28 @@ async function boot() {
   renderAccounts();
   checkPermissions();
 
+  // Live refresh: the background writes every state change (payment
+  // settled, renewal done, unread counts, autofill usage) to
+  // storage.local, so re-render whenever accounts change instead of
+  // relying on the user to reopen the popup.
+  ext.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local" || !changes.accounts) return;
+    refreshState()
+      .then(() => {
+        if (currentPayment && !findPayment(currentPayment.paymentHash)) {
+          onPaymentSettled();
+        } else if (!$("viewList").classList.contains("hidden")) {
+          renderAccounts();
+        }
+      })
+      .catch(() => {});
+  });
+
+  // Unread counts: refresh on open and periodically while open. The
+  // results land in storage, so rendering happens via the listener.
+  send("accounts:unread").catch(() => {});
+  setInterval(() => send("accounts:unread").catch(() => {}), 30_000);
+
   send("health:get")
     .then((health) => {
       reissueAvailable = Boolean(health?.reissue_available);
@@ -366,14 +402,12 @@ async function boot() {
     $("newAccountBtn").disabled = true;
     setStatus("listStatus", "Creating a new address...");
     try {
-      const { account, autoPay } = await send("accounts:create", {});
+      const { account, willAutoPay } = await send("accounts:create", {});
       await refreshState();
-      if (autoPay.ok) {
-        setStatus("listStatus", "Address created and paid with your wallet.", "success");
-        renderAccounts();
-      } else {
-        setStatus("listStatus", "");
-        openPaymentView(account.paymentHash, "signup");
+      setStatus("listStatus", "");
+      openPaymentView(account.paymentHash, "signup");
+      if (willAutoPay) {
+        setStatus("paymentStatus", "Paying with your connected wallet...");
       }
     } catch (error) {
       setStatus("listStatus", `Could not create an address: ${error.message}`, "error");

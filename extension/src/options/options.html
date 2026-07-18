@@ -42,18 +42,14 @@
 
       <label class="field checkbox">
         <input id="autoPayEnabled" type="checkbox">
-        <span>Automatically pay LNemail invoices within the allowance</span>
+        <span>Automatically pay LNemail invoices with this wallet</span>
       </label>
-      <div class="grid">
-        <label class="field">
-          <span>Max sats per payment</span>
-          <input id="maxSatsPerPayment" type="number" min="0" step="1">
-        </label>
-        <label class="field">
-          <span>30-day budget (sats)</span>
-          <input id="monthlyBudgetSats" type="number" min="0" step="1">
-        </label>
-      </div>
+      <p class="dim">
+        Set the spending budget in the wallet when creating the
+        connection, not here: a wallet-side limit stays effective even
+        if this browser profile is compromised. The extension only
+        refuses invoices that do not match the price quoted by LNemail.
+      </p>
       <p id="spendSummary" class="dim"></p>
     </section>
 

@@ -6,12 +6,12 @@
  * pure makes it unit-testable without a browser.
  */
 
+// Spending limits are intentionally absent: the NWC wallet issuer sets
+// the real budget on the wallet side (see lib/allowance.js).
 export const DEFAULT_SETTINGS = {
   apiBase: "https://lnemail.net",
   nwcUri: "",
   autoPayEnabled: false,
-  maxSatsPerPayment: 1000,
-  monthlyBudgetSats: 10000,
   autoRenewEnabled: true,
   renewDaysBefore: 30,
   autofillEnabled: true,

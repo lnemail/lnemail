@@ -2,9 +2,13 @@
  * Autofill content script.
  *
  * Adds a small LNemail button to email fields. Clicking it opens a menu
- * (in a shadow root, so page CSS cannot interfere) offering addresses
- * already used on this site plus "New LNemail address". Password
- * managers keep their usual role of saving the site credentials.
+ * (in a shadow root, so page CSS cannot interfere) listing every saved
+ * account, with the ones already used on this site first, plus "New
+ * LNemail address". The new-address flow fills the field immediately
+ * (before the invoice settles) so the signup is never blocked on the
+ * payment; the invoice is then auto-paid via NWC or shown in a payment
+ * window. Password managers keep their usual role of saving the site
+ * credentials.
  */
 
 const ext = globalThis.browser ?? globalThis.chrome;
@@ -16,6 +20,16 @@ let shadowHost = null;
 let shadowRoot = null;
 let anchorInput = null;
 let hideTimer = null;
+
+/**
+ * Log an error with a stable prefix so users can report issues.
+ *
+ * @param {string} where Failing operation.
+ * @param {unknown} error Error value.
+ */
+function logError(where, error) {
+  console.error(`[LNemail] ${where}:`, error);
+}
 
 /**
  * Send a typed message to the background worker.
@@ -91,18 +105,20 @@ function ensureShadow() {
       height: ${BUTTON_SIZE}px;
       border-radius: 4px;
       border: none;
-      padding: 0;
+      padding: 2px;
       cursor: pointer;
-      background: #f7931a;
-      color: #14100a;
-      font: bold 12px/1 system-ui, sans-serif;
+      background: #171a21;
       display: none;
       align-items: center;
       justify-content: center;
     }
+    .btn img { width: 100%; height: 100%; display: block; }
     .menu {
       position: absolute;
-      min-width: 240px;
+      min-width: 260px;
+      max-width: 320px;
+      max-height: 320px;
+      overflow-y: auto;
       background: #171a21;
       color: #e6e8ec;
       border: 1px solid #2a2f3a;
@@ -110,7 +126,6 @@ function ensureShadow() {
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
       font: 13px system-ui, sans-serif;
       display: none;
-      overflow: hidden;
     }
     .menu-item {
       display: block;
@@ -131,6 +146,7 @@ function ensureShadow() {
       word-break: break-all;
     }
     .menu-item .dim { color: #9aa1ad; font-size: 11px; }
+    .menu-item .err { color: #f85149; font-size: 11px; }
     .menu-header {
       padding: 8px 12px 4px;
       color: #9aa1ad;
@@ -144,14 +160,23 @@ function ensureShadow() {
   const button = document.createElement("button");
   button.className = "btn";
   button.type = "button";
-  button.textContent = "\u26A1";
   button.title = "Fill with an LNemail address";
+  const logo = document.createElement("img");
+  logo.src = ext.runtime.getURL("icons/icon32.png");
+  logo.alt = "LNemail";
+  button.appendChild(logo);
   button.addEventListener("mousedown", (event) => event.preventDefault());
-  button.addEventListener("click", onButtonClick);
+  button.addEventListener("click", () => {
+    onButtonClick().catch((error) => logError("menu", error));
+  });
   shadowRoot.appendChild(button);
 
   const menu = document.createElement("div");
   menu.className = "menu";
+  // Keep focus on the input while interacting with the menu: without
+  // this, mousedown on a menu item blurs the input, the focus handler
+  // hides the menu before mouseup, and the click never fires.
+  menu.addEventListener("mousedown", (event) => event.preventDefault());
   shadowRoot.appendChild(menu);
 
   document.documentElement.appendChild(shadowHost);
@@ -198,6 +223,36 @@ function hideMenu() {
   getMenu().style.display = "none";
 }
 
+/**
+ * Append a menu entry.
+ *
+ * @param {HTMLElement} menu Menu container.
+ * @param {{title: string, subtitle: string, onClick: Function}} spec
+ * @returns {HTMLButtonElement} The created item.
+ */
+function addMenuItem(menu, { title, subtitle, onClick }) {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.className = "menu-item";
+  const titleEl = document.createElement("span");
+  titleEl.className = "mono";
+  titleEl.textContent = title;
+  const subtitleEl = document.createElement("span");
+  subtitleEl.className = "dim";
+  subtitleEl.textContent = subtitle;
+  item.append(titleEl, subtitleEl);
+  item.addEventListener("click", () => onClick(item, subtitleEl));
+  menu.appendChild(item);
+  return item;
+}
+
+function addMenuHeader(menu, text) {
+  const header = document.createElement("div");
+  header.className = "menu-header";
+  header.textContent = text;
+  menu.appendChild(header);
+}
+
 async function onButtonClick() {
   if (!anchorInput) return;
   const menu = getMenu();
@@ -205,70 +260,92 @@ async function onButtonClick() {
   menu.style.top = `${menuTop}px`;
   menu.style.left = `${menuLeft}px`;
   menu.innerHTML = "";
+  menu.style.display = "block";
 
-  const header = document.createElement("div");
-  header.className = "menu-header";
-  header.textContent = "LNemail";
-  menu.appendChild(header);
+  const fillWith = (email) => {
+    fillInput(anchorInput, email);
+    send("autofill:used", { email, domain: location.hostname }).catch((error) =>
+      logError("autofill:used", error),
+    );
+    hideMenu();
+  };
 
-  let existing = [];
+  let accounts = [];
+  let loadErrorMessage = null;
   try {
     const result = await send("autofill:accounts", {
       domain: location.hostname,
     });
-    existing = result.accounts;
-  } catch {
-    // Background unavailable; still offer creating a new address.
+    accounts = result.accounts;
+  } catch (error) {
+    logError("autofill:accounts", error);
+    loadErrorMessage = error.message;
   }
 
-  for (const account of existing) {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "menu-item";
-    item.innerHTML =
-      `<span class="mono"></span>` +
-      `<span class="dim">used here before` +
-      `${account.status === "pending" ? " (awaiting payment)" : ""}</span>`;
-    item.querySelector(".mono").textContent = account.email;
-    item.addEventListener("click", () => {
-      fillInput(anchorInput, account.email);
-      send("autofill:used", {
-        email: account.email,
-        domain: location.hostname,
-      }).catch(() => {});
-      hideMenu();
-    });
-    menu.appendChild(item);
-  }
+  const usedHere = accounts.filter((account) => account.usedHere);
+  const others = accounts.filter((account) => !account.usedHere);
 
-  const createItem = document.createElement("button");
-  createItem.type = "button";
-  createItem.className = "menu-item";
-  createItem.innerHTML =
-    `<span class="mono">New LNemail address</span>` +
-    `<span class="dim">fresh Lightning-paid inbox for this site</span>`;
-  createItem.addEventListener("click", async () => {
-    createItem.disabled = true;
-    createItem.querySelector(".dim").textContent = "Creating...";
-    try {
-      const result = await send("autofill:new", {
-        domain: location.hostname,
-        url: location.href,
+  if (usedHere.length > 0) {
+    addMenuHeader(menu, "Used on this site");
+    for (const account of usedHere) {
+      addMenuItem(menu, {
+        title: account.email,
+        subtitle:
+          account.status === "pending" ? "awaiting payment" : "used here before",
+        onClick: () => fillWith(account.email),
       });
-      fillInput(anchorInput, result.email);
-      hideMenu();
-    } catch (error) {
-      createItem.querySelector(".dim").textContent = `Failed: ${error.message}`;
-      createItem.disabled = false;
     }
-  });
-  menu.appendChild(createItem);
+  }
+  if (others.length > 0) {
+    addMenuHeader(menu, usedHere.length > 0 ? "Other accounts" : "Your accounts");
+    for (const account of others) {
+      const origin = account.lastDomain ? `used on ${account.lastDomain}` : "unused";
+      addMenuItem(menu, {
+        title: account.email,
+        subtitle:
+          account.status === "pending" ? `awaiting payment, ${origin}` : origin,
+        onClick: () => fillWith(account.email),
+      });
+    }
+  }
 
-  menu.style.display = "block";
+  addMenuHeader(menu, "LNemail");
+  addMenuItem(menu, {
+    title: "New LNemail address",
+    subtitle: "fresh Lightning-paid inbox, filled instantly",
+    onClick: async (item, subtitleEl) => {
+      item.disabled = true;
+      subtitleEl.textContent = "Creating...";
+      try {
+        const result = await send("autofill:new", {
+          domain: location.hostname,
+          url: location.href,
+        });
+        fillInput(anchorInput, result.email);
+        hideMenu();
+      } catch (error) {
+        logError("autofill:new", error);
+        subtitleEl.className = "err";
+        subtitleEl.textContent = `Failed: ${error.message}`;
+        item.disabled = false;
+      }
+    },
+  });
+
+  if (loadErrorMessage) {
+    const errorEl = document.createElement("div");
+    errorEl.className = "menu-header";
+    errorEl.style.color = "#f85149";
+    errorEl.textContent = `Could not load saved accounts: ${loadErrorMessage}`;
+    menu.appendChild(errorEl);
+  }
 }
 
 function onFocusIn(event) {
   const target = event.target;
+  // Focus moving into our own widget (retargeted to the host) must not
+  // dismiss it.
+  if (target === shadowHost) return;
   clearTimeout(hideTimer);
   if (isEmailInput(target)) {
     showButton(target);
@@ -293,8 +370,9 @@ async function main() {
     const apiBase = stored.settings?.apiBase ?? "https://lnemail.net";
     // Never decorate the LNemail site itself.
     if (location.origin === new URL(apiBase).origin) return;
-  } catch {
+  } catch (error) {
     // Default to enabled if settings are unreadable.
+    logError("settings read", error);
   }
 
   // Context-menu fill requests work even with the button disabled.
@@ -309,7 +387,7 @@ async function main() {
       send("autofill:used", {
         email: message.email,
         domain: location.hostname,
-      }).catch(() => {});
+      }).catch((error) => logError("autofill:used", error));
     }
     sendResponse({ ok: true });
     return false;
@@ -320,4 +398,4 @@ async function main() {
   document.addEventListener("focusout", onFocusOut);
 }
 
-main();
+main().catch((error) => logError("init", error));

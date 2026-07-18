@@ -53,6 +53,7 @@ def extension_dist() -> Path:
                 "extension/dist/chrome is missing and bun is not installed; "
                 "run `bun install && bun run build` in extension/ first"
             )
+        assert bun is not None
         subprocess.run([bun, "install"], cwd=EXTENSION_DIR, check=True)
         subprocess.run([bun, "run", "build"], cwd=EXTENSION_DIR, check=True)
     return EXTENSION_DIST
@@ -116,13 +117,14 @@ def background(extension_context: BrowserContext, base_url: str) -> Any:
 
 
 def extension_id(background: Any) -> str:
-    return background.url.split("/")[2]
+    return str(background.url).split("/")[2]
 
 
 def stored_accounts(background: Any) -> list[dict[str, Any]]:
-    return background.evaluate(
+    accounts = background.evaluate(
         "async () => (await chrome.storage.local.get('accounts')).accounts ?? []"
     )
+    return list(accounts)
 
 
 def wait_for(
@@ -205,6 +207,19 @@ def test_popup_signup_pay_and_open_inbox(
     expect(inbox.locator("#mainApp")).to_be_visible(timeout=20_000)
     expect(inbox.locator("#tokenModal.active")).not_to_be_visible()
 
+    # Reopening the popup triggers an unread-count refresh for active
+    # accounts, persisted on the account record.
+    popup = extension_context.new_page()
+    popup.goto(f"chrome-extension://{extension_id(background)}/popup.html")
+    wait_for(
+        lambda: any(
+            a.get("unreadCount") is not None for a in stored_accounts(background)
+        )
+    )
+    expect(popup.locator(".account-meta", has_text="unread").first).to_be_visible(
+        timeout=10_000
+    )
+
 
 def test_autofill_creates_fills_and_activates_account(
     page: Page,
@@ -233,8 +248,8 @@ def test_autofill_creates_fills_and_activates_account(
     account = next(a for a in accounts if a["email"] == filled_email)
     assert account["status"] == "pending"
     assert account["sourceDomain"] == "127.0.0.1"
-    assert any(use["domain"] == "127.0.0.1" for use in account["usedOn"]), (
-        json.dumps(account["usedOn"])
+    assert any(use["domain"] == "127.0.0.1" for use in account["usedOn"]), json.dumps(
+        account["usedOn"]
     )
 
     # Without NWC auto-pay a payment window opened; pay manually instead

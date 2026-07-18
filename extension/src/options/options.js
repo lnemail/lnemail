@@ -25,8 +25,6 @@ function fillForm(settings) {
   $("autofillEnabled").checked = settings.autofillEnabled;
   $("nwcUri").value = settings.nwcUri;
   $("autoPayEnabled").checked = settings.autoPayEnabled;
-  $("maxSatsPerPayment").value = settings.maxSatsPerPayment;
-  $("monthlyBudgetSats").value = settings.monthlyBudgetSats;
   $("autoRenewEnabled").checked = settings.autoRenewEnabled;
   $("renewDaysBefore").value = settings.renewDaysBefore;
 }
@@ -37,8 +35,6 @@ function readForm() {
     autofillEnabled: $("autofillEnabled").checked,
     nwcUri: $("nwcUri").value.trim(),
     autoPayEnabled: $("autoPayEnabled").checked,
-    maxSatsPerPayment: Math.max(0, Number($("maxSatsPerPayment").value) || 0),
-    monthlyBudgetSats: Math.max(0, Number($("monthlyBudgetSats").value) || 0),
     autoRenewEnabled: $("autoRenewEnabled").checked,
     renewDaysBefore: Math.min(
       365,

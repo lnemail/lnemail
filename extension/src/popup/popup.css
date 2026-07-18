@@ -130,6 +130,7 @@ body {
 .tag-active { background: #12261a; color: var(--success); }
 .tag-expiring { background: #2a2010; color: var(--accent); }
 .tag-expired { background: #2b1516; color: var(--error); }
+.tag-unread { background: #10233a; color: #58a6ff; }
 
 .account-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 

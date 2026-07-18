@@ -1,8 +1,14 @@
 /**
- * Spending allowance accounting for automatic NWC payments.
+ * Automatic payment gating and spend bookkeeping.
  *
- * Pure functions over a spend-history array so the rules are easy to
- * test. History entries: `{ at: epochMs, sats: number, kind: string }`.
+ * Spending limits deliberately live in the NWC wallet (the connection
+ * issuer sets a budget there), not in the extension: a compromised
+ * browser profile could rewrite any extension-side limit, so only the
+ * wallet-side budget is real. The extension only checks that auto-pay
+ * is enabled, a wallet is configured, and the invoice amount matches
+ * what the API quoted. The spend history is informational.
+ *
+ * History entries: `{ at: epochMs, sats: number, kind: string }`.
  */
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -23,16 +29,14 @@ export function monthlySpent(history, now) {
 }
 
 /**
- * Decide whether an automatic payment of `amountSats` is allowed.
+ * Decide whether an automatic payment of `amountSats` may be attempted.
  *
- * @param {{autoPayEnabled: boolean, nwcUri: string,
- *          maxSatsPerPayment: number, monthlyBudgetSats: number}} settings
- * @param {Array<{at: number, sats: number}>} history Spend history.
+ * @param {{autoPayEnabled: boolean, nwcUri: string}} settings Settings.
  * @param {number | null} amountSats Invoice amount in sats.
- * @param {number} now Epoch milliseconds.
+ * @param {number | null} [expectedSats] Price quoted by the API.
  * @returns {{allowed: boolean, reason: string | null}}
  */
-export function evaluateSpend(settings, history, amountSats, now) {
+export function canAutoPay(settings, amountSats, expectedSats = null) {
   if (!settings?.autoPayEnabled) {
     return { allowed: false, reason: "Automatic payments are disabled" };
   }
@@ -45,19 +49,12 @@ export function evaluateSpend(settings, history, amountSats, now) {
   if (!Number.isFinite(amountSats) || amountSats <= 0) {
     return { allowed: false, reason: "Invalid invoice amount" };
   }
-  const maxPerPayment = settings.maxSatsPerPayment ?? 0;
-  if (maxPerPayment <= 0 || amountSats > maxPerPayment) {
+  if (expectedSats && amountSats > expectedSats) {
     return {
       allowed: false,
-      reason: `Amount ${amountSats} sats exceeds the per-payment limit of ${maxPerPayment} sats`,
-    };
-  }
-  const budget = settings.monthlyBudgetSats ?? 0;
-  const spent = monthlySpent(history, now);
-  if (budget <= 0 || spent + amountSats > budget) {
-    return {
-      allowed: false,
-      reason: `Payment would exceed the 30-day budget (${spent}/${budget} sats used)`,
+      reason:
+        `Invoice amount ${amountSats} sats exceeds the quoted price ` +
+        `${expectedSats} sats`,
     };
   }
   return { allowed: true, reason: null };

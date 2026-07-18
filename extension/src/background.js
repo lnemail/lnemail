@@ -2,19 +2,24 @@
  * Background service worker (Chrome) / event page (Firefox).
  *
  * Owns all state mutations and network access: LNemail API calls, NWC
- * payments, payment polling, renewal checks, notifications, and the
- * one-shot inbox token handoff used to open an inbox pre-authenticated.
+ * payments, payment polling, renewal checks, unread counts,
+ * notifications, and the one-shot inbox token handoff used to open an
+ * inbox pre-authenticated.
+ *
+ * Design rule: message handlers respond as fast as possible (the
+ * autofill flow fills the email field with the API response right
+ * away); slower side effects such as NWC payment attempts or opening a
+ * payment window run after the response, fire-and-forget.
  */
 
 import { ext } from "./lib/browser.js";
 import { LnemailApi } from "./lib/api.js";
-import { evaluateSpend, recordSpend } from "./lib/allowance.js";
+import { canAutoPay, recordSpend } from "./lib/allowance.js";
 import { invoiceAmountSats } from "./lib/bolt11.js";
 import { payInvoice, getBalance, parseNwcUri } from "./lib/nwc.js";
 import {
   ACCOUNT_STATUS,
   accountFromInvoice,
-  accountsForDomain,
   accountsNeedingRenewal,
   findByEmail,
   findByPaymentHash,
@@ -32,13 +37,38 @@ const RENEWAL_ALARM = "lnemail-renewal-check";
 const RENEWAL_NOTIFY_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 const CONTEXT_MENU_ID = "lnemail-fill-new-address";
 
+// Virtual expiration-warning emails injected by the API into inbox
+// listings; excluded from unread counts.
+const EXPIRY_WARNING_PREFIX = "lnemail-expiry-warning";
+
+/**
+ * Log an error with a stable prefix (visible in the extension's
+ * background console: chrome://extensions or about:debugging).
+ *
+ * @param {string} where Failing operation.
+ * @param {unknown} error Error value.
+ */
+function logError(where, error) {
+  console.error(`[LNemail] ${where}:`, error);
+}
+
 /** @param {object} settings Current settings. @returns {LnemailApi} */
 function apiFor(settings, apiBase = null) {
   return new LnemailApi(apiBase ?? settings.apiBase);
 }
 
 /**
- * Extract a registrable-ish domain label for account metadata.
+ * Whether an auto-pay attempt is worth starting at all.
+ *
+ * @param {object} settings Current settings.
+ * @returns {boolean} True when a wallet is configured and enabled.
+ */
+function willAutoPay(settings) {
+  return Boolean(settings.autoPayEnabled && settings.nwcUri);
+}
+
+/**
+ * Extract a hostname for account metadata.
  *
  * @param {string} url Page URL.
  * @returns {string | null} Hostname or null.
@@ -82,22 +112,28 @@ async function updateBadge() {
  * @param {string} title Notification title.
  * @param {string} message Notification body.
  */
-function notify(id, title, message) {
-  return ext.notifications.create(id, {
-    type: "basic",
-    iconUrl: "icons/icon128.png",
-    title,
-    message,
-  });
+async function notify(id, title, message) {
+  try {
+    await ext.notifications.create(id, {
+      type: "basic",
+      iconUrl: "icons/icon128.png",
+      title,
+      message,
+    });
+  } catch (error) {
+    logError("notify", error);
+  }
 }
 
 ext.notifications?.onClicked.addListener((notificationId) => {
   const [action, ...rest] = notificationId.split(":");
   const value = rest.join(":");
   if (action === "pay") {
-    openPaymentWindow(value);
+    openPaymentWindow(value).catch((error) => logError("openPaymentWindow", error));
   } else if (action === "renew") {
-    openPaymentWindow(null, value);
+    openPaymentWindow(null, value).catch((error) =>
+      logError("openPaymentWindow", error),
+    );
   }
   ext.notifications.clear(notificationId);
 });
@@ -125,8 +161,9 @@ function openPaymentWindow(paymentHash, renewEmail = null) {
 /* ------------------------------------------------------------------ */
 
 /**
- * Try to pay an invoice with the configured NWC wallet within the
- * allowance, recording the spend on success.
+ * Try to pay an invoice with the configured NWC wallet, recording the
+ * spend on success. The real budget lives in the wallet (issuer-side);
+ * the only local check is that the invoice matches the quoted price.
  *
  * @param {string} paymentRequest BOLT11 invoice.
  * @param {number} expectedSats Price the API quoted.
@@ -134,33 +171,27 @@ function openPaymentWindow(paymentHash, renewEmail = null) {
  * @returns {Promise<{ok: boolean, reason: string | null}>} Outcome.
  */
 async function tryAutoPay(paymentRequest, expectedSats, kind) {
-  const { settings, spendHistory } = await loadState(storage);
-  const now = Date.now();
+  const { settings } = await loadState(storage);
   let amountSats;
   try {
     amountSats = invoiceAmountSats(paymentRequest);
   } catch (error) {
     return { ok: false, reason: error.message };
   }
-  if (amountSats !== null && expectedSats && amountSats > expectedSats) {
-    return {
-      ok: false,
-      reason: `Invoice amount ${amountSats} sats exceeds quoted price ${expectedSats} sats`,
-    };
-  }
-  const verdict = evaluateSpend(settings, spendHistory, amountSats, now);
+  const verdict = canAutoPay(settings, amountSats, expectedSats);
   if (!verdict.allowed) {
     return { ok: false, reason: verdict.reason };
   }
   try {
     await payInvoice(settings.nwcUri, paymentRequest);
   } catch (error) {
+    logError("NWC pay_invoice", error);
     return { ok: false, reason: error.message };
   }
   const state = await loadState(storage);
   await saveState(storage, {
     spendHistory: recordSpend(state.spendHistory, {
-      at: now,
+      at: Date.now(),
       sats: amountSats,
       kind,
     }),
@@ -178,7 +209,7 @@ async function schedulePaymentPolling() {
   if (hasPending) {
     await ext.alarms.create(POLL_ALARM, { periodInMinutes: 1 });
     // Also poll shortly after scheduling for fast feedback.
-    pollPendingPayments().catch(() => {});
+    pollPendingPayments().catch((error) => logError("pollPendingPayments", error));
   } else {
     await ext.alarms.clear(POLL_ALARM);
   }
@@ -273,15 +304,16 @@ async function pollPendingPayments() {
 }
 
 /**
- * Create a fresh account plus invoice, persist it, and try auto-pay.
+ * Create a fresh account plus invoice and persist it. Fast path only:
+ * auto-payment is handled separately so callers can respond to the UI
+ * immediately (the email address is known as soon as the API answers).
  *
  * @param {{sourceDomain?: string | null, sourceUrl?: string | null}} context
- * @returns {Promise<{account: object, autoPay: {ok: boolean, reason: string | null}}>}
+ * @returns {Promise<object>} The new (pending) account record.
  */
 async function createAccount(context = {}) {
   const { settings } = await loadState(storage);
-  const api = apiFor(settings);
-  const invoice = await api.createAccount();
+  const invoice = await apiFor(settings).createAccount();
   const account = accountFromInvoice(
     invoice,
     { apiBase: settings.apiBase, ...context },
@@ -290,18 +322,41 @@ async function createAccount(context = {}) {
   const state = await loadState(storage);
   await saveState(storage, { accounts: upsertAccount(state.accounts, account) });
   await schedulePaymentPolling();
+  return account;
+}
 
-  const autoPay = await tryAutoPay(
-    invoice.payment_request,
-    invoice.price_sats,
+/**
+ * Post-creation follow-up: attempt NWC auto-pay; when that is not
+ * possible (or fails) optionally surface the manual payment window.
+ * Runs after the message response, fire-and-forget.
+ *
+ * @param {object} account Pending account record.
+ * @param {{openWindowOnManual?: boolean}} [options] Behavior flags.
+ * @returns {Promise<void>} Resolves when the follow-up completed.
+ */
+async function followUpNewAccount(account, { openWindowOnManual = false } = {}) {
+  const result = await tryAutoPay(
+    account.paymentRequest,
+    account.priceSats,
     "signup",
   );
-  if (autoPay.ok) {
-    // Settlement typically shows up within seconds; poll a few times so
-    // the UI flips to "active" quickly.
+  if (result.ok) {
     pollSoon(account.paymentHash, "signup");
+    return;
   }
-  return { account, autoPay };
+  const { settings } = await loadState(storage);
+  if (willAutoPay(settings)) {
+    // A configured wallet failed: tell the user instead of silently
+    // leaving the account unpaid.
+    await notify(
+      `pay:${account.paymentHash}`,
+      "LNemail payment needed",
+      `Wallet payment failed (${result.reason}). Click to pay manually.`,
+    );
+  }
+  if (openWindowOnManual) {
+    await openPaymentWindow(account.paymentHash);
+  }
 }
 
 /**
@@ -371,6 +426,49 @@ async function startRenewal(email, years, attemptAutoPay) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Unread counts                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Refresh unread email counts for all active accounts.
+ *
+ * Writes `unreadCount` / `unreadAt` onto each account record, which the
+ * popup picks up through its storage.onChanged subscription. Failures
+ * are per-account and non-fatal.
+ *
+ * @returns {Promise<Record<string, number>>} email -> unread count.
+ */
+async function refreshUnreadCounts() {
+  const { settings, accounts } = await loadState(storage);
+  const counts = {};
+  for (const account of accounts) {
+    if (account.status !== ACCOUNT_STATUS.ACTIVE) continue;
+    try {
+      const api = apiFor(settings, account.apiBase);
+      const listing = await api.listEmails(account.token);
+      const unread = (listing.emails ?? []).filter(
+        (email) => !email.read && !email.id.startsWith(EXPIRY_WARNING_PREFIX),
+      ).length;
+      counts[account.email] = unread;
+      const state = await loadState(storage);
+      const current = findByEmail(state.accounts, account.email);
+      if (current) {
+        await saveState(storage, {
+          accounts: upsertAccount(state.accounts, {
+            ...current,
+            unreadCount: unread,
+            unreadAt: Date.now(),
+          }),
+        });
+      }
+    } catch (error) {
+      logError(`unread count for ${account.email}`, error);
+    }
+  }
+  return counts;
+}
+
+/* ------------------------------------------------------------------ */
 /* Renewal watchdog                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -415,12 +513,12 @@ async function renewalCheck() {
   const needing = accountsNeedingRenewal(refreshed, now, settings.renewDaysBefore);
   for (const account of needing) {
     if (account.renewal) continue; // Renewal already in flight.
-    if (settings.autoPayEnabled && settings.autoRenewEnabled && settings.nwcUri) {
+    if (willAutoPay(settings) && settings.autoRenewEnabled) {
       try {
         const { autoPay } = await startRenewal(account.email, 1, true);
         if (autoPay.ok) continue;
-      } catch {
-        // Fall through to the notification path.
+      } catch (error) {
+        logError(`auto-renewal for ${account.email}`, error);
       }
     }
     const last = account.lastRenewalNotifiedAt ?? 0;
@@ -507,8 +605,16 @@ const handlers = {
     const { settings } = await loadState(storage);
     return apiFor(settings).health();
   },
-  "accounts:create": async ({ sourceDomain, sourceUrl }) =>
-    createAccount({ sourceDomain, sourceUrl }),
+  "accounts:create": async ({ sourceDomain, sourceUrl }) => {
+    const account = await createAccount({ sourceDomain, sourceUrl });
+    const { settings } = await loadState(storage);
+    // Auto-pay (and, on failure, a notification) happens after the
+    // response so the UI shows the address and invoice immediately.
+    followUpNewAccount(account).catch((error) =>
+      logError("followUpNewAccount", error),
+    );
+    return { account, willAutoPay: willAutoPay(settings) };
+  },
   "accounts:delete": async ({ email }) => {
     const state = await loadState(storage);
     await saveState(storage, {
@@ -527,6 +633,7 @@ const handlers = {
     });
     return updated;
   },
+  "accounts:unread": async () => refreshUnreadCounts(),
   "payments:check": async ({ paymentHash, kind }) =>
     kind === "renewal"
       ? checkRenewalPayment(paymentHash)
@@ -539,8 +646,8 @@ const handlers = {
     const price = signup?.priceSats ?? renewal?.renewal?.priceSats;
     if (!request) throw new Error("Payment not found");
     const { settings, spendHistory } = await loadState(storage);
-    // Manual "pay with wallet" only honors the per-payment sanity check,
-    // not the autoPayEnabled toggle: the user explicitly clicked pay.
+    // Manual "pay with wallet" only checks the invoice against the
+    // quoted price, not the autoPayEnabled toggle: the user clicked pay.
     const amount = invoiceAmountSats(request);
     if (amount !== null && price && amount > price) {
       throw new Error("Invoice amount does not match the quoted price");
@@ -611,12 +718,25 @@ const handlers = {
     consumeInboxToken(sender, payload.url),
   "autofill:accounts": async ({ domain }) => {
     const { settings, accounts } = await loadState(storage);
-    return {
-      enabled: settings.autofillEnabled,
-      accounts: accountsForDomain(accounts, domain)
-        .filter((account) => account.status !== ACCOUNT_STATUS.EXPIRED)
-        .map((account) => ({ email: account.email, status: account.status })),
-    };
+    const lastUse = (account) =>
+      Math.max(0, ...(account.usedOn ?? []).map((use) => use.at));
+    const items = accounts
+      .filter((account) => account.status !== ACCOUNT_STATUS.EXPIRED)
+      .map((account) => ({
+        email: account.email,
+        status: account.status,
+        usedHere: (account.usedOn ?? []).some((use) => use.domain === domain),
+        lastDomain:
+          (account.usedOn ?? []).slice(-1)[0]?.domain ??
+          account.sourceDomain ??
+          null,
+        sortKey: lastUse(account) || account.createdAt || 0,
+      }))
+      .sort(
+        (a, b) => Number(b.usedHere) - Number(a.usedHere) || b.sortKey - a.sortKey,
+      )
+      .map(({ sortKey, ...item }) => item);
+    return { enabled: settings.autofillEnabled, accounts: items };
   },
   "autofill:used": async ({ email, domain }) => {
     const state = await loadState(storage);
@@ -631,15 +751,22 @@ const handlers = {
     return { ok: true };
   },
   "autofill:new": async ({ domain, url }) => {
-    const { account, autoPay } = await createAccount({
+    const account = await createAccount({
       sourceDomain: domain ?? null,
       sourceUrl: url ?? null,
     });
-    if (!autoPay.ok) {
-      // Manual payment needed: surface the invoice in a popup window.
-      await openPaymentWindow(account.paymentHash);
-    }
-    return { email: account.email, autoPay, paymentHash: account.paymentHash };
+    const { settings } = await loadState(storage);
+    const auto = willAutoPay(settings);
+    // Respond immediately so the field is filled without waiting for
+    // any payment. Auto-pay or the manual payment window follows.
+    followUpNewAccount(account, { openWindowOnManual: !auto }).catch((error) =>
+      logError("followUpNewAccount", error),
+    );
+    return {
+      email: account.email,
+      paymentHash: account.paymentHash,
+      willAutoPay: auto,
+    };
   },
   "nwc:test": async ({ uri }) => {
     parseNwcUri(uri); // Throws a descriptive error on malformed URIs.
@@ -657,7 +784,10 @@ ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!handler) return false;
   handler(message, sender)
     .then((result) => sendResponse({ ok: true, result }))
-    .catch((error) => sendResponse({ ok: false, error: error.message }));
+    .catch((error) => {
+      logError(`handler ${message.type}`, error);
+      sendResponse({ ok: false, error: error.message });
+    });
   return true; // Keep the message channel open for the async response.
 });
 
@@ -667,28 +797,31 @@ ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 ext.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === POLL_ALARM) {
-    pollPendingPayments().catch(() => {});
+    pollPendingPayments().catch((error) => logError("pollPendingPayments", error));
   } else if (alarm.name === RENEWAL_ALARM) {
-    renewalCheck().catch(() => {});
+    renewalCheck().catch((error) => logError("renewalCheck", error));
   }
 });
 
-function setupContextMenu() {
+async function setupContextMenu() {
   if (!ext.contextMenus) return;
-  ext.contextMenus.removeAll(() => {
+  try {
+    await ext.contextMenus.removeAll();
     ext.contextMenus.create({
       id: CONTEXT_MENU_ID,
       title: "Fill with a new LNemail address",
       contexts: ["editable"],
     });
-  });
+  } catch (error) {
+    logError("setupContextMenu", error);
+  }
 }
 
 ext.contextMenus?.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== CONTEXT_MENU_ID || !tab?.id) return;
   const domain = domainFromUrl(info.pageUrl ?? tab.url ?? "");
   try {
-    const { account, autoPay } = await createAccount({
+    const account = await createAccount({
       sourceDomain: domain,
       sourceUrl: info.pageUrl ?? tab.url ?? null,
     });
@@ -696,8 +829,12 @@ ext.contextMenus?.onClicked.addListener(async (info, tab) => {
       type: "lnemail:fill",
       email: account.email,
     });
-    if (!autoPay.ok) await openPaymentWindow(account.paymentHash);
+    const { settings } = await loadState(storage);
+    followUpNewAccount(account, {
+      openWindowOnManual: !willAutoPay(settings),
+    }).catch((error) => logError("followUpNewAccount", error));
   } catch (error) {
+    logError("context menu fill", error);
     notify(
       "error:create",
       "LNemail",
@@ -707,14 +844,14 @@ ext.contextMenus?.onClicked.addListener(async (info, tab) => {
 });
 
 async function initialize() {
-  setupContextMenu();
+  await setupContextMenu();
   await ext.alarms.create(RENEWAL_ALARM, { periodInMinutes: 360 });
   await schedulePaymentPolling();
 }
 
 ext.runtime.onInstalled.addListener(() => {
-  initialize().catch(() => {});
+  initialize().catch((error) => logError("initialize", error));
 });
 ext.runtime.onStartup?.addListener(() => {
-  initialize().catch(() => {});
+  initialize().catch((error) => logError("initialize", error));
 });

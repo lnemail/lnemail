@@ -112,6 +112,16 @@ export class LnemailApi {
   }
 
   /**
+   * List email headers for a token (used for unread counts).
+   *
+   * @param {string} token Access token.
+   * @returns {Promise<object>} EmailListResponse payload.
+   */
+  listEmails(token) {
+    return this.request("/api/v1/emails", { token });
+  }
+
+  /**
    * Start a renewal and get its invoice.
    *
    * @param {string} token Access token.

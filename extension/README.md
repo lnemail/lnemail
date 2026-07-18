@@ -3,23 +3,29 @@
 Cross-browser extension (Chrome and Firefox, Manifest V3) that makes
 LNemail practical for day-to-day use:
 
-- **Autofill on signups**: email fields get a small Lightning button
-  offering addresses already used on that site or a brand-new LNemail
-  address (also available from the right-click context menu). Saving
-  the site credentials stays with your password manager.
-- **Account list with metadata**: every created account is stored with
-  the domains it was used on, so you can filter by site and jump
-  straight into the right inbox with one click (the extension hands the
-  access token to the inbox page, which auto-connects).
+- **Autofill on signups**: email fields get a small LNemail button
+  listing every saved address (the ones already used on that site
+  first) plus a brand-new address, which is filled instantly, before
+  its invoice even settles (also available from the right-click context
+  menu). Saving the site credentials stays with your password manager.
+- **Account list with metadata**: every account is stored with all the
+  sites it was used on, so you can filter by site, tell addresses
+  apart, and jump straight into the right inbox with one click (the
+  extension hands the access token to the inbox page, which
+  auto-connects). Active accounts show their unread email count, and
+  the popup refreshes itself whenever anything changes (for example a
+  pending payment settling).
 - **Payments**: invoices can be paid manually (QR code, copy, or
   `lightning:` link) or automatically through a Nostr Wallet Connect
-  (NWC) connection with a configurable allowance (max sats per payment
-  plus a rolling 30-day budget). "Can't pay this invoice? Get a new
-  one" re-issuing is supported when the server has several providers.
+  (NWC) connection. Spending limits belong in the wallet that issues
+  the connection (a wallet-side budget stays effective even if the
+  browser profile is compromised); the extension only refuses invoices
+  that do not match the price quoted by the API. "Can't pay this
+  invoice? Get a new one" re-issuing is supported when the server has
+  several providers.
 - **Renewals**: a background check watches account expiry. With NWC
-  auto-pay enabled it renews accounts automatically within the
-  allowance; otherwise it shows a notification that opens the payment
-  view.
+  auto-pay enabled it renews accounts automatically; otherwise it shows
+  a notification that opens the payment view.
 
 ## Build
 
@@ -73,12 +79,10 @@ Open the extension options page:
 - **API base URL**: defaults to `https://lnemail.net`; point it at your
   own instance if you self-host.
 - **NWC connection string**: create a dedicated connection in your
-  wallet (Alby Hub, Coinos, Primal, and others) with a small budget and
-  paste the `nostr+walletconnect://` URI. Use "Test connection" to
-  verify it.
-- **Allowance**: automatic payments are only made when the invoice
-  amount is at most "Max sats per payment" and fits in the rolling
-  30-day budget. Everything else falls back to manual payment.
+  wallet (Alby Hub, Coinos, Primal, and others) **with a small budget
+  set in the wallet** and paste the `nostr+walletconnect://` URI. Use
+  "Test connection" to verify it. The wallet-side budget is the real
+  spending limit; the extension does not implement its own.
 - **Renewals**: choose how many days before expiry renewals should
   start, and whether they should be paid automatically.
 - **Backup**: export or import the account list (email + access token +
@@ -95,10 +99,11 @@ autofill and API access.
   manager without a master password. Anyone with access to the browser
   profile can read them. Export backups to a safe place and consider
   saving tokens in your password manager as well.
-- The NWC connection should be a dedicated one with a small budget, so
-  a compromise of the browser profile cannot drain more than the budget
-  you configured in the wallet itself (the extension allowance is a
-  convenience guard, not a wallet-side limit).
+- The NWC connection should be a dedicated one with a small budget set
+  in the issuing wallet, so a compromise of the browser profile cannot
+  drain more than that budget. This is why the extension deliberately
+  has no spending-limit settings of its own: an attacker with access to
+  the profile could rewrite them, while the wallet-side budget holds.
 - The inbox token handoff is one-shot, tab-scoped, origin-checked, and
   expires after two minutes.
 
@@ -110,7 +115,7 @@ src/
   lib/
     api.js             LNemail REST client
     nwc.js             minimal NIP-47 client (nostr-tools)
-    allowance.js       spending allowance accounting (pure)
+    allowance.js       auto-pay gating + spend bookkeeping (pure)
     bolt11.js          invoice amount parsing (pure)
     store.js           settings/accounts state helpers (pure)
     browser.js         chrome/browser API shim
