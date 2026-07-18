@@ -295,7 +295,7 @@ async function onButtonClick() {
   const { menuTop, menuLeft } = positionForInput(anchorInput);
   menu.style.top = `${menuTop}px`;
   menu.style.left = `${menuLeft}px`;
-  menu.innerHTML = "";
+  menu.replaceChildren();
   menu.style.display = "block";
 
   const fillWith = (email) => {

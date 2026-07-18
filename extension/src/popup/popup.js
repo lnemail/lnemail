@@ -5,8 +5,8 @@
  * `popup.html?renew=<email>`.
  */
 
-import { renderSVG } from "uqr";
 import { ext } from "../lib/browser.js";
+import { createQrSvg } from "../lib/qr.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -85,7 +85,7 @@ function matchesFilter(account, filter) {
 function renderAccounts() {
   const filter = $("searchInput").value.trim();
   const list = $("accountList");
-  list.innerHTML = "";
+  list.replaceChildren();
   const accounts = [...state.accounts]
     .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
     .filter((account) => matchesFilter(account, filter));
@@ -259,7 +259,9 @@ function openPaymentView(paymentHash, kind) {
   $("paymentSubtitle").textContent = payment.email;
 
   const invoice = payment.request ?? "";
-  $("qrContainer").innerHTML = renderSVG(invoice.toUpperCase(), { ecc: "L" });
+  $("qrContainer").replaceChildren(
+    createQrSvg(invoice.toUpperCase(), { ecc: "L", border: 4 }),
+  );
   $("walletLink").href = `lightning:${invoice}`;
   $("copyInvoiceBtn").onclick = async () => {
     await navigator.clipboard.writeText(invoice);
