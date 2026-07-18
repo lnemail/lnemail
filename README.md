@@ -163,6 +163,17 @@ is passed only to the self-hosted LND node.
    - Bitcoin Lightning Network payments for maximum privacy
    - No identifying payment information required
 
+## Browser Extension
+
+A cross-browser extension (Chrome and Firefox, Manifest V3) lives in
+[`extension/`](extension/). It autofills fresh LNemail addresses on
+signup forms, keeps a list of your accounts with the sites they were
+used on, opens any inbox in one click, and can pay signup and renewal
+invoices automatically through a Nostr Wallet Connect (NWC) wallet with
+a configurable allowance (with QR/copy fallback for manual payments).
+See [`extension/README.md`](extension/README.md) for build and usage
+instructions.
+
 ## Use Cases
 
 LNemail is ideal for:

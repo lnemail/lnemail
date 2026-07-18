@@ -29,6 +29,7 @@ Lightning-paid anonymous email accounts.
 - `src/lnemail/templates/inbox.html`: login/inbox UI
 - `src/lnemail/static/js/improved/`: frontend logic
 - `tests/conftest.py`: app/test fixture setup
+- `extension/`: cross-browser extension (Bun-built, `bun test` + `bun run build`)
 
 ## Auth
 
