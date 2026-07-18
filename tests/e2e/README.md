@@ -16,6 +16,13 @@ way a real user would.
   message, reply to it, pay again, verify the reply lands.
 - `test_renewal_flow.py` - seed a near-expiry account, renew it with a
   real LN payment, and verify the expiry advanced.
+- `test_extension.py` - load the built browser extension
+  (`extension/dist/chrome`) into a persistent Chromium context, create
+  an account from the popup, pay it for real, open the inbox via the
+  one-click token handoff, and exercise the autofill button on a local
+  third-party signup page. Requires the extension to be built first
+  (`cd extension && bun install && bun run build`); the fixture builds
+  it automatically when `bun` is available.
 
 The suite is intentionally small: the priority is detecting regressions
 in the core paying / sending / receiving / reading / replying loop, not

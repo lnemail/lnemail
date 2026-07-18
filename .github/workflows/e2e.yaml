@@ -40,6 +40,17 @@ jobs:
       - name: Install Playwright browsers
         run: python -m playwright install --with-deps chromium
 
+      - name: Set up Bun (extension build)
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build the browser extension for the e2e suite
+        working-directory: extension
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
       - name: Prepare dev-data and start the stack
         run: |
           bash scripts/setup.sh
