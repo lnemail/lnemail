@@ -31,9 +31,6 @@ LNemail practical for day-to-day use:
   auto-pay enabled it renews accounts automatically; otherwise it shows
   a notification that opens the payment view.
 
-For store submission (listing copy, permission justifications, privacy
-policy, release tagging), see [PUBLISHING.md](PUBLISHING.md).
-
 ## Build
 
 ```bash

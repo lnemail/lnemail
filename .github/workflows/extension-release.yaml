@@ -3,7 +3,7 @@ name: extension-release
 # Tag-driven release for the browser extension: tag `ext-vX.Y.Z` (after
 # bumping the versions in extension/package.json and both manifests) and
 # this workflow builds, tests, packages, and attaches both store-ready
-# zips to a GitHub release. See extension/PUBLISHING.md.
+# zips to a GitHub release.
 on:
   push:
     tags:
@@ -51,5 +51,4 @@ jobs:
             - `lnemail-extension-chrome-*.zip`: Chrome / Chromium
             - `lnemail-extension-firefox-*.zip`: Firefox
 
-            See `extension/README.md` for installation and
-            `extension/PUBLISHING.md` for store submission steps.
+            See `extension/README.md` for installation instructions.
