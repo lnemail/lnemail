@@ -40,6 +40,8 @@ jobs:
           done
       - name: Build and package
         run: bun run package
+      - name: Lint Firefox package
+        run: bun run lint:firefox
       - name: Create GitHub release with the zips
         uses: softprops/action-gh-release@v2
         with:

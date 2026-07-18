@@ -23,6 +23,8 @@ jobs:
         run: bun test
       - name: Build and package for Chrome and Firefox
         run: bun run package
+      - name: Lint Firefox package
+        run: bun run lint:firefox
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:

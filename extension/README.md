@@ -38,6 +38,7 @@ cd extension
 bun install
 bun run build     # writes dist/chrome and dist/firefox
 bun run package   # same, plus dist/lnemail-extension-<browser>-<version>.zip
+bun run lint:firefox  # checks dist/firefox with Mozilla's extension linter
 bun test          # unit tests for the pure logic
 ```
 
@@ -51,6 +52,8 @@ bun test          # unit tests for the pure logic
 `extension/dist/chrome`.
 
 ### Firefox
+
+Firefox 142 or newer is required.
 
 For development (goes away when Firefox restarts):
 

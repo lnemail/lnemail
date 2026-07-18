@@ -7,10 +7,14 @@
   "scripts": {
     "build": "bun run build.js",
     "package": "bun run build.js --zip",
+    "lint:firefox": "web-ext lint --source-dir dist/firefox --warnings-as-errors",
     "test": "bun test"
   },
   "dependencies": {
     "nostr-tools": "^2.10.4",
     "uqr": "^0.1.2"
+  },
+  "devDependencies": {
+    "web-ext": "10.5.0"
   }
 }
