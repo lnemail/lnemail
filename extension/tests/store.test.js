@@ -7,6 +7,7 @@ import {
   accountsNeedingRenewal,
   findByPaymentHash,
   findByRenewalHash,
+  latestUnread,
   loadState,
   recordUsage,
   upsertAccount,
@@ -133,6 +134,58 @@ describe("accountsNeedingRenewal", () => {
       "soon@x",
       "expired@x",
     ]);
+  });
+});
+
+describe("latestUnread", () => {
+  const header = (id, read, date, subject = `subject ${id}`) => ({
+    id,
+    subject,
+    sender: `Sender <${id}@x>`,
+    date,
+    read,
+  });
+
+  test("keeps only unread, sorted newest first, limited", () => {
+    const emails = [
+      header("a", false, "Tue, 14 Jul 2026 10:00:00 GMT"),
+      header("b", true, "Wed, 15 Jul 2026 10:00:00 GMT"),
+      header("c", false, "Thu, 16 Jul 2026 10:00:00 GMT"),
+      header("d", false, "Fri, 17 Jul 2026 10:00:00 GMT"),
+      header("e", false, "Sat, 18 Jul 2026 10:00:00 GMT"),
+    ];
+    const preview = latestUnread(emails, 3);
+    expect(preview.map((item) => item.id)).toEqual(["e", "d", "c"]);
+  });
+
+  test("excludes virtual expiry warnings", () => {
+    const emails = [
+      header("lnemail-expiry-warning-123", false, "Sat, 18 Jul 2026 10:00:00 GMT"),
+      header("real", false, "Fri, 17 Jul 2026 10:00:00 GMT"),
+    ];
+    expect(latestUnread(emails).map((item) => item.id)).toEqual(["real"]);
+  });
+
+  test("truncates long subjects and senders", () => {
+    const emails = [
+      {
+        id: "x",
+        subject: "s".repeat(500),
+        sender: "n".repeat(500),
+        date: "Sat, 18 Jul 2026 10:00:00 GMT",
+        read: false,
+      },
+    ];
+    const [item] = latestUnread(emails);
+    expect(item.subject).toHaveLength(120);
+    expect(item.sender).toHaveLength(80);
+  });
+
+  test("tolerates unparsable dates and empty input", () => {
+    const emails = [header("a", false, "not a date")];
+    expect(latestUnread(emails)).toHaveLength(1);
+    expect(latestUnread([])).toEqual([]);
+    expect(latestUnread(undefined)).toEqual([]);
   });
 });
 

@@ -134,6 +134,40 @@ body {
 
 .account-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
+.preview {
+  border-top: 1px solid var(--border);
+  margin: 6px 0;
+  padding-top: 4px;
+}
+.preview-line {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  align-items: baseline;
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 3px 0;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+.preview-line:hover .preview-subject { color: var(--accent); }
+.preview-sender {
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
+  flex-shrink: 0;
+}
+.preview-subject {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
 .empty { color: var(--text-dim); text-align: center; padding: 24px 8px; }
 
 .payment-title { margin: 8px 0 2px; font-size: 15px; }

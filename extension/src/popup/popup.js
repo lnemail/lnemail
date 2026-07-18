@@ -125,6 +125,37 @@ function renderAccounts() {
     }
     item.appendChild(meta);
 
+    // Inline inbox preview: the latest unread subjects, click-through
+    // to the full inbox.
+    if (
+      account.status === "active" &&
+      (account.unreadCount ?? 0) > 0 &&
+      (account.unreadPreview ?? []).length > 0
+    ) {
+      const preview = document.createElement("div");
+      preview.className = "preview";
+      for (const header of account.unreadPreview) {
+        const line = document.createElement("button");
+        line.type = "button";
+        line.className = "preview-line";
+        line.title = "Open inbox";
+        const sender = document.createElement("span");
+        sender.className = "preview-sender";
+        // Prefer the display name over the raw address for compactness.
+        sender.textContent =
+          header.sender.replace(/<[^>]*>/, "").trim() || header.sender;
+        const subject = document.createElement("span");
+        subject.className = "preview-subject";
+        subject.textContent = header.subject || "(no subject)";
+        line.append(sender, subject);
+        line.addEventListener("click", () => {
+          send("inbox:open", { email: account.email }).then(() => window.close());
+        });
+        preview.appendChild(line);
+      }
+      item.appendChild(preview);
+    }
+
     const actions = document.createElement("div");
     actions.className = "account-actions";
     const addButton = (label, onClick, primary = false) => {

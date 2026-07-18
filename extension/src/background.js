@@ -20,11 +20,13 @@ import { invoiceAmountSats } from "./lib/bolt11.js";
 import { payInvoice, getBalance, parseNwcUri } from "./lib/nwc.js";
 import {
   ACCOUNT_STATUS,
+  EXPIRY_WARNING_PREFIX,
   accountFromInvoice,
   accountsNeedingRenewal,
   findByEmail,
   findByPaymentHash,
   findByRenewalHash,
+  latestUnread,
   loadState,
   recordUsage,
   saveState,
@@ -38,10 +40,6 @@ const RENEWAL_ALARM = "lnemail-renewal-check";
 const UNREAD_ALARM = "lnemail-unread-refresh";
 const RENEWAL_NOTIFY_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 const CONTEXT_MENU_ID = "lnemail-fill-new-address";
-
-// Virtual expiration-warning emails injected by the API into inbox
-// listings; excluded from unread counts.
-const EXPIRY_WARNING_PREFIX = "lnemail-expiry-warning";
 
 /**
  * Log an error with a stable prefix (visible in the extension's
@@ -425,11 +423,11 @@ async function startRenewal(email, years, attemptAutoPay) {
 /* ------------------------------------------------------------------ */
 
 /**
- * Refresh unread email counts for all active accounts.
+ * Refresh unread email counts and previews for all active accounts.
  *
- * Writes `unreadCount` / `unreadAt` onto each account record, which the
- * popup picks up through its storage.onChanged subscription. Failures
- * are per-account and non-fatal.
+ * Writes `unreadCount` / `unreadPreview` / `unreadAt` onto each account
+ * record, which the popup picks up through its storage.onChanged
+ * subscription. Failures are per-account and non-fatal.
  *
  * @returns {Promise<Record<string, number>>} email -> unread count.
  */
@@ -452,6 +450,7 @@ async function refreshUnreadCounts() {
           accounts: upsertAccount(state.accounts, {
             ...current,
             unreadCount: unread,
+            unreadPreview: latestUnread(listing.emails ?? []),
             unreadAt: Date.now(),
           }),
         });

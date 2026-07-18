@@ -12,11 +12,13 @@ LNemail practical for day-to-day use:
   sites it was used on, so you can filter by site, tell addresses
   apart, and jump straight into the right inbox with one click (the
   extension hands the access token to the inbox page, which
-  auto-connects). Active accounts show their unread email count, the
-  toolbar icon carries a badge (orange for accounts needing attention,
-  blue for total unread emails, refreshed every 15 minutes in the
-  background), and the popup refreshes itself whenever anything changes
-  (for example a pending payment settling).
+  auto-connects). Active accounts show their unread email count plus an
+  inline preview of the latest unread subjects (click-through to the
+  inbox), the toolbar icon carries a badge (orange for accounts needing
+  attention, blue for total unread emails, refreshed every 15 minutes
+  in the background), and the popup refreshes itself whenever anything
+  changes (for example a pending payment settling or new mail
+  arriving).
 - **Payments**: invoices can be paid manually (QR code, copy, or
   `lightning:` link) or automatically through a Nostr Wallet Connect
   (NWC) connection. Spending limits belong in the wallet that issues

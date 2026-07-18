@@ -23,6 +23,41 @@ export const ACCOUNT_STATUS = {
   EXPIRED: "expired",
 };
 
+// Virtual expiration-warning emails injected by the API into inbox
+// listings; excluded from unread counts and previews.
+export const EXPIRY_WARNING_PREFIX = "lnemail-expiry-warning";
+
+/**
+ * Extract the latest unread email headers for the popup preview.
+ *
+ * Filters out read emails and virtual expiry warnings, sorts newest
+ * first, and truncates fields so the stored preview stays small.
+ *
+ * @param {Array<{id: string, subject: string, sender: string,
+ *         date: string, read: boolean}>} emails Email headers.
+ * @param {number} [limit] Maximum number of entries.
+ * @returns {Array<{id: string, subject: string, sender: string,
+ *          date: string}>} Newest unread headers.
+ */
+export function latestUnread(emails, limit = 3) {
+  const parseDate = (value) => {
+    const time = Date.parse(value ?? "");
+    return Number.isNaN(time) ? 0 : time;
+  };
+  return (emails ?? [])
+    .filter(
+      (email) => !email.read && !email.id.startsWith(EXPIRY_WARNING_PREFIX),
+    )
+    .sort((a, b) => parseDate(b.date) - parseDate(a.date))
+    .slice(0, limit)
+    .map((email) => ({
+      id: email.id,
+      subject: (email.subject ?? "").slice(0, 120),
+      sender: (email.sender ?? "").slice(0, 80),
+      date: email.date,
+    }));
+}
+
 /**
  * Build a new account record from an InvoiceResponse payload.
  *

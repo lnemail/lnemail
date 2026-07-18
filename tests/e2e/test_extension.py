@@ -23,9 +23,11 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import smtplib
 import subprocess
 import threading
 import time
+from email.message import EmailMessage
 from collections.abc import Callable, Iterator
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -225,6 +227,34 @@ def test_popup_signup_pay_and_open_inbox(
     )
     expect(popup.locator(".account-meta", has_text="unread").first).to_be_visible(
         timeout=10_000
+    )
+
+    # Deliver a real email over SMTP (rootless-friendly port) and check
+    # the unread preview, count, and blue toolbar badge.
+    account_email = stored_accounts(background)[0]["email"]
+    subject = "Extension preview test"
+    message = EmailMessage()
+    message["From"] = "sender@lnemail.test"
+    message["To"] = account_email
+    message["Subject"] = subject
+    message.set_content("Hello from the e2e suite.")
+    with smtplib.SMTP("localhost", 2525, timeout=15) as smtp:
+        smtp.send_message(message)
+
+    def _unread_count() -> int:
+        popup.evaluate("chrome.runtime.sendMessage({type: 'accounts:unread'})")
+        account = stored_accounts(background)[0]
+        return int(account.get("unreadCount") or 0)
+
+    wait_for(lambda: _unread_count() >= 1, timeout_s=60, interval_s=2)
+    # The popup re-renders through storage.onChanged: the preview line
+    # with the subject appears without reloading the page.
+    expect(popup.locator(".preview-line", has_text=subject).first).to_be_visible(
+        timeout=10_000
+    )
+    wait_for(
+        lambda: background.evaluate("chrome.action.getBadgeText({})") == "1",
+        timeout_s=10,
     )
 
 
