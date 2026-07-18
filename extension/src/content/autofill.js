@@ -193,11 +193,38 @@ function getMenu() {
   return shadowRoot.querySelector(".menu");
 }
 
+/**
+ * Find a right-edge offset that does not overlap icons injected by
+ * password managers (for example Bitwarden's inline icon). The
+ * intended spot is probed with elementsFromPoint; while some other
+ * overlay paints above the input there, the button shifts further left.
+ *
+ * @param {HTMLInputElement} input Anchor input.
+ * @param {DOMRect} rect Its bounding rect (viewport coordinates).
+ * @returns {number} Offset from the input's right edge in pixels.
+ */
+function rightOffsetForInput(input, rect) {
+  const centerY = rect.top + rect.height / 2;
+  let offset = 6;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const centerX = rect.right - offset - BUTTON_SIZE / 2;
+    if (centerX - BUTTON_SIZE / 2 <= rect.left) break;
+    const stack = document.elementsFromPoint(centerX, centerY);
+    const top = stack.find((element) => element !== shadowHost);
+    const clear =
+      !top || top === input || input.contains(top) || top.contains(input);
+    if (clear) break;
+    offset += BUTTON_SIZE + 8;
+  }
+  return offset;
+}
+
 function positionForInput(input) {
   const rect = input.getBoundingClientRect();
+  const offset = rightOffsetForInput(input, rect);
   return {
     top: window.scrollY + rect.top + (rect.height - BUTTON_SIZE) / 2,
-    left: window.scrollX + rect.right - BUTTON_SIZE - 6,
+    left: window.scrollX + rect.right - offset - BUTTON_SIZE,
     menuTop: window.scrollY + rect.bottom + 4,
     menuLeft: window.scrollX + rect.left,
   };
@@ -206,11 +233,20 @@ function positionForInput(input) {
 function showButton(input) {
   ensureShadow();
   anchorInput = input;
-  const { top, left } = positionForInput(input);
   const button = getButton();
-  button.style.top = `${top}px`;
-  button.style.left = `${left}px`;
+  const place = () => {
+    const { top, left } = positionForInput(input);
+    button.style.top = `${top}px`;
+    button.style.left = `${left}px`;
+  };
+  place();
   button.style.display = "flex";
+  // Password managers may inject their own inline icon right after
+  // focus; re-check the position once so we end up beside, not below,
+  // their icon.
+  setTimeout(() => {
+    if (anchorInput === input && button.style.display !== "none") place();
+  }, 250);
 }
 
 function hideButton() {

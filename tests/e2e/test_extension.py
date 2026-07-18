@@ -150,11 +150,22 @@ def signup_site() -> Iterator[str]:
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802 (BaseHTTPRequestHandler API)
+            # The blue square plays the role of a password manager's
+            # inline icon (Bitwarden-style) overlaying the right edge of
+            # the field; the extension button must dodge it.
             body = (
                 b"<!doctype html><html><body>"
                 b"<h1>Example signup</h1>"
-                b'<form><label>Email <input type="email" id="email" '
-                b'name="email"></label></form>'
+                b"<form>"
+                b'<div style="position:relative;display:inline-block">'
+                b'<input type="email" id="email" name="email" '
+                b'style="width:260px;height:32px;padding-right:30px">'
+                b'<div id="fake-pm-icon" style="position:absolute;'
+                b"right:4px;top:50%;transform:translateY(-50%);"
+                b"width:24px;height:24px;background:#175ddc;"
+                b'z-index:2147483646"></div>'
+                b"</div>"
+                b"</form>"
                 b"</body></html>"
             )
             self.send_response(200)
@@ -273,6 +284,17 @@ def test_autofill_creates_fills_and_activates_account(
 
     fill_button = page.locator("[title='Fill with an LNemail address']")
     expect(fill_button).to_be_visible(timeout=10_000)
+
+    # The extension icon must sit beside, not on top of, the password
+    # manager's inline icon at the right edge of the field.
+    page.wait_for_timeout(400)  # allow the post-focus reposition pass
+    button_box = fill_button.bounding_box()
+    pm_box = page.locator("#fake-pm-icon").bounding_box()
+    assert button_box is not None and pm_box is not None
+    assert button_box["x"] + button_box["width"] <= pm_box["x"] + 1, (
+        f"extension button {button_box} overlaps password manager icon {pm_box}"
+    )
+
     fill_button.click()
 
     page.get_by_text("New LNemail address").click()
