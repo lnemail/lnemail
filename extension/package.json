@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "bun run build.js",
+    "package": "bun run build.js --zip",
     "test": "bun test"
   },
   "dependencies": {

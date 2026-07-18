@@ -79,7 +79,10 @@ function ensureShadow() {
   shadowHost.style.top = "0";
   shadowHost.style.left = "0";
   shadowHost.style.zIndex = "2147483647";
-  shadowRoot = shadowHost.attachShadow({ mode: "closed" });
+  // "open" mode: closed shadow roots are not a security boundary, and
+  // open roots let the Playwright e2e suite (and curious users) inspect
+  // the widget.
+  shadowRoot = shadowHost.attachShadow({ mode: "open" });
   const style = document.createElement("style");
   style.textContent = `
     .btn {

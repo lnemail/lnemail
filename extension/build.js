@@ -11,6 +11,8 @@
 import { cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
+const WANT_ZIP = process.argv.includes("--zip");
+
 const ROOT = import.meta.dir;
 const DIST = join(ROOT, "dist");
 
@@ -60,6 +62,23 @@ async function buildTarget(target, manifestPath) {
   await cp(join(ROOT, "icons"), join(outdir, "icons"), { recursive: true });
   await cp(join(ROOT, manifestPath), join(outdir, "manifest.json"));
   console.log(`Built ${target} -> ${outdir}`);
+
+  if (WANT_ZIP) {
+    const manifest = await Bun.file(join(ROOT, manifestPath)).json();
+    const zipName = `lnemail-extension-${target}-${manifest.version}.zip`;
+    const zipPath = join(DIST, zipName);
+    await rm(zipPath, { force: true });
+    // Zip the *contents* of the target directory: stores expect
+    // manifest.json at the archive root.
+    const proc = Bun.spawnSync(["zip", "-qr", zipPath, "."], { cwd: outdir });
+    if (proc.exitCode !== 0) {
+      throw new Error(
+        `zip failed for ${target} (is the "zip" command installed?): ` +
+          `${proc.stderr?.toString() ?? ""}`,
+      );
+    }
+    console.log(`Packaged ${zipPath}`);
+  }
 }
 
 for (const [target, manifestPath] of Object.entries(TARGETS)) {

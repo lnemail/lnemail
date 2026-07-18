@@ -27,15 +27,44 @@ LNemail practical for day-to-day use:
 cd extension
 bun install
 bun run build     # writes dist/chrome and dist/firefox
+bun run package   # same, plus dist/lnemail-extension-<browser>-<version>.zip
 bun test          # unit tests for the pure logic
 ```
 
-Load the result:
+(`bun run package` needs the `zip` command.)
 
-- Chrome: `chrome://extensions`, enable Developer mode, "Load
-  unpacked", select `extension/dist/chrome`.
-- Firefox: `about:debugging#/runtime/this-firefox`, "Load Temporary
-  Add-on", select `extension/dist/firefox/manifest.json`.
+## Install
+
+### Chrome / Chromium
+
+`chrome://extensions`, enable Developer mode, "Load unpacked", select
+`extension/dist/chrome`.
+
+### Firefox
+
+For development (goes away when Firefox restarts):
+
+1. `bun run build`
+2. Open `about:debugging#/runtime/this-firefox`
+3. "Load Temporary Add-on", select
+   `extension/dist/firefox/manifest.json`
+
+For a permanent install, regular Firefox only accepts signed add-ons,
+so pick one of:
+
+- **Firefox Developer Edition, Nightly, or ESR**: set
+  `xpinstall.signatures.required` to `false` in `about:config`, run
+  `bun run package`, then open `about:addons`, gear menu, "Install
+  Add-on From File", and pick
+  `dist/lnemail-extension-firefox-<version>.zip`.
+- **Self-distribution signing**: upload the same zip to
+  [addons.mozilla.org](https://addons.mozilla.org/developers/) as
+  "unlisted" (or use `web-ext sign`); AMO returns a signed `.xpi` that
+  installs on any Firefox.
+
+After installing on Firefox, open the extension options or popup and
+click "Grant site access" (Firefox treats MV3 host permissions as
+optional, and the extension needs them for autofill and API calls).
 
 ## Configuration
 
