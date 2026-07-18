@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LNemail",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Anonymous Lightning-paid email: create fresh LNemail addresses while signing up, autofill them, open inboxes in one click, and auto-pay renewals with Nostr Wallet Connect.",
   "icons": {
     "16": "icons/icon16.png",
