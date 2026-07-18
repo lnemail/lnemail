@@ -189,6 +189,13 @@ def test_popup_signup_pay_and_open_inbox(
 
     accounts = wait_for(lambda: stored_accounts(background))
     assert accounts[0]["status"] == "pending"
+
+    # A pending payment is an attention item and takes the toolbar badge.
+    wait_for(
+        lambda: background.evaluate("chrome.action.getBadgeText({})") == "1",
+        timeout_s=10,
+    )
+
     pay_invoice(accounts[0]["paymentRequest"])
 
     expect(page.locator("#paymentStatus")).to_contain_text(

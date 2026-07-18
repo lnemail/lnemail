@@ -15,6 +15,7 @@
 import { ext } from "./lib/browser.js";
 import { LnemailApi } from "./lib/api.js";
 import { canAutoPay, recordSpend } from "./lib/allowance.js";
+import { computeBadge } from "./lib/badge.js";
 import { invoiceAmountSats } from "./lib/bolt11.js";
 import { payInvoice, getBalance, parseNwcUri } from "./lib/nwc.js";
 import {
@@ -34,6 +35,7 @@ const storage = ext.storage.local;
 
 const POLL_ALARM = "lnemail-poll-payments";
 const RENEWAL_ALARM = "lnemail-renewal-check";
+const UNREAD_ALARM = "lnemail-unread-refresh";
 const RENEWAL_NOTIFY_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 const CONTEXT_MENU_ID = "lnemail-fill-new-address";
 
@@ -85,24 +87,17 @@ function domainFromUrl(url) {
 /* Badge and notifications                                             */
 /* ------------------------------------------------------------------ */
 
-/** Update the action badge with the number of items needing attention. */
+/**
+ * Update the toolbar badge: accounts needing attention (orange) win,
+ * otherwise the total unread email count (blue). See lib/badge.js.
+ */
 async function updateBadge() {
   const { settings, accounts } = await loadState(storage);
-  const now = Date.now();
-  const pending = accounts.filter(
-    (account) => account.status === ACCOUNT_STATUS.PENDING,
-  ).length;
-  const expiring = accountsNeedingRenewal(
-    accounts,
-    now,
-    settings.renewDaysBefore,
-  ).length;
-  const count = pending + expiring;
+  const badge = computeBadge(accounts, settings, Date.now());
   const action = ext.action ?? ext.browserAction;
-  await action.setBadgeText({ text: count > 0 ? String(count) : "" });
-  if (count > 0) {
-    await action.setBadgeBackgroundColor({ color: "#f7931a" });
-  }
+  await action.setBadgeText({ text: badge.text });
+  await action.setBadgeBackgroundColor({ color: badge.color });
+  await action.setTitle({ title: badge.title });
 }
 
 /**
@@ -465,6 +460,7 @@ async function refreshUnreadCounts() {
       logError(`unread count for ${account.email}`, error);
     }
   }
+  await updateBadge();
   return counts;
 }
 
@@ -800,6 +796,8 @@ ext.alarms.onAlarm.addListener((alarm) => {
     pollPendingPayments().catch((error) => logError("pollPendingPayments", error));
   } else if (alarm.name === RENEWAL_ALARM) {
     renewalCheck().catch((error) => logError("renewalCheck", error));
+  } else if (alarm.name === UNREAD_ALARM) {
+    refreshUnreadCounts().catch((error) => logError("refreshUnreadCounts", error));
   }
 });
 
@@ -846,7 +844,11 @@ ext.contextMenus?.onClicked.addListener(async (info, tab) => {
 async function initialize() {
   await setupContextMenu();
   await ext.alarms.create(RENEWAL_ALARM, { periodInMinutes: 360 });
+  // Keep the toolbar unread badge current even when the popup is never
+  // opened. 15 minutes keeps the IMAP-backed listing endpoint light.
+  await ext.alarms.create(UNREAD_ALARM, { periodInMinutes: 15 });
   await schedulePaymentPolling();
+  refreshUnreadCounts().catch((error) => logError("refreshUnreadCounts", error));
 }
 
 ext.runtime.onInstalled.addListener(() => {

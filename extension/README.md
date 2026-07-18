@@ -12,9 +12,11 @@ LNemail practical for day-to-day use:
   sites it was used on, so you can filter by site, tell addresses
   apart, and jump straight into the right inbox with one click (the
   extension hands the access token to the inbox page, which
-  auto-connects). Active accounts show their unread email count, and
-  the popup refreshes itself whenever anything changes (for example a
-  pending payment settling).
+  auto-connects). Active accounts show their unread email count, the
+  toolbar icon carries a badge (orange for accounts needing attention,
+  blue for total unread emails, refreshed every 15 minutes in the
+  background), and the popup refreshes itself whenever anything changes
+  (for example a pending payment settling).
 - **Payments**: invoices can be paid manually (QR code, copy, or
   `lightning:` link) or automatically through a Nostr Wallet Connect
   (NWC) connection. Spending limits belong in the wallet that issues
@@ -116,6 +118,7 @@ src/
     api.js             LNemail REST client
     nwc.js             minimal NIP-47 client (nostr-tools)
     allowance.js       auto-pay gating + spend bookkeeping (pure)
+    badge.js           toolbar badge policy (pure)
     bolt11.js          invoice amount parsing (pure)
     store.js           settings/accounts state helpers (pure)
     browser.js         chrome/browser API shim
