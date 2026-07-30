@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS = {
   autoRenewEnabled: true,
   renewDaysBefore: 30,
   autofillEnabled: true,
+  backgroundPollingEnabled: false,
 };
 
 export const ACCOUNT_STATUS = {

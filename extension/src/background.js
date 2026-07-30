@@ -19,6 +19,13 @@ import { computeBadge } from "./lib/badge.js";
 import { invoiceAmountSats } from "./lib/bolt11.js";
 import { payInvoice, getBalance, parseNwcUri } from "./lib/nwc.js";
 import {
+  BACKGROUND_POLLING_MODE,
+  POLLING_ACTIVITY_WINDOW_MS,
+  UNREAD_ACTIVITY_PERIOD_MINUTES,
+  UNREAD_BACKGROUND_PERIOD_MINUTES,
+  backgroundPollingMode,
+} from "./lib/background-polling.js";
+import {
   ACCOUNT_STATUS,
   EXPIRY_WARNING_PREFIX,
   accountFromInvoice,
@@ -38,8 +45,16 @@ const storage = ext.storage.local;
 const POLL_ALARM = "lnemail-poll-payments";
 const RENEWAL_ALARM = "lnemail-renewal-check";
 const UNREAD_ALARM = "lnemail-unread-refresh";
+const POLLING_ACTIVE_UNTIL_KEY = "backgroundPollingActiveUntil";
 const RENEWAL_NOTIFY_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 const CONTEXT_MENU_ID = "lnemail-fill-new-address";
+
+// The in-memory fallback keeps the privacy window session-scoped on old
+// Chromium builds that do not expose storage.session. It may end early when
+// the worker stops, but it must never persist into a later browser session.
+let inMemoryPollingActiveUntil = null;
+let pollingPolicyRevision = 0;
+let pollingPolicyUpdatesPending = 0;
 
 /**
  * Log an error with a stable prefix (visible in the extension's
@@ -192,19 +207,23 @@ async function tryAutoPay(paymentRequest, expectedSats, kind) {
   return { ok: true, reason: null };
 }
 
-/** Ensure the payment-poll alarm runs while any payment is pending. */
+/** Reconcile payment polling with pending state and the privacy policy. */
 async function schedulePaymentPolling() {
-  const { accounts } = await loadState(storage);
-  const hasPending = accounts.some(
-    (account) =>
-      account.status === ACCOUNT_STATUS.PENDING || account.renewal !== null,
-  );
-  if (hasPending) {
-    await ext.alarms.create(POLL_ALARM, { periodInMinutes: 1 });
-    // Also poll shortly after scheduling for fast feedback.
-    pollPendingPayments().catch((error) => logError("pollPendingPayments", error));
-  } else {
-    await ext.alarms.clear(POLL_ALARM);
+  while (true) {
+    const revision = pollingPolicyRevision;
+    const { settings, accounts } = await loadState(storage);
+    const hasPending = accounts.some(
+      (account) =>
+        account.status === ACCOUNT_STATUS.PENDING || account.renewal !== null,
+    );
+    const mode = await currentBackgroundPollingMode(settings);
+    if (revision !== pollingPolicyRevision) continue;
+    if (hasPending && mode !== BACKGROUND_POLLING_MODE.OFF) {
+      await ext.alarms.create(POLL_ALARM, { periodInMinutes: 1 });
+    } else {
+      await ext.alarms.clear(POLL_ALARM);
+    }
+    if (revision === pollingPolicyRevision) break;
   }
   await updateBadge();
 }
@@ -213,14 +232,16 @@ async function schedulePaymentPolling() {
  * Check one pending signup payment and update state when paid.
  *
  * @param {string} paymentHash Signup payment hash.
+ * @param {(() => Promise<boolean>) | null} canRequest Optional policy guard.
  * @returns {Promise<object | null>} Updated account or null.
  */
-async function checkSignupPayment(paymentHash) {
+async function checkSignupPayment(paymentHash, canRequest = null) {
   const { settings, accounts } = await loadState(storage);
   const account = findByPaymentHash(accounts, paymentHash);
   if (!account || account.status !== ACCOUNT_STATUS.PENDING) {
     return account ?? null;
   }
+  if (canRequest && !(await canRequest())) return account;
   const api = apiFor(settings, account.apiBase);
   const status = await api.checkPayment(paymentHash);
   if (status.payment_status === "paid") {
@@ -248,12 +269,14 @@ async function checkSignupPayment(paymentHash) {
  * Check one pending renewal payment and update state when paid.
  *
  * @param {string} paymentHash Renewal payment hash.
+ * @param {(() => Promise<boolean>) | null} canRequest Optional policy guard.
  * @returns {Promise<object | null>} Updated account or null.
  */
-async function checkRenewalPayment(paymentHash) {
+async function checkRenewalPayment(paymentHash, canRequest = null) {
   const { settings, accounts } = await loadState(storage);
   const account = findByRenewalHash(accounts, paymentHash);
   if (!account) return null;
+  if (canRequest && !(await canRequest())) return account;
   const api = apiFor(settings, account.apiBase);
   const status = await api.renewalStatus(paymentHash);
   if (status.payment_status === "paid") {
@@ -279,15 +302,15 @@ async function checkRenewalPayment(paymentHash) {
 }
 
 /** Poll every pending signup and renewal payment once. */
-async function pollPendingPayments() {
+async function pollPendingPayments(canRequest = null) {
   const { accounts } = await loadState(storage);
   for (const account of accounts) {
     try {
       if (account.status === ACCOUNT_STATUS.PENDING && account.paymentHash) {
-        await checkSignupPayment(account.paymentHash);
+        await checkSignupPayment(account.paymentHash, canRequest);
       }
       if (account.renewal?.paymentHash) {
-        await checkRenewalPayment(account.renewal.paymentHash);
+        await checkRenewalPayment(account.renewal.paymentHash, canRequest);
       }
     } catch {
       // Transient API errors: retried on the next alarm tick.
@@ -305,6 +328,7 @@ async function pollPendingPayments() {
  * @returns {Promise<object>} The new (pending) account record.
  */
 async function createAccount(context = {}) {
+  await activateBackgroundPolling();
   const { settings } = await loadState(storage);
   const invoice = await apiFor(settings).createAccount();
   const account = accountFromInvoice(
@@ -357,14 +381,16 @@ async function followUpNewAccount(account, { openWindowOnManual = false } = {}) 
  *
  * @param {string} paymentHash Payment hash to poll.
  * @param {string} kind "signup" or "renewal".
+ * @param {(() => Promise<boolean>) | null} canRequest Optional policy guard.
  */
-function pollSoon(paymentHash, kind) {
+function pollSoon(paymentHash, kind, canRequest = null) {
   const check = kind === "signup" ? checkSignupPayment : checkRenewalPayment;
   let attempts = 0;
   const tick = async () => {
     attempts += 1;
     try {
-      const account = await check(paymentHash);
+      if (canRequest && !(await canRequest())) return;
+      const account = await check(paymentHash, canRequest);
       const stillPending =
         kind === "signup"
           ? account?.status === ACCOUNT_STATUS.PENDING
@@ -383,12 +409,16 @@ function pollSoon(paymentHash, kind) {
  * @param {string} email Account email.
  * @param {number} years Years to renew.
  * @param {boolean} attemptAutoPay Try paying via NWC.
+ * @param {(() => Promise<boolean>) | null} canRequest Optional policy guard.
  * @returns {Promise<{account: object, autoPay: {ok: boolean, reason: string | null}}>}
  */
-async function startRenewal(email, years, attemptAutoPay) {
+async function startRenewal(email, years, attemptAutoPay, canRequest = null) {
   const { settings, accounts } = await loadState(storage);
   const account = findByEmail(accounts, email);
   if (!account) throw new Error("Account not found");
+  if (canRequest && !(await canRequest())) {
+    return { account, autoPay: { ok: false, reason: "Polling disabled" } };
+  }
   const api = apiFor(settings, account.apiBase);
   const invoice = await api.renewAccount(account.token, years);
   const updated = {
@@ -407,13 +437,13 @@ async function startRenewal(email, years, attemptAutoPay) {
   await schedulePaymentPolling();
 
   let autoPay = { ok: false, reason: "Auto-pay not attempted" };
-  if (attemptAutoPay) {
+  if (attemptAutoPay && (!canRequest || (await canRequest()))) {
     autoPay = await tryAutoPay(
       invoice.payment_request,
       invoice.price_sats,
       "renewal",
     );
-    if (autoPay.ok) pollSoon(invoice.payment_hash, "renewal");
+    if (autoPay.ok) pollSoon(invoice.payment_hash, "renewal", canRequest);
   }
   return { account: updated, autoPay };
 }
@@ -429,14 +459,16 @@ async function startRenewal(email, years, attemptAutoPay) {
  * record, which the popup picks up through its storage.onChanged
  * subscription. Failures are per-account and non-fatal.
  *
+ * @param {(() => Promise<boolean>) | null} canRequest Optional policy guard.
  * @returns {Promise<Record<string, number>>} email -> unread count.
  */
-async function refreshUnreadCounts() {
+async function refreshUnreadCounts(canRequest = null) {
   const { settings, accounts } = await loadState(storage);
   const counts = {};
   for (const account of accounts) {
     if (account.status !== ACCOUNT_STATUS.ACTIVE) continue;
     try {
+      if (canRequest && !(await canRequest())) break;
       const api = apiFor(settings, account.apiBase);
       const listing = await api.listEmails(account.token);
       const unread = (listing.emails ?? []).filter(
@@ -463,6 +495,143 @@ async function refreshUnreadCounts() {
   return counts;
 }
 
+/** Return the session-scoped expiry for interaction-triggered polling. */
+async function pollingActiveUntil() {
+  const session = ext.storage.session;
+  if (!session) return inMemoryPollingActiveUntil;
+  const stored = await session.get(POLLING_ACTIVE_UNTIL_KEY);
+  const value = stored[POLLING_ACTIVE_UNTIL_KEY];
+  return Number.isFinite(value) ? value : null;
+}
+
+/** Persist the activity expiry without allowing it to cross browser sessions. */
+async function setPollingActiveUntil(activeUntil) {
+  const session = ext.storage.session;
+  if (session) {
+    await session.set({ [POLLING_ACTIVE_UNTIL_KEY]: activeUntil });
+  } else {
+    inMemoryPollingActiveUntil = activeUntil;
+  }
+}
+
+/** Resolve the current global polling mode. */
+async function currentBackgroundPollingMode(settings = null) {
+  const currentSettings = settings ?? (await loadState(storage)).settings;
+  return backgroundPollingMode(
+    currentSettings,
+    await pollingActiveUntil(),
+    Date.now(),
+  );
+}
+
+/** Reconcile the unread alarm with settings and recent user activity. */
+async function configureUnreadPolling() {
+  while (true) {
+    const revision = pollingPolicyRevision;
+    const mode = await currentBackgroundPollingMode();
+    if (revision !== pollingPolicyRevision) continue;
+    if (mode === BACKGROUND_POLLING_MODE.BACKGROUND) {
+      await ext.alarms.create(UNREAD_ALARM, {
+        periodInMinutes: UNREAD_BACKGROUND_PERIOD_MINUTES,
+      });
+    } else if (mode === BACKGROUND_POLLING_MODE.ACTIVITY) {
+      await ext.alarms.create(UNREAD_ALARM, {
+        periodInMinutes: UNREAD_ACTIVITY_PERIOD_MINUTES,
+      });
+    } else {
+      await ext.alarms.clear(UNREAD_ALARM);
+    }
+    if (revision === pollingPolicyRevision) return mode;
+  }
+}
+
+/** Run unattended renewal checks only after the global polling opt-in. */
+async function configureRenewalPolling() {
+  while (true) {
+    const revision = pollingPolicyRevision;
+    const mode = await currentBackgroundPollingMode();
+    if (revision !== pollingPolicyRevision) continue;
+    if (mode === BACKGROUND_POLLING_MODE.BACKGROUND) {
+      await ext.alarms.create(RENEWAL_ALARM, { periodInMinutes: 360 });
+    } else {
+      await ext.alarms.clear(RENEWAL_ALARM);
+    }
+    if (revision === pollingPolicyRevision) return;
+  }
+}
+
+/** Start or extend the short polling window after an explicit interaction. */
+async function activateBackgroundPolling() {
+  const { settings } = await loadState(storage);
+  if (!settings.backgroundPollingEnabled) {
+    await setPollingActiveUntil(Date.now() + POLLING_ACTIVITY_WINDOW_MS);
+  }
+  await Promise.all([
+    configureUnreadPolling(),
+    schedulePaymentPolling(),
+  ]);
+}
+
+/** Build a per-request guard for one automatic alarm run. */
+function automaticRequestGuard(allowedModes) {
+  const revision = pollingPolicyRevision;
+  return async () => {
+    if (
+      pollingPolicyUpdatesPending > 0 ||
+      revision !== pollingPolicyRevision
+    ) {
+      return false;
+    }
+    const mode = await currentBackgroundPollingMode();
+    return (
+      pollingPolicyUpdatesPending === 0 &&
+      revision === pollingPolicyRevision &&
+      allowedModes.includes(mode)
+    );
+  };
+}
+
+/** Run an alarm refresh only when the privacy policy still permits it. */
+async function handleUnreadAlarm() {
+  const mode = await configureUnreadPolling();
+  if (mode === BACKGROUND_POLLING_MODE.OFF) return;
+  const canRequest = automaticRequestGuard([
+    BACKGROUND_POLLING_MODE.ACTIVITY,
+    BACKGROUND_POLLING_MODE.BACKGROUND,
+  ]);
+  await refreshUnreadCounts(canRequest);
+  if (mode === BACKGROUND_POLLING_MODE.ACTIVITY) {
+    await configureUnreadPolling();
+  }
+}
+
+/** Run pending-payment polling only while background requests are allowed. */
+async function handlePaymentAlarm() {
+  const mode = await currentBackgroundPollingMode();
+  if (mode === BACKGROUND_POLLING_MODE.OFF) {
+    await schedulePaymentPolling();
+    return;
+  }
+  const canRequest = automaticRequestGuard([
+    BACKGROUND_POLLING_MODE.ACTIVITY,
+    BACKGROUND_POLLING_MODE.BACKGROUND,
+  ]);
+  await pollPendingPayments(canRequest);
+}
+
+/** Ignore a stale renewal alarm after background polling is disabled. */
+async function handleRenewalAlarm() {
+  const mode = await currentBackgroundPollingMode();
+  if (mode !== BACKGROUND_POLLING_MODE.BACKGROUND) {
+    await configureRenewalPolling();
+    return;
+  }
+  const canRequest = automaticRequestGuard([
+    BACKGROUND_POLLING_MODE.BACKGROUND,
+  ]);
+  await renewalCheck(canRequest);
+}
+
 /* ------------------------------------------------------------------ */
 /* Renewal watchdog                                                    */
 /* ------------------------------------------------------------------ */
@@ -471,10 +640,12 @@ async function refreshUnreadCounts() {
  * Refresh account expiry data from the API and update local status.
  *
  * @param {object} account Stored account (must be active/expired).
+ * @param {(() => Promise<boolean>) | null} canRequest Optional policy guard.
  * @returns {Promise<object>} Updated account record.
  */
-async function refreshAccount(account) {
+async function refreshAccount(account, canRequest = null) {
   const { settings } = await loadState(storage);
+  if (canRequest && !(await canRequest())) return account;
   const api = apiFor(settings, account.apiBase);
   try {
     const info = await api.getAccount(account.token);
@@ -492,7 +663,7 @@ async function refreshAccount(account) {
 }
 
 /** Daily-ish check: refresh accounts, auto-renew or notify. */
-async function renewalCheck() {
+async function renewalCheck(canRequest = null) {
   const { settings, accounts } = await loadState(storage);
   const now = Date.now();
 
@@ -500,17 +671,24 @@ async function renewalCheck() {
   let refreshed = accounts;
   for (const account of accounts) {
     if (account.status === ACCOUNT_STATUS.PENDING) continue;
-    const updated = await refreshAccount(account);
+    if (canRequest && !(await canRequest())) return;
+    const updated = await refreshAccount(account, canRequest);
     refreshed = upsertAccount(refreshed, updated);
   }
   await saveState(storage, { accounts: refreshed });
 
   const needing = accountsNeedingRenewal(refreshed, now, settings.renewDaysBefore);
   for (const account of needing) {
+    if (canRequest && !(await canRequest())) return;
     if (account.renewal) continue; // Renewal already in flight.
     if (willAutoPay(settings) && settings.autoRenewEnabled) {
       try {
-        const { autoPay } = await startRenewal(account.email, 1, true);
+        const { autoPay } = await startRenewal(
+          account.email,
+          1,
+          true,
+          canRequest,
+        );
         if (autoPay.ok) continue;
       } catch (error) {
         logError(`auto-renewal for ${account.email}`, error);
@@ -591,10 +769,26 @@ async function consumeInboxToken(sender, pageUrl) {
 
 const handlers = {
   "state:get": async () => loadState(storage),
+  "polling:activate": async () => {
+    await activateBackgroundPolling();
+    return { ok: true };
+  },
   "settings:set": async ({ settings }) => {
-    const state = await loadState(storage);
-    await saveState(storage, { settings: { ...state.settings, ...settings } });
-    return loadState(storage);
+    pollingPolicyUpdatesPending += 1;
+    try {
+      const state = await loadState(storage);
+      const updatedSettings = { ...state.settings, ...settings };
+      await saveState(storage, { settings: updatedSettings });
+      pollingPolicyRevision += 1;
+      await Promise.all([
+        configureUnreadPolling(),
+        configureRenewalPolling(),
+        schedulePaymentPolling(),
+      ]);
+      return loadState(storage);
+    } finally {
+      pollingPolicyUpdatesPending -= 1;
+    }
   },
   "health:get": async () => {
     const { settings } = await loadState(storage);
@@ -628,12 +822,28 @@ const handlers = {
     });
     return updated;
   },
-  "accounts:unread": async () => refreshUnreadCounts(),
-  "payments:check": async ({ paymentHash, kind }) =>
-    kind === "renewal"
-      ? checkRenewalPayment(paymentHash)
-      : checkSignupPayment(paymentHash),
+  "accounts:unread": async () => {
+    const mode = await currentBackgroundPollingMode();
+    if (mode === BACKGROUND_POLLING_MODE.OFF) return {};
+    const canRequest = automaticRequestGuard([
+      BACKGROUND_POLLING_MODE.ACTIVITY,
+      BACKGROUND_POLLING_MODE.BACKGROUND,
+    ]);
+    return refreshUnreadCounts(canRequest);
+  },
+  "payments:check": async ({ paymentHash, kind }) => {
+    const mode = await currentBackgroundPollingMode();
+    if (mode === BACKGROUND_POLLING_MODE.OFF) return null;
+    const canRequest = automaticRequestGuard([
+      BACKGROUND_POLLING_MODE.ACTIVITY,
+      BACKGROUND_POLLING_MODE.BACKGROUND,
+    ]);
+    return kind === "renewal"
+      ? checkRenewalPayment(paymentHash, canRequest)
+      : checkSignupPayment(paymentHash, canRequest);
+  },
   "payments:payNwc": async ({ paymentHash }) => {
+    await activateBackgroundPolling();
     const { accounts } = await loadState(storage);
     const signup = findByPaymentHash(accounts, paymentHash);
     const renewal = findByRenewalHash(accounts, paymentHash);
@@ -660,6 +870,7 @@ const handlers = {
     return { ok: true };
   },
   "payments:reissue": async ({ paymentHash, excludeProvider }) => {
+    await activateBackgroundPolling();
     const { settings, accounts } = await loadState(storage);
     const signup = findByPaymentHash(accounts, paymentHash);
     if (signup) {
@@ -703,8 +914,10 @@ const handlers = {
     }
     throw new Error("Payment not found");
   },
-  "renewal:create": async ({ email, years, attemptAutoPay }) =>
-    startRenewal(email, years ?? 1, Boolean(attemptAutoPay)),
+  "renewal:create": async ({ email, years, attemptAutoPay }) => {
+    await activateBackgroundPolling();
+    return startRenewal(email, years ?? 1, Boolean(attemptAutoPay));
+  },
   "inbox:open": async ({ email }) => {
     await openInbox(email);
     return { ok: true };
@@ -712,6 +925,7 @@ const handlers = {
   "inbox:getToken": async (payload, sender) =>
     consumeInboxToken(sender, payload.url),
   "autofill:accounts": async ({ domain }) => {
+    await activateBackgroundPolling();
     const { settings, accounts } = await loadState(storage);
     const lastUse = (account) =>
       Math.max(0, ...(account.usedOn ?? []).map((use) => use.at));
@@ -743,6 +957,7 @@ const handlers = {
         recordUsage(account, domain, Date.now()),
       ),
     });
+    await activateBackgroundPolling();
     return { ok: true };
   },
   "autofill:new": async ({ domain, url }) => {
@@ -792,11 +1007,11 @@ ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 ext.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === POLL_ALARM) {
-    pollPendingPayments().catch((error) => logError("pollPendingPayments", error));
+    handlePaymentAlarm().catch((error) => logError("handlePaymentAlarm", error));
   } else if (alarm.name === RENEWAL_ALARM) {
-    renewalCheck().catch((error) => logError("renewalCheck", error));
+    handleRenewalAlarm().catch((error) => logError("handleRenewalAlarm", error));
   } else if (alarm.name === UNREAD_ALARM) {
-    refreshUnreadCounts().catch((error) => logError("refreshUnreadCounts", error));
+    handleUnreadAlarm().catch((error) => logError("handleUnreadAlarm", error));
   }
 });
 
@@ -842,12 +1057,13 @@ ext.contextMenus?.onClicked.addListener(async (info, tab) => {
 
 async function initialize() {
   await setupContextMenu();
-  await ext.alarms.create(RENEWAL_ALARM, { periodInMinutes: 360 });
-  // Keep the toolbar unread badge current even when the popup is never
-  // opened. 15 minutes keeps the IMAP-backed listing endpoint light.
-  await ext.alarms.create(UNREAD_ALARM, { periodInMinutes: 15 });
-  await schedulePaymentPolling();
-  refreshUnreadCounts().catch((error) => logError("refreshUnreadCounts", error));
+  // These calls also clear continuous alarms created by older versions
+  // unless the user explicitly enables background server polling.
+  await Promise.all([
+    configureUnreadPolling(),
+    configureRenewalPolling(),
+    schedulePaymentPolling(),
+  ]);
 }
 
 ext.runtime.onInstalled.addListener(() => {

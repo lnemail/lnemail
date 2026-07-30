@@ -15,10 +15,12 @@ LNemail practical for day-to-day use:
   auto-connects). Active accounts show their unread email count plus an
   inline preview of the latest unread subjects (click-through to the
   inbox), the toolbar icon carries a badge (orange for accounts needing
-  attention, blue for total unread emails, refreshed every 15 minutes
-  in the background), and the popup refreshes itself whenever anything
-  changes (for example a pending payment settling or new mail
-  arriving).
+  attention, blue for total unread emails), and the popup refreshes
+  itself whenever anything changes (for example a pending payment
+  settling or new mail arriving). Opening the extension, using autofill,
+  or creating an account allows automatic checks for five minutes.
+  Continuous 15-minute background server checks are available as an
+  explicit opt-in.
 - **Payments**: invoices can be paid manually (QR code, copy, or
   `lightning:` link) or automatically through a Nostr Wallet Connect
   (NWC) connection. Spending limits belong in the wallet that issues
@@ -92,6 +94,11 @@ Open the extension options page:
   spending limit; the extension does not implement its own.
 - **Renewals**: choose how many days before expiry renewals should
   start, and whether they should be paid automatically.
+- **Privacy**: periodic background server checks are off by default.
+  Opening the extension or using autofill starts a five-minute polling
+  window for unread mail and pending payments. Enable background server
+  checks to keep the unread badge, payment confirmation, and renewal
+  monitoring active outside those five-minute windows.
 - **Backup**: export or import the account list (email + access token +
   metadata) as JSON.
 

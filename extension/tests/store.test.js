@@ -199,6 +199,7 @@ describe("loadState", () => {
     const state = await loadState(area);
     expect(state.settings.autoPayEnabled).toBe(true);
     expect(state.settings.apiBase).toBe(DEFAULT_SETTINGS.apiBase);
+    expect(state.settings.backgroundPollingEnabled).toBe(false);
     expect(state.accounts).toEqual([]);
     expect(state.spendHistory).toEqual([]);
   });

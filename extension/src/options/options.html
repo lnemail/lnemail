@@ -26,6 +26,19 @@
     </section>
 
     <section class="card">
+      <h2>Privacy</h2>
+      <label class="field checkbox">
+        <input id="backgroundPollingEnabled" type="checkbox">
+        <span>Allow periodic background server checks</span>
+      </label>
+      <small class="dim">
+        Off by default. Opening LNemail, using autofill, or creating an account
+        allows automatic checks for five minutes. Turn it on for unattended
+        unread updates, payment confirmation, and renewals.
+      </small>
+    </section>
+
+    <section class="card">
       <h2>Wallet (Nostr Wallet Connect)</h2>
       <label class="field">
         <span>NWC connection string</span>
@@ -65,7 +78,8 @@
       </label>
       <small class="dim">
         Without a wallet or with auto-pay off, you get a notification
-        instead so you can pay manually.
+        instead so you can pay manually. Unattended checks also require
+        background server checks under Privacy.
       </small>
     </section>
 

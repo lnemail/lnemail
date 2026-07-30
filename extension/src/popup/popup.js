@@ -386,6 +386,7 @@ async function checkPermissions() {
 
 async function boot() {
   await refreshState();
+  await send("polling:activate");
   renderAccounts();
   checkPermissions();
 

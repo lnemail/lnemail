@@ -129,6 +129,24 @@ def stored_accounts(background: Any) -> list[dict[str, Any]]:
     return list(accounts)
 
 
+def extension_alarm(background: Any, name: str) -> dict[str, Any] | None:
+    """Return a named extension alarm, if it exists."""
+    alarm = background.evaluate(
+        "async (alarmName) => (await chrome.alarms.get(alarmName)) ?? null", name
+    )
+    return dict(alarm) if alarm is not None else None
+
+
+def stored_polling_activity(background: Any, area: str) -> int | None:
+    """Return the privacy-window expiry from one storage area."""
+    value = background.evaluate(
+        """async ({area, key}) =>
+            (await chrome.storage[area].get(key))[key] ?? null""",
+        {"area": area, "key": "backgroundPollingActiveUntil"},
+    )
+    return int(value) if value is not None else None
+
+
 def wait_for(
     predicate: Callable[[], Any], *, timeout_s: float = 30, interval_s: float = 0.5
 ) -> Any:
@@ -196,6 +214,15 @@ def test_popup_signup_pay_and_open_inbox(
     """Create an account from the popup, pay it, and jump to its inbox."""
     page.goto(f"chrome-extension://{extension_id(background)}/popup.html")
 
+    # Opening the extension starts a short polling burst, not a permanent
+    # background heartbeat.
+    unread_alarm = wait_for(
+        lambda: extension_alarm(background, "lnemail-unread-refresh")
+    )
+    assert unread_alarm["periodInMinutes"] == 1
+    assert stored_polling_activity(background, "session") is not None
+    assert stored_polling_activity(background, "local") is None
+
     page.locator("#newAccountBtn").click()
     # No NWC wallet configured: the manual payment view (QR) opens.
     expect(page.locator("#viewPayment")).to_be_visible(timeout=15_000)
@@ -208,7 +235,6 @@ def test_popup_signup_pay_and_open_inbox(
         lambda: background.evaluate("chrome.action.getBadgeText({})") == "1",
         timeout_s=10,
     )
-
     pay_invoice(accounts[0]["paymentRequest"])
 
     expect(page.locator("#paymentStatus")).to_contain_text(
@@ -266,6 +292,52 @@ def test_popup_signup_pay_and_open_inbox(
     wait_for(
         lambda: background.evaluate("chrome.action.getBadgeText({})") == "1",
         timeout_s=10,
+    )
+
+
+def test_background_server_polling_is_opt_in(
+    page: Page,
+    background: Any,
+) -> None:
+    """Continuous server alarms are created only after explicit opt-in."""
+    page.goto(f"chrome-extension://{extension_id(background)}/options.html")
+
+    polling_toggle = page.locator("#backgroundPollingEnabled")
+    expect(polling_toggle).not_to_be_checked()
+    assert extension_alarm(background, "lnemail-unread-refresh") is None
+    assert extension_alarm(background, "lnemail-renewal-check") is None
+    assert extension_alarm(background, "lnemail-poll-payments") is None
+
+    background.evaluate(
+        """async () => chrome.storage.local.set({
+            accounts: [{status: 'pending', renewal: null}],
+        })"""
+    )
+
+    polling_toggle.check()
+    page.locator("#saveBtn").click()
+    expect(page.locator("#saveStatus")).to_have_text("Saved.")
+
+    unread_alarm = wait_for(
+        lambda: extension_alarm(background, "lnemail-unread-refresh")
+    )
+    renewal_alarm = wait_for(
+        lambda: extension_alarm(background, "lnemail-renewal-check")
+    )
+    payment_alarm = wait_for(
+        lambda: extension_alarm(background, "lnemail-poll-payments")
+    )
+    assert unread_alarm["periodInMinutes"] == 15
+    assert renewal_alarm["periodInMinutes"] == 360
+    assert payment_alarm["periodInMinutes"] == 1
+
+    polling_toggle.uncheck()
+    page.locator("#saveBtn").click()
+    expect(page.locator("#saveStatus")).to_have_text("Saved.")
+    wait_for(
+        lambda: extension_alarm(background, "lnemail-unread-refresh") is None
+        and extension_alarm(background, "lnemail-renewal-check") is None
+        and extension_alarm(background, "lnemail-poll-payments") is None
     )
 
 

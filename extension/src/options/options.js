@@ -23,6 +23,7 @@ async function send(type, payload = {}) {
 function fillForm(settings) {
   $("apiBase").value = settings.apiBase;
   $("autofillEnabled").checked = settings.autofillEnabled;
+  $("backgroundPollingEnabled").checked = settings.backgroundPollingEnabled;
   $("nwcUri").value = settings.nwcUri;
   $("autoPayEnabled").checked = settings.autoPayEnabled;
   $("autoRenewEnabled").checked = settings.autoRenewEnabled;
@@ -33,6 +34,7 @@ function readForm() {
   return {
     apiBase: $("apiBase").value.trim().replace(/\/+$/, "") || "https://lnemail.net",
     autofillEnabled: $("autofillEnabled").checked,
+    backgroundPollingEnabled: $("backgroundPollingEnabled").checked,
     nwcUri: $("nwcUri").value.trim(),
     autoPayEnabled: $("autoPayEnabled").checked,
     autoRenewEnabled: $("autoRenewEnabled").checked,
