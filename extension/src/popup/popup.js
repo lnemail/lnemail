@@ -7,6 +7,7 @@
 
 import { ext } from "../lib/browser.js";
 import { createQrSvg } from "../lib/qr.js";
+import { isAndroidUserAgent, walletUri } from "../lib/wallet-uri.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -259,15 +260,30 @@ function openPaymentView(paymentHash, kind) {
   $("paymentSubtitle").textContent = payment.email;
 
   const invoice = payment.request ?? "";
+  const android = isAndroidUserAgent(navigator.userAgent);
+  let validInvoice = true;
+  try {
+    $("walletLink").href = walletUri(invoice, { android });
+  } catch {
+    validInvoice = false;
+    $("walletLink").removeAttribute("href");
+  }
+  $("walletLink").classList.toggle("hidden", !validInvoice);
+  $("qrContainer").classList.toggle("hidden", !validInvoice);
   $("qrContainer").replaceChildren(
-    createQrSvg(invoice.toUpperCase(), { ecc: "L", border: 4 }),
+    ...(validInvoice
+      ? [createQrSvg(invoice.toUpperCase(), { ecc: "L", border: 4 })]
+      : []),
   );
-  $("walletLink").href = `lightning:${invoice}`;
+  $("copyInvoiceBtn").disabled = !validInvoice;
   $("copyInvoiceBtn").onclick = async () => {
     await navigator.clipboard.writeText(invoice);
     setStatus("paymentStatus", "Invoice copied to clipboard", "success");
   };
-  $("payNwcBtn").classList.toggle("hidden", !state.settings?.nwcUri);
+  $("payNwcBtn").classList.toggle(
+    "hidden",
+    !validInvoice || !state.settings?.nwcUri,
+  );
   $("payNwcBtn").onclick = async () => {
     $("payNwcBtn").disabled = true;
     setStatus("paymentStatus", "Paying with connected wallet...");
@@ -299,7 +315,13 @@ function openPaymentView(paymentHash, kind) {
     }
   };
 
-  setStatus("paymentStatus", "Waiting for payment...");
+  setStatus(
+    "paymentStatus",
+    validInvoice
+      ? "Waiting for payment..."
+      : "This invoice is invalid. Go back and try again later.",
+    validInvoice ? "" : "error",
+  );
   showView("viewPayment");
   startPolling();
 }

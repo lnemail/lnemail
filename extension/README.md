@@ -21,9 +21,11 @@ LNemail practical for day-to-day use:
   or creating an account allows automatic checks for five minutes.
   Continuous 15-minute background server checks are available as an
   explicit opt-in.
-- **Payments**: invoices can be paid manually (QR code, copy, or
-  `lightning:` link) or automatically through a Nostr Wallet Connect
-  (NWC) connection. Spending limits belong in the wallet that issues
+- **Payments**: invoices can be paid with QR, copy, a BIP 321 system-wallet
+  link, or a configured Nostr Wallet Connect (NWC) connection. On Android, the
+  system-wallet action asks the browser to open an installed wallet app (with a
+  chooser when applicable).
+  Spending limits belong in the wallet that issues
   the connection (a wallet-side budget stays effective even if the
   browser profile is compromised); the extension only refuses invoices
   that do not match the price quoted by the API. "Can't pay this
