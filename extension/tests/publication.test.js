@@ -34,4 +34,13 @@ describe("Firefox publication metadata", () => {
       expect(source).not.toContain(".innerHTML");
     }
   });
+
+  test("toolbar popup keeps a stable intrinsic width", async () => {
+    const css = await Bun.file(
+      new URL("src/popup/popup.css", extensionRoot),
+    ).text();
+
+    expect(css).toMatch(/body\s*{[^}]*width:\s*380px/);
+    expect(css).not.toMatch(/max-width:\s*100vw/);
+  });
 });
