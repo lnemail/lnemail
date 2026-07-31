@@ -1,7 +1,7 @@
 {
   "name": "lnemail-extension",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Cross-browser extension (Chrome + Firefox, MV3) to create, autofill, and manage LNemail accounts with optional NWC auto-payments.",
   "type": "module",
   "scripts": {
