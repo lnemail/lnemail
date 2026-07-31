@@ -52,32 +52,41 @@ bun test          # unit tests for the pure logic
 
 ### Chrome / Chromium
 
-`chrome://extensions`, enable Developer mode, "Load unpacked", select
-`extension/dist/chrome`.
+Google Chrome does not permit normal off-store installs on Windows or
+macOS. The store-free desktop installation uses an unpacked release:
+
+1. Open the [LNemail GitHub Releases](https://github.com/lnemail/lnemail/releases)
+   page and download `lnemail-extension-chrome-<version>.zip` from the latest
+   extension release.
+2. Extract it into a permanent folder, for example
+   `~/Applications/lnemail-extension`. Do not load the zip itself.
+3. Open `chrome://extensions` (or the equivalent extension page in Brave,
+   Edge, or another Chromium browser) and enable Developer mode.
+4. Click "Load unpacked" and select the extracted folder containing
+   `manifest.json`.
+
+Updates are manual. Download the newer Chrome zip, replace the contents of the
+same permanent folder, then click "Reload" for LNemail on the extensions page.
+Keeping the same folder path preserves the unpacked extension identity and its
+locally stored accounts. The browser may continue to display a Developer mode
+warning. Chromium browsers on Android generally do not support desktop
+extensions.
+
+For a source build, run `bun run build`, open the extensions page, and load
+`extension/dist/chrome` instead.
 
 ### Firefox
 
-Firefox 142 or newer is required.
+Install the signed extension from
+[Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/lnemail/).
+Firefox 142 or newer is required. AMO handles updates automatically.
 
-For development (goes away when Firefox restarts):
+For a temporary development install (removed when Firefox restarts):
 
 1. `bun run build`
 2. Open `about:debugging#/runtime/this-firefox`
 3. "Load Temporary Add-on", select
    `extension/dist/firefox/manifest.json`
-
-For a permanent install, regular Firefox only accepts signed add-ons,
-so pick one of:
-
-- **Firefox Developer Edition, Nightly, or ESR**: set
-  `xpinstall.signatures.required` to `false` in `about:config`, run
-  `bun run package`, then open `about:addons`, gear menu, "Install
-  Add-on From File", and pick
-  `dist/lnemail-extension-firefox-<version>.zip`.
-- **Self-distribution signing**: upload the same zip to
-  [addons.mozilla.org](https://addons.mozilla.org/developers/) as
-  "unlisted" (or use `web-ext sign`); AMO returns a signed `.xpi` that
-  installs on any Firefox.
 
 After installing on Firefox, open the extension options or popup and
 click "Grant site access" (Firefox treats MV3 host permissions as

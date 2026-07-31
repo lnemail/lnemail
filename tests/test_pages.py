@@ -8,6 +8,8 @@ def test_index_page_renders(client: TestClient) -> None:
 
     assert response.status_code == 200, response.text
     assert "LNemail" in response.text
+    assert "https://addons.mozilla.org/en-US/firefox/addon/lnemail/" in response.text
+    assert "https://github.com/lnemail/lnemail/releases" in response.text
 
 
 def test_inbox_page_renders(client: TestClient) -> None:

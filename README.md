@@ -170,9 +170,16 @@ A cross-browser extension (Chrome and Firefox, Manifest V3) lives in
 signup forms, keeps a list of your accounts with the sites they were
 used on, opens any inbox in one click, and can pay signup and renewal
 invoices automatically through a Nostr Wallet Connect (NWC) wallet with
-a configurable allowance (with QR/copy fallback for manual payments).
-See [`extension/README.md`](extension/README.md) for build and usage
-instructions.
+a wallet-defined budget (with QR/copy fallback for manual payments).
+
+- **Firefox**: install from
+  [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/lnemail/).
+- **Chrome / Chromium desktop**: download the Chrome zip from
+  [GitHub Releases](https://github.com/lnemail/lnemail/releases), extract it,
+  and load the folder in Developer mode.
+
+See [`extension/README.md`](extension/README.md) for detailed installation,
+manual update, build, and usage instructions.
 
 ## Use Cases
 

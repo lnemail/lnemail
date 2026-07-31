@@ -48,9 +48,19 @@ jobs:
           name: Extension ${{ github.ref_name }}
           files: extension/dist/lnemail-extension-*.zip
           body: |
-            Store-ready builds of the LNemail browser extension.
+            Builds of the LNemail browser extension.
 
-            - `lnemail-extension-chrome-*.zip`: Chrome / Chromium
-            - `lnemail-extension-firefox-*.zip`: Firefox
+            ## Firefox
 
-            See `extension/README.md` for installation instructions.
+            Install the signed release from [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/lnemail/). The attached Firefox zip is the unsigned build for review and development.
+
+            ## Chrome / Chromium desktop
+
+            1. Download `lnemail-extension-chrome-*.zip` below.
+            2. Extract it into a permanent folder. Do not load the zip itself.
+            3. Open `chrome://extensions` (or your browser's equivalent page) and enable Developer mode.
+            4. Click **Load unpacked** and select the extracted folder containing `manifest.json`.
+
+            Updates are manual: replace the contents of that same folder with a newer release and click **Reload** on the extensions page. Keeping the same folder path preserves the unpacked extension identity and locally stored accounts.
+
+            See `extension/README.md` for complete installation and build instructions.
