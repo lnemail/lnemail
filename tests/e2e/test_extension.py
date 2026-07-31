@@ -341,7 +341,7 @@ def test_background_server_polling_is_opt_in(
     )
 
 
-def test_payment_view_builds_standard_wallet_links(
+def test_payment_view_builds_bip321_system_wallet_link(
     page: Page,
     background: Any,
 ) -> None:
