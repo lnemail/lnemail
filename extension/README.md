@@ -103,6 +103,9 @@ Open the extension options page:
   monitoring active outside those five-minute windows.
 - **Backup**: export or import the account list (email + access token +
   metadata) as JSON.
+- **Import account**: add one existing account from the popup by entering its
+  access token. The configured LNemail server validates the token before the
+  account is stored.
 
 On Firefox, host permissions are optional by default: use the "Grant
 site access" button (shown in the popup and options page) to enable

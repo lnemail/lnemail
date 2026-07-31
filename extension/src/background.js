@@ -28,6 +28,7 @@ import {
 import {
   ACCOUNT_STATUS,
   EXPIRY_WARNING_PREFIX,
+  accountFromAccountInfo,
   accountFromInvoice,
   accountsNeedingRenewal,
   findByEmail,
@@ -803,6 +804,29 @@ const handlers = {
       logError("followUpNewAccount", error),
     );
     return { account, willAutoPay: willAutoPay(settings) };
+  },
+  "accounts:import": async ({ token }) => {
+    const trimmedToken = token?.trim();
+    if (!trimmedToken) throw new Error("Enter an access token");
+    await activateBackgroundPolling();
+    const { settings } = await loadState(storage);
+    const info = await apiFor(settings).getAccount(trimmedToken);
+    // Validation can take long enough for polling or another popup action to
+    // update storage. Merge into the latest account list, not the old snapshot.
+    const { accounts } = await loadState(storage);
+    const existing = findByEmail(accounts, info?.email_address);
+    const account = accountFromAccountInfo(
+      info,
+      {
+        token: trimmedToken,
+        apiBase: settings.apiBase,
+        existing,
+      },
+      Date.now(),
+    );
+    await saveState(storage, { accounts: upsertAccount(accounts, account) });
+    await schedulePaymentPolling();
+    return { account, added: !existing };
   },
   "accounts:delete": async ({ email }) => {
     const state = await loadState(storage);

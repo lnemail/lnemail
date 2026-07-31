@@ -341,6 +341,193 @@ def test_background_server_polling_is_opt_in(
     )
 
 
+def test_payment_view_builds_standard_wallet_links(
+    page: Page,
+    background: Any,
+) -> None:
+    """Render a BIP 321 system-wallet link for a stored invoice."""
+    invoice = "lnbc10u1pjluevupp5xyz"
+    background.evaluate(
+        """async ({invoice}) => chrome.storage.local.set({
+            accounts: [{
+                email: 'wallet-link@lnemail.test',
+                token: 'test-token',
+                status: 'pending',
+                paymentHash: 'wallet-link-payment',
+                paymentRequest: invoice,
+                priceSats: 1000,
+                renewal: null,
+            }],
+        })""",
+        {"invoice": invoice},
+    )
+
+    page.goto(
+        f"chrome-extension://{extension_id(background)}/popup.html"
+        "?pay=wallet-link-payment"
+    )
+
+    expect(page.locator("#viewPayment")).to_be_visible(timeout=10_000)
+    expect(page.locator("#walletLink")).to_have_attribute(
+        "href", f"bitcoin:?lightning={invoice}"
+    )
+
+
+def test_payment_view_handles_an_invalid_stored_invoice(
+    page: Page,
+    background: Any,
+) -> None:
+    """Keep the payment UI recoverable when stored invoice data is invalid."""
+    background.evaluate(
+        """async () => {
+            const {settings = {}} = await chrome.storage.local.get('settings');
+            await chrome.storage.local.set({
+                settings: {
+                    ...settings,
+                    nwcUri: 'nostr+walletconnect://example?relay=wss%3A%2F%2Frelay.test',
+                },
+                accounts: [{
+                    email: 'invalid-wallet-link@lnemail.test',
+                    token: 'test-token',
+                    status: 'pending',
+                    paymentHash: 'invalid-wallet-link-payment',
+                    paymentRequest: 'not-an-invoice;package=attacker',
+                    priceSats: 1000,
+                    renewal: null,
+                }],
+            });
+        }"""
+    )
+
+    page.goto(
+        f"chrome-extension://{extension_id(background)}/popup.html"
+        "?pay=invalid-wallet-link-payment"
+    )
+
+    expect(page.locator("#viewPayment")).to_be_visible(timeout=10_000)
+    expect(page.locator("#qrContainer")).to_be_hidden()
+    expect(page.locator("#walletLink")).to_be_hidden()
+    expect(page.locator("#payNwcBtn")).to_be_hidden()
+    expect(page.locator("#copyInvoiceBtn")).to_be_disabled()
+    expect(page.locator("#paymentStatus")).to_contain_text("invoice is invalid")
+
+
+def test_imports_existing_accounts_by_token(
+    page: Page,
+    background: Any,
+) -> None:
+    """Validate and import active and expired accounts from the popup."""
+    background.evaluate(
+        """() => {
+            const originalFetch = globalThis.fetch;
+            globalThis.fetch = async (input, options = {}) => {
+                const url = String(input);
+                if (url.endsWith('/api/v1/health')) {
+                    return new Response(JSON.stringify({status: 'ok'}), {
+                        status: 200,
+                        headers: {'Content-Type': 'application/json'},
+                    });
+                }
+                if (url.endsWith('/api/v1/emails')) {
+                    return new Response(JSON.stringify({emails: []}), {
+                        status: 200,
+                        headers: {'Content-Type': 'application/json'},
+                    });
+                }
+                if (url.endsWith('/api/v1/account')) {
+                    const token = (options.headers?.Authorization ?? '').replace(
+                        'Bearer ', '',
+                    );
+                    globalThis.lastImportToken = token;
+                    if (token === 'bad-token') {
+                        return new Response(JSON.stringify({detail: 'Invalid access token'}), {
+                            status: 401,
+                            headers: {'Content-Type': 'application/json'},
+                        });
+                    }
+                    const expired = token === 'expired-token';
+                    return new Response(JSON.stringify({
+                        email_address: expired
+                            ? 'expired@lnemail.test'
+                            : 'imported@lnemail.test',
+                        expires_at: expired
+                            ? '2026-01-01T00:00:00Z'
+                            : '2027-01-01T00:00:00Z',
+                        is_expired: expired,
+                        days_until_expiry: expired ? 0 : 180,
+                        renewal_eligible: true,
+                    }), {
+                        status: 200,
+                        headers: {'Content-Type': 'application/json'},
+                    });
+                }
+                return originalFetch(input, options);
+            };
+        }"""
+    )
+    page.goto(f"chrome-extension://{extension_id(background)}/popup.html")
+
+    page.locator("#importAccountBtn").click()
+    page.locator("#importToken").fill("  active-token  ")
+    page.locator("#importSubmitBtn").click()
+    expect(page.locator("#listStatus")).to_contain_text(
+        "Imported imported@lnemail.test"
+    )
+    expect(
+        page.locator(".account-email", has_text="imported@lnemail.test")
+    ).to_be_visible()
+    assert background.evaluate("globalThis.lastImportToken") == "active-token"
+
+    background.evaluate(
+        """async () => {
+            const {accounts} = await chrome.storage.local.get('accounts');
+            accounts[0] = {
+                ...accounts[0],
+                status: 'pending',
+                paymentHash: 'stale-hash',
+                paymentRequest: 'stale-invoice',
+                priceSats: 1000,
+                provider: 'stale-provider',
+                usedOn: [{domain: 'example.com', at: 1}],
+            };
+            await chrome.storage.local.set({accounts});
+        }"""
+    )
+    page.locator("#importAccountBtn").click()
+    page.locator("#importToken").fill("replacement-token")
+    page.locator("#importSubmitBtn").click()
+    expect(page.locator("#listStatus")).to_contain_text("Updated imported@lnemail.test")
+    imported = next(
+        account
+        for account in stored_accounts(background)
+        if account["email"] == "imported@lnemail.test"
+    )
+    assert imported["token"] == "replacement-token"
+    assert imported["usedOn"] == [{"domain": "example.com", "at": 1}]
+    assert imported["paymentHash"] is None
+    assert imported["paymentRequest"] is None
+    assert imported["priceSats"] is None
+    assert imported["provider"] is None
+
+    page.locator("#importAccountBtn").click()
+    page.locator("#importToken").fill("bad-token")
+    page.locator("#importSubmitBtn").click()
+    expect(page.locator("#importStatus")).to_have_text("Invalid access token")
+    assert len(stored_accounts(background)) == 1
+
+    page.locator("#importToken").fill("expired-token")
+    page.locator("#importSubmitBtn").click()
+    expect(page.locator("#listStatus")).to_contain_text("Imported expired@lnemail.test")
+    expired_account = page.locator(".account", has_text="expired@lnemail.test")
+    expect(expired_account.locator(".tag-expired")).to_be_visible()
+    expect(
+        expired_account.get_by_role("button", name="Renew", exact=True)
+    ).to_be_visible()
+    expect(
+        expired_account.get_by_role("button", name="Inbox", exact=True)
+    ).to_have_count(0)
+
+
 def test_autofill_creates_fills_and_activates_account(
     page: Page,
     background: Any,

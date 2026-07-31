@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   ACCOUNT_STATUS,
   DEFAULT_SETTINGS,
+  accountFromAccountInfo,
   accountFromInvoice,
   accountsForDomain,
   accountsNeedingRenewal,
@@ -51,6 +52,118 @@ describe("accountFromInvoice", () => {
     );
     expect(account.usedOn).toEqual([]);
     expect(account.sourceDomain).toBeNull();
+  });
+});
+
+describe("accountFromAccountInfo", () => {
+  const info = {
+    email_address: "imported@lnemail.net",
+    expires_at: "2027-07-18T12:00:00Z",
+    is_expired: false,
+  };
+
+  test("builds a complete active imported account", () => {
+    const account = accountFromAccountInfo(
+      info,
+      { token: " token ", apiBase: "https://lnemail.net/" },
+      NOW,
+    );
+    expect(account).toMatchObject({
+      email: "imported@lnemail.net",
+      token: "token",
+      apiBase: "https://lnemail.net",
+      status: ACCOUNT_STATUS.ACTIVE,
+      createdAt: NOW,
+      renewal: null,
+      usedOn: [],
+    });
+    expect(account.expiresAt).toBe("2027-07-18T12:00:00.000Z");
+  });
+
+  test("imports expired accounts and preserves existing metadata", () => {
+    const existing = {
+      email: info.email_address,
+      apiBase: "https://lnemail.net",
+      createdAt: NOW - 10,
+      usedOn: [{ domain: "example.com", at: NOW - 5 }],
+      unreadCount: 2,
+      renewal: null,
+    };
+    const account = accountFromAccountInfo(
+      { ...info, is_expired: true },
+      {
+        token: "replacement-token",
+        apiBase: "https://lnemail.net",
+        existing,
+      },
+      NOW,
+    );
+    expect(account.status).toBe(ACCOUNT_STATUS.EXPIRED);
+    expect(account.createdAt).toBe(NOW - 10);
+    expect(account.usedOn).toEqual(existing.usedOn);
+    expect(account.unreadCount).toBe(2);
+    expect(account.token).toBe("replacement-token");
+  });
+
+  test("clears stale signup payment state when a paid account is imported", () => {
+    const account = accountFromAccountInfo(
+      info,
+      {
+        token: "token",
+        apiBase: "https://lnemail.net",
+        existing: {
+          email: info.email_address,
+          apiBase: "https://lnemail.net",
+          status: ACCOUNT_STATUS.PENDING,
+          paymentHash: "old-hash",
+          paymentRequest: "old-invoice",
+          priceSats: 1000,
+          provider: "old-provider",
+        },
+      },
+      NOW,
+    );
+    expect(account).toMatchObject({
+      status: ACCOUNT_STATUS.ACTIVE,
+      paymentHash: null,
+      paymentRequest: null,
+      priceSats: null,
+      provider: null,
+    });
+  });
+
+  test("treats canonical forms of the same server URL as equal", () => {
+    const account = accountFromAccountInfo(
+      info,
+      {
+        token: "token",
+        apiBase: "https://lnemail.net:443/",
+        existing: { email: info.email_address, apiBase: "https://lnemail.net" },
+      },
+      NOW,
+    );
+    expect(account.apiBase).toBe("https://lnemail.net");
+  });
+
+  test("rejects malformed responses and cross-server conflicts", () => {
+    expect(() =>
+      accountFromAccountInfo(
+        { ...info, expires_at: "invalid" },
+        { token: "token", apiBase: "https://lnemail.net" },
+        NOW,
+      ),
+    ).toThrow("Invalid account response");
+    expect(() =>
+      accountFromAccountInfo(
+        info,
+        {
+          token: "token",
+          apiBase: "https://other.example",
+          existing: { email: info.email_address, apiBase: "https://lnemail.net" },
+        },
+        NOW,
+      ),
+    ).toThrow("different LNemail server");
   });
 });
 

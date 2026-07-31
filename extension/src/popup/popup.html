@@ -13,6 +13,7 @@
       <span>LNemail</span>
     </div>
     <div class="header-actions">
+      <button id="importAccountBtn" class="btn btn-sm">Import</button>
       <button id="newAccountBtn" class="btn btn-primary btn-sm">New address</button>
       <button id="settingsBtn" class="btn btn-icon" title="Settings" aria-label="Settings">&#9881;</button>
     </div>
@@ -32,6 +33,19 @@
       No accounts yet. Click "New address" to create one, or use the
       LNemail button on email fields when signing up on any site.
     </p>
+  </main>
+
+  <main id="viewImport" class="view hidden">
+    <button id="importBackBtn" class="btn btn-link">&larr; Back</button>
+    <h2 class="payment-title">Import account</h2>
+    <form id="importAccountForm">
+      <label class="field">
+        <span>Access token</span>
+        <input id="importToken" type="password" autocomplete="off" spellcheck="false" required>
+      </label>
+      <button id="importSubmitBtn" type="submit" class="btn btn-primary">Import account</button>
+    </form>
+    <p id="importStatus" class="status"></p>
   </main>
 
   <main id="viewPayment" class="view hidden">

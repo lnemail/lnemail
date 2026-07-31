@@ -91,6 +91,78 @@ export function accountFromInvoice(invoice, context, now) {
 }
 
 /**
+ * Build or refresh a stored account from the authenticated account endpoint.
+ *
+ * @param {{email_address: string, expires_at: string, is_expired?: boolean}} info
+ * @param {{token: string, apiBase: string, existing?: object | null}} context
+ * @param {number} now Epoch milliseconds.
+ * @returns {object} Complete imported account record.
+ */
+export function accountFromAccountInfo(info, context, now) {
+  const email = info?.email_address?.trim();
+  const token = context?.token?.trim();
+  let apiBase;
+  try {
+    const url = new URL(context?.apiBase);
+    if (!["http:", "https:"].includes(url.protocol) || url.search || url.hash) {
+      throw new Error();
+    }
+    apiBase = url.toString().replace(/\/+$/, "");
+  } catch {
+    throw new Error("Invalid account response");
+  }
+  const expiresAt = new Date(info?.expires_at ?? "");
+  if (!email || !email.includes("@") || !token || !apiBase) {
+    throw new Error("Invalid account response");
+  }
+  if (Number.isNaN(expiresAt.getTime())) {
+    throw new Error("Invalid account response");
+  }
+  const existing = context.existing ?? null;
+  let existingBase = apiBase;
+  if (existing?.apiBase) {
+    try {
+      existingBase = new URL(existing.apiBase).toString().replace(/\/+$/, "");
+    } catch {
+      existingBase = existing.apiBase.replace(/\/+$/, "");
+    }
+  }
+  if (existing && existingBase !== apiBase) {
+    throw new Error("This email is already stored for a different LNemail server");
+  }
+  const imported = {
+    email,
+    token,
+    apiBase,
+    status: info.is_expired ? ACCOUNT_STATUS.EXPIRED : ACCOUNT_STATUS.ACTIVE,
+    createdAt: now,
+    expiresAt: expiresAt.toISOString(),
+    paymentHash: null,
+    paymentRequest: null,
+    priceSats: null,
+    provider: null,
+    sourceDomain: null,
+    sourceUrl: null,
+    usedOn: [],
+    renewal: null,
+    lastRenewalNotifiedAt: null,
+  };
+  return {
+    ...imported,
+    ...existing,
+    email,
+    token,
+    apiBase,
+    status: info.is_expired ? ACCOUNT_STATUS.EXPIRED : ACCOUNT_STATUS.ACTIVE,
+    expiresAt: expiresAt.toISOString(),
+    paymentHash: null,
+    paymentRequest: null,
+    priceSats: null,
+    provider: null,
+  };
+}
+
+/**
  * Insert or replace an account (keyed by email address).
  *
  * @param {object[]} accounts Current account list.

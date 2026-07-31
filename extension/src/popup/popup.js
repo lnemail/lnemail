@@ -39,7 +39,7 @@ async function refreshState() {
 /* ------------------------------------------------------------------ */
 
 function showView(name) {
-  for (const id of ["viewList", "viewPayment", "viewRenew"]) {
+  for (const id of ["viewList", "viewImport", "viewPayment", "viewRenew"]) {
     $(id).classList.toggle("hidden", id !== name);
   }
   if (name !== "viewPayment") stopPolling();
@@ -170,10 +170,18 @@ function renderAccounts() {
 
     if (account.status === "pending") {
       addButton("Pay invoice", () => openPaymentView(account.paymentHash, "signup"), true);
-    } else {
+    } else if (account.status === "active") {
       addButton("Inbox", () => {
         send("inbox:open", { email: account.email }).then(() => window.close());
       }, true);
+    } else if (account.renewal) {
+      addButton(
+        "Pay renewal",
+        () => openPaymentView(account.renewal.paymentHash, "renewal"),
+        true,
+      );
+    } else {
+      addButton("Renew", () => openRenewView(account.email), true);
     }
     addButton("Copy email", async (event) => {
       await navigator.clipboard.writeText(account.email);
@@ -185,7 +193,7 @@ function renderAccounts() {
       event.target.textContent = "Copied";
       setTimeout(() => (event.target.textContent = "Copy token"), 1200);
     });
-    if (account.status !== "pending") {
+    if (account.status === "active") {
       if (account.renewal) {
         addButton("Pay renewal", () =>
           openPaymentView(account.renewal.paymentHash, "renewal"),
@@ -441,6 +449,37 @@ async function boot() {
     .catch(() => {});
 
   $("searchInput").addEventListener("input", renderAccounts);
+  $("importAccountBtn").addEventListener("click", () => {
+    setStatus("importStatus", "");
+    showView("viewImport");
+    $("importToken").focus();
+  });
+  $("importBackBtn").addEventListener("click", () => {
+    showView("viewList");
+    renderAccounts();
+  });
+  $("importAccountForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const token = $("importToken").value.trim();
+    $("importSubmitBtn").disabled = true;
+    setStatus("importStatus", "Validating account...");
+    try {
+      const { account, added } = await send("accounts:import", { token });
+      await refreshState();
+      $("importToken").value = "";
+      showView("viewList");
+      renderAccounts();
+      setStatus(
+        "listStatus",
+        added ? `Imported ${account.email}` : `Updated ${account.email}`,
+        "success",
+      );
+    } catch (error) {
+      setStatus("importStatus", error.message, "error");
+    } finally {
+      $("importSubmitBtn").disabled = false;
+    }
+  });
   $("settingsBtn").addEventListener("click", () => ext.runtime.openOptionsPage());
   $("backBtn").addEventListener("click", () => {
     showView("viewList");
