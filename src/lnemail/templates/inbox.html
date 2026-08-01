@@ -388,6 +388,16 @@
   #emailBody img { max-width: 100%; height: auto; }
   #emailBody table { display: block; max-width: 100%; overflow-x: auto; }
 
+  /* Make links in rendered emails clearly identifiable: theme blue plus a
+     permanent underline instead of plaintext that only reacts on hover. */
+  #emailBody a {
+    color: #38bdf8; text-decoration: underline;
+    text-underline-offset: 2px; text-decoration-color: rgba(56,189,248,0.5);
+  }
+  #emailBody a:hover {
+    color: #7dd3fc; text-decoration-color: currentColor;
+  }
+
   /* Reading-pane attachments (rendered by ui.js displayEmailAttachments) */
   .attachments-section h4 {
     display: flex; align-items: center; gap: 8px;
