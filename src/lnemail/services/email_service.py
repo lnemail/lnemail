@@ -697,13 +697,33 @@ class EmailService:
             mail.close()
             mail.logout()
 
-            # Sort by parsed date, newest first.
-            emails.sort(key=lambda x: x["parsed_date"], reverse=True)
+            self._sort_emails_newest_first(emails)
 
         except Exception as e:
             logger.error(f"Error listing emails for {email_address}: {str(e)}")
 
         return emails
+
+    @staticmethod
+    def _sort_emails_newest_first(emails: List[Dict[str, Any]]) -> None:
+        """Sort email summaries in place by parsed date, newest first.
+
+        Dates are compared as timezone-aware datetimes rather than as
+        isoformat strings: lexical comparison of isoformat strings with
+        different UTC offsets does not match chronological order.
+        Unparseable dates sort last (treated as epoch).
+        """
+
+        def sort_key(item: Dict[str, Any]) -> datetime:
+            try:
+                parsed = datetime.fromisoformat(item["parsed_date"])
+            except (KeyError, TypeError, ValueError):
+                return datetime.fromtimestamp(0, tz=timezone.utc)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed
+
+        emails.sort(key=sort_key, reverse=True)
 
     @staticmethod
     def _decode_text_part(part: email_lib.message.Message) -> str | None:

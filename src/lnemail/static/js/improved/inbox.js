@@ -11,7 +11,7 @@ import {
     renderSentEmails,
     renderBodyFormatToggle,
 } from './ui.js';
-import { formatEmailBody, formatDateDMY } from './utils.js';
+import { formatEmailBody, formatDateDMY, sortEmailsNewestFirst } from './utils.js';
 
 export async function refreshRecentSends() {
     if (!state.accessToken) return;
@@ -41,7 +41,7 @@ export async function refreshInbox() {
             refreshRecentSends()
         ]);
 
-        state.emails = emails;
+        state.emails = sortEmailsNewestFirst(emails);
         renderEmailList();
         updateInboxCount();
     } catch (error) {

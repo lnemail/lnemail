@@ -76,6 +76,21 @@ export function formatEmailBody(body, contentType) {
     return escapeHtml(body).replace(/\n/g, '<br>');
 }
 
+/**
+ * Sort an array of email summaries by date, most recent first.
+ * Returns a new array; emails with unparseable dates sort last.
+ *
+ * @param {Array<Object>} emails - Email summaries with `date`/`timestamp` fields.
+ * @returns {Array<Object>} New array sorted newest first.
+ */
+export function sortEmailsNewestFirst(emails) {
+    const emailTime = (email) => {
+        const time = new Date(email.date || email.timestamp || 0).getTime();
+        return Number.isNaN(time) ? 0 : time;
+    };
+    return [...emails].sort((a, b) => emailTime(b) - emailTime(a));
+}
+
 export function isValidEmail(email) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
