@@ -97,6 +97,10 @@ export async function openEmail(emailId) {
 
     document.getElementById('emailSubject').textContent = fullEmail.subject || 'No Subject';
     document.getElementById('emailFrom').textContent = fullEmail.from || fullEmail.sender || 'Unknown Sender';
+    const recipient = fullEmail.recipient || email.recipient || '';
+    const recipientRow = document.getElementById('emailToRow');
+    document.getElementById('emailTo').textContent = recipient;
+    recipientRow.classList.toggle('hidden', !recipient);
 
     // Date display: human-readable relative + full timestamp
     const emailDate = new Date(fullEmail.date || fullEmail.timestamp || Date.now());

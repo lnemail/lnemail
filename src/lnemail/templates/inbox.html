@@ -732,9 +732,15 @@
                     <!-- POC: ReadingPaneHeader -->
                     <div class="p-4 md:p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3 border border-sky-900/30 bg-slate-900/40 rounded-2xl mx-4 md:mx-6 mt-4 md:mt-6 shadow-2xl backdrop-blur-sm">
                         <div class="flex items-center gap-3 md:gap-4 flex-wrap min-w-0">
-                            <div class="flex items-center gap-2 min-w-0 max-w-full">
-                                <span class="text-xs font-bold text-slate-500 uppercase tracking-widest shrink-0">From:</span>
-                                <span class="text-sm font-mono text-cyber-blue break-all" id="emailFrom" style="font-family:'JetBrains Mono',monospace;"></span>
+                            <div class="flex flex-col gap-1 min-w-0 max-w-full">
+                                <div class="flex items-center gap-2 min-w-0 max-w-full">
+                                    <span class="text-xs font-bold text-slate-500 uppercase tracking-widest shrink-0">From:</span>
+                                    <span class="text-sm font-mono text-cyber-blue break-all" id="emailFrom" style="font-family:'JetBrains Mono',monospace;"></span>
+                                </div>
+                                <div class="hidden flex items-center gap-2 min-w-0 max-w-full" id="emailToRow">
+                                    <span class="text-xs font-bold text-slate-500 uppercase tracking-widest shrink-0">To:</span>
+                                    <span class="text-sm font-mono text-slate-400 break-all" id="emailTo" style="font-family:'JetBrains Mono',monospace;"></span>
+                                </div>
                             </div>
                             <div id="bodyFormatToggle"></div>
                             <button id="backToInbox" class="flex items-center gap-2 bg-slate-900 border border-slate-700/50 hover:bg-slate-700 hover:text-white text-slate-500 px-3 py-1 rounded transition-all uppercase text-[10px] font-bold">

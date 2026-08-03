@@ -84,16 +84,23 @@ curl -X GET https://lnemail.net/api/v1/emails \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 
 # Response:
-# [
-#   {
-#     "id": "msg_123",
-#     "from": "sender@example.com",
-#     "subject": "Your 2FA Code",
-#     "received_at": "2024-01-15T10:30:00Z",
-#     "has_attachments": false
-#   }
-# ]
+# {
+#   "emails": [
+#     {
+#       "id": "msg_123",
+#       "sender": "sender@example.com",
+#       "recipient": "abc123+service@lnemail.net",
+#       "subject": "Your 2FA Code",
+#       "date": "Mon, 15 Jan 2024 10:30:00 +0000",
+#       "read": false
+#     }
+#   ]
+# }
 ```
+
+Append a tag to the local part, such as `abc123+service@lnemail.net`, to
+receive tagged mail in the base account inbox. The `recipient` field preserves
+the tagged delivery address when the mailserver provides it.
 
 ### Read Email Content
 
@@ -104,15 +111,18 @@ curl -X GET https://lnemail.net/api/v1/emails/EMAIL_ID \
 # Response:
 # {
 #   "id": "msg_123",
-#   "from": "sender@example.com",
-#   "to": "abc123@lnemail.net",
+#   "sender": "sender@example.com",
+#   "recipient": "abc123+service@lnemail.net",
 #   "subject": "Your 2FA Code",
 #   "body": "Your verification code is: 123456",
-#   "received_at": "2024-01-15T10:30:00Z"
+#   "body_plain": "Your verification code is: 123456",
+#   "body_html": null,
+#   "content_type": "text/plain",
+#   "attachments": [],
+#   "date": "Mon, 15 Jan 2024 10:30:00 +0000",
+#   "read": true
 # }
 ```
-
-**Note:** HTML content is stripped for security; emails are plain text only.
 
 ### Send Email
 

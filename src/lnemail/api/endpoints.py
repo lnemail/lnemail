@@ -80,6 +80,7 @@ def _build_expiry_warning_header(account: EmailAccount) -> EmailHeader:
         id=f"{_EXPIRY_WARNING_ID_PREFIX}-{int(account.expires_at.timestamp())}",
         subject=f"Your LNemail account expires in {days_left} days",
         sender=f"LNemail <noreply@{settings.MAIL_DOMAIN}>",
+        recipient=account.email_address,
         date=formatdate(localtime=False, usegmt=True),
         read=False,
     )
@@ -106,6 +107,7 @@ def _build_expiry_warning_content(account: EmailAccount) -> EmailContent:
         id=f"{_EXPIRY_WARNING_ID_PREFIX}-{int(account.expires_at.timestamp())}",
         subject=f"Your LNemail account expires in {days_left} days",
         sender=f"LNemail <noreply@{settings.MAIL_DOMAIN}>",
+        recipient=account.email_address,
         date=formatdate(localtime=False, usegmt=True),
         body=body,
         body_plain=body,

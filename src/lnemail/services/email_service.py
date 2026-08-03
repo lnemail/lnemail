@@ -435,6 +435,33 @@ class EmailService:
             logger.warning(f"Error extracting header '{header_name}': {e}")
             return default
 
+    def _extract_recipient(self, msg: email_lib.message.Message) -> str | None:
+        """Return the best available delivery recipient from message headers."""
+        for header_name in ("Delivered-To", "X-Original-To", "Envelope-To", "To"):
+            try:
+                values = msg.get_all(header_name, [])
+            except Exception as e:
+                logger.warning(f"Error extracting header '{header_name}': {e}")
+                continue
+
+            recipients: List[str] = []
+            for value in values:
+                try:
+                    recipient = self._decode_header_value(str(value)).strip()
+                except Exception as e:
+                    logger.warning(f"Error decoding header '{header_name}': {e}")
+                    continue
+                if recipient:
+                    recipients.append(recipient)
+
+            if recipients:
+                # The topmost delivery header is authoritative for the final
+                # mailbox. A message-authored To header may contain several
+                # recipients, so retain all of its values as a fallback.
+                return ", ".join(recipients) if header_name == "To" else recipients[0]
+
+        return None
+
     def _parse_email_date(self, date_str: Optional[str]) -> datetime:
         """Parse email date string to datetime object.
 
@@ -646,6 +673,7 @@ class EmailService:
         sender = self._decode_header_value(
             self._safe_get_header(msg, "From", "(Unknown Sender)")
         )
+        recipient = self._extract_recipient(msg)
         date_str = (
             self._safe_get_header(msg, "Date", "") or "Thu, 01 Jan 1970 00:00:00 +0000"
         )
@@ -654,6 +682,7 @@ class EmailService:
             "id": email_id_str,
             "subject": subject,
             "sender": sender,
+            "recipient": recipient,
             "date": date_str,
             "parsed_date": parsed_date.isoformat(),
             "read": is_read,
@@ -861,6 +890,7 @@ class EmailService:
             sender = self._decode_header_value(
                 self._safe_get_header(msg, "From", "(Unknown Sender)")
             )
+            recipient = self._extract_recipient(msg)
             date = self._safe_get_header(msg, "Date", "Thu, 01 Jan 1970 00:00:00 +0000")
             message_id = self._safe_get_header(msg, "Message-ID", None)
             references = self._safe_get_header(msg, "References", None)
@@ -892,6 +922,7 @@ class EmailService:
                 "id": email_id,
                 "subject": subject,
                 "sender": sender,
+                "recipient": recipient,
                 "date": date,
                 "body": body,
                 "body_plain": body_plain or None,

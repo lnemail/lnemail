@@ -98,6 +98,7 @@ Authorization: Bearer {access_token}
 
 - **Send & Receive**: Full email functionality with Lightning payments for sending
 - **Web & API Access**: Emails accessible through web interface and REST API
+- **Plus Addressing**: Receive `local-part+tag@lnemail.net` in the base account inbox
 - **Plain Text Focus**: HTML content is stripped for security; emails are displayed as plain text
 - **Lightning Payments**: Small Lightning payments required for each outgoing email
 

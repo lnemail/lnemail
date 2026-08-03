@@ -16,8 +16,8 @@
 - [Create Email Account](https://lnemail.net/api/v1/email): `POST /api/v1/email` -- Creates a new email account and returns a Lightning invoice. Optional JSON body: `{"include_email": bool, "include_token": bool}` to embed details in the invoice memo. Returns: `email_address`, `access_token`, `payment_request` (BOLT11 invoice), `payment_hash`, `expires_at`, `price_sats`.
 - [Check Payment Status](https://lnemail.net/api/v1/payment/{payment_hash}): `GET /api/v1/payment/{payment_hash}` -- Poll this endpoint after paying the invoice. Returns `payment_status` ("pending", "paid", "expired", "failed"). When paid, also returns `email_address` and `access_token`.
 - [Get Account Info](https://lnemail.net/api/v1/account): `GET /api/v1/account` -- Returns the authenticated account's `email_address` and `expires_at`. Requires Bearer token.
-- [List Emails](https://lnemail.net/api/v1/emails): `GET /api/v1/emails` -- Lists all emails in the inbox (newest first). Returns `{emails: [{id, subject, sender, date, read}]}`. Requires Bearer token.
-- [Get Email Content](https://lnemail.net/api/v1/emails/{email_id}): `GET /api/v1/emails/{email_id}` -- Retrieves full email content including `body`, `body_plain`, `body_html`, `attachments` (with `filename`, `content_type`, `size`, `content`, `encoding`). Requires Bearer token.
+- [List Emails](https://lnemail.net/api/v1/emails): `GET /api/v1/emails` -- Lists all emails in the inbox (newest first). Returns `{emails: [{id, subject, sender, recipient, date, read}]}`. `recipient` is the delivery address when available, including any `+tag`. Requires Bearer token.
+- [Get Email Content](https://lnemail.net/api/v1/emails/{email_id}): `GET /api/v1/emails/{email_id}` -- Retrieves full email content including `recipient`, `body`, `body_plain`, `body_html`, and `attachments` (with `filename`, `content_type`, `size`, `content`, `encoding`). Requires Bearer token.
 - [Delete Email](https://lnemail.net/api/v1/emails/{email_id}): `DELETE /api/v1/emails/{email_id}` -- Deletes a single email. Requires Bearer token.
 - [Bulk Delete Emails](https://lnemail.net/api/v1/emails): `DELETE /api/v1/emails` -- Deletes multiple emails. JSON body: `{"email_ids": ["id1", "id2"]}`. Requires Bearer token.
 - [Send Email](https://lnemail.net/api/v1/email/send): `POST /api/v1/email/send` -- Initiates sending an email by generating a Lightning invoice. JSON body: `{"recipient": str, "subject": str, "body": str, "in_reply_to": str|null, "references": str|null, "attachments": [{filename, content_type, content (base64)}]}`. Returns: `payment_request`, `payment_hash`, `price_sats`, `sender_email`, `recipient`, `subject`. Requires Bearer token.
@@ -37,6 +37,7 @@
 - [Account Creation Flow]: 1) `POST /api/v1/email` to get an invoice. 2) Pay the BOLT11 Lightning invoice with any Lightning wallet. 3) Poll `GET /api/v1/payment/{payment_hash}` until `payment_status` is "paid". 4) Save the `email_address` and `access_token` -- the token is your only authentication credential.
 - [Sending Email Flow]: 1) `POST /api/v1/email/send` with Bearer auth and email details. 2) Pay the returned Lightning invoice. 3) Poll `GET /api/v1/email/send/status/{payment_hash}` until `delivery_status` is "sent". Failed deliveries are automatically retried with escalating delays.
 - [Reading Email Flow]: 1) `GET /api/v1/emails` with Bearer auth to list inbox. 2) `GET /api/v1/emails/{email_id}` to read full content and attachments.
+- [Plus Addressing]: Receive tagged mail at `local-part+tag@lnemail.net`. It is delivered to the base account inbox, and the API returns the tagged address in `recipient` when the delivery header is available.
 
 ## Optional
 

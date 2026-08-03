@@ -51,6 +51,7 @@ class EmailHeader(BaseModel):
     id: str
     subject: str
     sender: str
+    recipient: str | None = None
     date: str
     read: bool
 
@@ -77,6 +78,7 @@ class EmailContent(BaseModel):
     id: str
     subject: str
     sender: str
+    recipient: str | None = None
     date: str
     body: str
     body_plain: str | None = None

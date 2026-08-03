@@ -34,19 +34,27 @@ def test_send_to_self_read_and_reply(page: Page, pay_invoice: Any) -> None:
     # /inbox + token entry is what a returning user does.
     login_with_token(page, account.token)
 
-    subject = f"E2E hello {int(time.time())}"
+    timestamp = int(time.time())
+    local_part, domain = account.email.rsplit("@", 1)
+    tagged_recipient = f"{local_part}+e2e-{timestamp}@{domain}"
+    subject = f"E2E hello {timestamp}"
     body_text = "Hello from the e2e suite. This is plain text body."
     compose_and_send(
         page,
         pay_invoice,
-        recipient=account.email,
+        recipient=tagged_recipient,
         subject=subject,
         body=body_text,
     )
 
-    # The send succeeded; the email should land in our own inbox shortly.
+    # Dovecot routes the tagged address to the primary mailbox while LNemail
+    # preserves the original delivery address in both inbox views.
     wait_for_email(page, subject_contains=subject)
+    snippet = page.locator(".email-snippet", has_text=subject).first
+    expect(snippet.locator(".email-recipient")).to_contain_text(tagged_recipient)
     open_email(page, subject_contains=subject)
+    expect(page.locator("#emailToRow")).to_be_visible()
+    expect(page.locator("#emailTo")).to_have_text(tagged_recipient)
 
     # The body is rendered into #emailBody. We do not assert exact HTML
     # because the renderer wraps plain text into <pre>/<div>; we just

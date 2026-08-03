@@ -168,6 +168,7 @@ export function renderEmailList() {
 
         const senderName = (email.from || email.sender || 'Unknown Sender').replace(/<.*?>/, '').trim() || 'Unknown Sender';
         const subject = email.subject || 'No Subject';
+        const recipient = email.recipient || '';
         const preview = (email.body_preview || email.preview || '').substring(0, 100);
         const isUnread = email.read === false;
         const isSelected = state.selectedEmailIds.has(email.id);
@@ -181,6 +182,7 @@ export function renderEmailList() {
                         <span class="text-[10px] text-slate-500 uppercase flex-shrink-0 ml-2">${dateDisplay}</span>
                     </div>
                     <h3 class="text-sm font-semibold text-white mb-1 truncate">${escapeHtml(subject)}</h3>
+                    ${recipient ? `<p class="email-recipient text-[10px] font-mono text-slate-500 truncate mb-1" style="font-family:'JetBrains Mono',monospace;">To: ${escapeHtml(recipient)}</p>` : ''}
                     ${preview ? `<p class="text-xs text-slate-400 truncate">${escapeHtml(preview)}</p>` : ''}
                 </div>
             </div>`;
