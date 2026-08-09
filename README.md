@@ -8,7 +8,7 @@ Fast anonymous email accounts powered by Bitcoin Lightning Network payments. Get
 - **Bitcoin-Powered Privacy**: Pay with Lightning Network for maximum anonymity and speed
 - **Send & Receive**: Full email functionality with Lightning payments for outgoing messages
 - **One-Year Duration**: Email accounts valid for one year with renewal option
-- **Secure Access**: Token-based authentication with no password storage
+- **Secure Access**: Token authentication with optional passkey recovery
 - **API Access**: Complete REST API for programmatic email management
 
 ## System Architecture
@@ -66,16 +66,27 @@ Fast anonymous email accounts powered by Bitcoin Lightning Network payments. Get
    - Requires access token authentication
    - Returns email content with HTML stripped
 
-5. **Send Email**
+5. **Mark All Emails as Read**
+   - `POST /api/v1/emails/read-all`
+   - Requires access token authentication
+   - Marks all unread mailbox messages as read
+
+6. **Passkey Recovery**
+   - `POST /api/v1/passkeys/registration/options` and `/registration`
+   - Enrolls a passkey for an authenticated account
+   - `POST /api/v1/passkeys/authentication/options` and `/authentication`
+   - Verifies a discoverable passkey and returns the account access token
+
+7. **Send Email**
    - `POST /api/v1/email/send`
    - Requires access token authentication
    - Generates Lightning invoice for email sending
 
-6. **Check Send Payment Status**
+8. **Check Send Payment Status**
    - `GET /api/v1/email/send/status/{payment_hash}`
    - Returns status of outgoing email Lightning payment
 
-7. **Get a New Invoice (different provider)**
+9. **Get a New Invoice (different provider)**
    - `POST /api/v1/email/{payment_hash}/new-invoice` (signup)
    - `POST /api/v1/email/send/{payment_hash}/new-invoice` (send, authenticated)
    - `POST /api/v1/account/renew/{payment_hash}/new-invoice` (renewal, authenticated)
@@ -92,6 +103,21 @@ All email access endpoints require a valid access token passed in the Authorizat
 
 ```
 Authorization: Bearer {access_token}
+```
+
+The web inbox can optionally enroll a passkey while authenticated. Passkeys
+provide token recovery on another device without replacing bearer-token API
+authentication. WebAuthn challenges are one-time and expire after five minutes.
+Removing a passkey prevents future recovery with that credential, but does not
+rotate an access token that was already recovered or saved by an API client.
+
+Production deployments must configure the exact WebAuthn relying party and
+origin values:
+
+```text
+WEBAUTHN_RP_ID=lnemail.net
+WEBAUTHN_RP_NAME=LNemail
+WEBAUTHN_ORIGIN=https://lnemail.net
 ```
 
 ## Service Capabilities
@@ -158,6 +184,7 @@ is passed only to the self-hosted LND node.
 
 2. **Authentication**
    - Token-based authentication with high entropy
+   - Optional user-verified, discoverable passkeys for token recovery
    - No password storage for user access
 
 3. **Payment Privacy**
