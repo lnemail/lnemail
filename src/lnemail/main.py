@@ -20,6 +20,7 @@ from fastapi_cache.decorator import cache
 from fastapi_cache.coder import Coder
 
 from .api.endpoints import router as api_router, health_router
+from .api.passkeys import router as passkey_router
 from .config import settings
 from .services.tasks import schedule_regular_tasks
 
@@ -66,6 +67,7 @@ templates = Jinja2Templates(directory=str(templates_dir))
 
 # Include API routers
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(passkey_router, prefix="/api/v1")
 app.include_router(health_router, prefix="/api")
 app.include_router(health_router, prefix="/api/v1")
 

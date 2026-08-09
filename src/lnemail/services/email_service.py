@@ -982,6 +982,37 @@ class EmailService:
             )
             return False
 
+    def mark_all_as_read(self, email_address: str, password: str) -> tuple[bool, int]:
+        """Set the IMAP Seen flag on every unread inbox message."""
+        try:
+            mail = self._create_imap_connection()
+            mail.login(email_address, password)
+            mail.select("INBOX")
+
+            status, data = mail.search(None, "UNSEEN")
+            if status != "OK" or not data:
+                mail.close()
+                mail.logout()
+                return False, 0
+
+            unread_ids = data[0].split()
+            if unread_ids:
+                message_set = ",".join(
+                    email_id.decode("ascii") for email_id in unread_ids
+                )
+                status, _ = mail.store(message_set, "+FLAGS.SILENT", "\\Seen")
+                if status != "OK":
+                    mail.close()
+                    mail.logout()
+                    return False, 0
+
+            mail.close()
+            mail.logout()
+            return True, len(unread_ids)
+        except Exception as e:
+            logger.error(f"Error marking all emails as read for {email_address}: {e}")
+            return False, 0
+
     def delete_email(self, email_address: str, password: str, email_id: str) -> bool:
         """Delete a specific email via IMAP.
 

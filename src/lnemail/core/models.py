@@ -9,7 +9,7 @@ import string
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import ClassVar
-from sqlalchemy import Column
+from sqlalchemy import Column, LargeBinary, Text
 from sqlmodel import AutoString, Field, SQLModel
 
 from lnemail.core.tokens import generate_access_token as _generate_access_token
@@ -49,6 +49,11 @@ class EmailAccount(SQLModel, table=True):
     payment_status: PaymentStatus = Field(default=PaymentStatus.PENDING)
     # Renewal tracking
     renewal_payment_hash: str | None = Field(default=None, index=True)
+    passkey_user_handle: bytes | None = Field(
+        default=None,
+        sa_column=Column(LargeBinary, nullable=True, unique=True),
+    )
+    expiry_warning_read_for: datetime | None = Field(default=None)
 
     @classmethod
     def generate_random_email(cls, domain: str = "lnemail.net") -> str:
@@ -306,6 +311,39 @@ class EmailAccount(SQLModel, table=True):
         """
         token: str = _generate_access_token()
         return token
+
+
+class PasskeyCredential(SQLModel, table=True):
+    """A WebAuthn credential authorized to recover an account token."""
+
+    __tablename__: ClassVar[str] = "passkey_credentials"
+    id: int | None = Field(default=None, primary_key=True)
+    account_id: int = Field(foreign_key="email_accounts.id", index=True)
+    credential_id: bytes = Field(
+        sa_column=Column(LargeBinary, nullable=False, unique=True, index=True)
+    )
+    credential_public_key: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+    sign_count: int = Field(default=0)
+    name: str = Field(default="Passkey")
+    transports_json: str = Field(default="[]", sa_column=Column(Text, nullable=False))
+    device_type: str | None = Field(default=None)
+    backed_up: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=utcnow)
+    last_used_at: datetime | None = Field(default=None)
+
+
+class WebAuthnChallenge(SQLModel, table=True):
+    """Short-lived, one-time state for a WebAuthn ceremony."""
+
+    __tablename__: ClassVar[str] = "webauthn_challenges"
+    id: str = Field(primary_key=True)
+    challenge: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+    ceremony_type: str = Field(index=True)
+    account_id: int | None = Field(
+        default=None, foreign_key="email_accounts.id", index=True
+    )
+    expires_at: datetime = Field(index=True)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class Email(SQLModel, table=True):

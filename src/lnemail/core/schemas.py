@@ -5,7 +5,7 @@ providing validation, serialization, and documentation.
 """
 
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -220,3 +220,45 @@ class EmailDeleteResponse(BaseModel):
     deleted_count: int
     failed_ids: List[str] = Field(default_factory=list)
     message: str
+
+
+class EmailReadAllResponse(BaseModel):
+    marked_read_count: int
+
+
+class WebAuthnOptionsResponse(BaseModel):
+    """Public-key options and one-time ceremony identifier."""
+
+    ceremony_id: str
+    options: dict[str, Any]
+
+
+class PasskeyRegistrationRequest(BaseModel):
+    ceremony_id: str
+    credential: dict[str, Any]
+    name: str = Field(default="Passkey", min_length=1, max_length=80)
+
+
+class PasskeyAuthenticationRequest(BaseModel):
+    ceremony_id: str
+    credential: dict[str, Any]
+
+
+class PasskeyResponse(BaseModel):
+    id: str
+    name: str
+    created_at: datetime
+    last_used_at: datetime | None = None
+
+
+class PasskeyListResponse(BaseModel):
+    passkeys: list[PasskeyResponse]
+
+
+class PasskeyRegistrationResponse(BaseModel):
+    passkey: PasskeyResponse
+
+
+class PasskeyTokenRecoveryResponse(BaseModel):
+    email_address: str
+    access_token: str

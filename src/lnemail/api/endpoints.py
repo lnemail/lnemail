@@ -26,6 +26,7 @@ from ..core.schemas import (
     EmailDeleteResponse,
     EmailHeader,
     EmailListResponse,
+    EmailReadAllResponse,
     EmailCreateRequest,
     EmailSendInvoiceResponse,
     EmailSendRequest,
@@ -72,17 +73,28 @@ _EXPIRY_WARNING_ID_PREFIX = "lnemail-expiry-warning"
 _EXPIRY_WARNING_DAYS = 90
 
 
+def _expiry_warning_id(account: EmailAccount) -> str:
+    return f"{_EXPIRY_WARNING_ID_PREFIX}-{int(account.expires_at.timestamp())}"
+
+
+def _is_current_expiry_warning(email_id: str, account: EmailAccount) -> bool:
+    days_left = (account.expires_at - utcnow()).days
+    return 0 < days_left <= _EXPIRY_WARNING_DAYS and email_id == _expiry_warning_id(
+        account
+    )
+
+
 def _build_expiry_warning_header(account: EmailAccount) -> EmailHeader:
     """Build a synthetic EmailHeader for the expiration warning."""
     now = utcnow()
     days_left = max(0, (account.expires_at - now).days)
     return EmailHeader(
-        id=f"{_EXPIRY_WARNING_ID_PREFIX}-{int(account.expires_at.timestamp())}",
+        id=_expiry_warning_id(account),
         subject=f"Your LNemail account expires in {days_left} days",
         sender=f"LNemail <noreply@{settings.MAIL_DOMAIN}>",
         recipient=account.email_address,
         date=formatdate(localtime=False, usegmt=True),
-        read=False,
+        read=account.expiry_warning_read_for == account.expires_at,
     )
 
 
@@ -104,7 +116,7 @@ def _build_expiry_warning_content(account: EmailAccount) -> EmailContent:
         f"-- LNemail\n"
     )
     return EmailContent(
-        id=f"{_EXPIRY_WARNING_ID_PREFIX}-{int(account.expires_at.timestamp())}",
+        id=_expiry_warning_id(account),
         subject=f"Your LNemail account expires in {days_left} days",
         sender=f"LNemail <noreply@{settings.MAIL_DOMAIN}>",
         recipient=account.email_address,
@@ -114,7 +126,7 @@ def _build_expiry_warning_content(account: EmailAccount) -> EmailContent:
         body_html=None,
         content_type="text/plain",
         attachments=[],
-        read=False,
+        read=account.expiry_warning_read_for == account.expires_at,
         message_id=None,
         references=None,
     )
@@ -164,6 +176,13 @@ async def get_current_account(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    validate_account_access(account)
+
+    return account
+
+
+def validate_account_access(account: EmailAccount) -> None:
+    """Reject accounts that cannot authenticate, regardless of auth method."""
     if account.payment_status == PaymentStatus.EXPIRED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -186,8 +205,6 @@ async def get_current_account(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Account has expired beyond the renewal grace period",
             )
-
-    return account
 
 
 async def get_current_active_account(
@@ -767,6 +784,49 @@ async def list_emails(
         )
 
 
+@router.post(
+    "/emails/read-all",
+    response_model=EmailReadAllResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Account not paid or expired"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def mark_all_emails_read(
+    account: EmailAccount = Depends(get_current_active_account),
+    db: Session = Depends(get_db),
+) -> EmailReadAllResponse:
+    """Mark every unread mailbox message and the current warning as read."""
+    if not account.email_password:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Email password not found for account",
+        )
+
+    success, marked_count = email_service.mark_all_as_read(
+        account.email_address, account.email_password
+    )
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to mark all emails as read",
+        )
+
+    days_left = (account.expires_at - utcnow()).days
+    warning_was_unread = (
+        0 < days_left <= _EXPIRY_WARNING_DAYS
+        and account.expiry_warning_read_for != account.expires_at
+    )
+    if warning_was_unread:
+        account.expiry_warning_read_for = account.expires_at
+        db.add(account)
+        db.commit()
+        marked_count += 1
+
+    return EmailReadAllResponse(marked_read_count=marked_count)
+
+
 @router.get(
     "/emails/{email_id}",
     response_model=EmailContent,
@@ -778,7 +838,9 @@ async def list_emails(
     },
 )
 async def get_email(
-    email_id: str, account: EmailAccount = Depends(get_current_active_account)
+    email_id: str,
+    account: EmailAccount = Depends(get_current_active_account),
+    db: Session = Depends(get_db),
 ) -> EmailContent:
     """Get detailed content of a specific email.
 
@@ -791,7 +853,10 @@ async def get_email(
     """
     try:
         # Handle virtual expiration warning email
-        if email_id.startswith(_EXPIRY_WARNING_ID_PREFIX):
+        if _is_current_expiry_warning(email_id, account):
+            account.expiry_warning_read_for = account.expires_at
+            db.add(account)
+            db.commit()
             return _build_expiry_warning_content(account)
 
         # Use the stored email password from the account
@@ -848,7 +913,7 @@ async def delete_email(
     """
     try:
         # Virtual warning emails cannot be deleted — just acknowledge
-        if email_id.startswith(_EXPIRY_WARNING_ID_PREFIX):
+        if _is_current_expiry_warning(email_id, account):
             return EmailDeleteResponse(
                 success=True,
                 deleted_count=1,
@@ -916,7 +981,7 @@ async def delete_emails_bulk(
         real_ids = [
             eid
             for eid in delete_request.email_ids
-            if not eid.startswith(_EXPIRY_WARNING_ID_PREFIX)
+            if not _is_current_expiry_warning(eid, account)
         ]
         virtual_count = len(delete_request.email_ids) - len(real_ids)
 

@@ -17,6 +17,9 @@ def test_inbox_page_renders(client: TestClient) -> None:
 
     assert response.status_code == 200, response.text
     assert "LNemail Access" in response.text
+    assert "<title>Inbox - LNemail</title>" in response.text
+    assert 'id="passkeyLoginBtn"' in response.text
+    assert 'id="markAllReadBtn"' in response.text
 
 
 def test_tos_page_renders(client: TestClient) -> None:

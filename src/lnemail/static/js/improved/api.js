@@ -19,7 +19,14 @@ async function makeRequest(endpoint, options = {}) {
         const response = await fetch(url, config);
 
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            let detail = response.statusText;
+            try {
+                const errorBody = await response.json();
+                detail = errorBody.detail || detail;
+            } catch (_) {
+                // Keep the HTTP status text when the response is not JSON.
+            }
+            throw new Error(detail || `HTTP ${response.status}`);
         }
 
         const contentType = response.headers.get('content-type');
@@ -81,6 +88,42 @@ export async function fetchEmails() {
 
 export async function fetchEmailContent(emailId) {
     return await makeRequest(`/emails/${emailId}`);
+}
+
+export async function markAllEmailsRead() {
+    return await makeRequest('/emails/read-all', { method: 'POST' });
+}
+
+export async function fetchPasskeys() {
+    return await makeRequest('/passkeys');
+}
+
+export async function beginPasskeyRegistration() {
+    return await makeRequest('/passkeys/registration/options', { method: 'POST' });
+}
+
+export async function finishPasskeyRegistration(ceremonyId, credential, name = 'Passkey') {
+    return await makeRequest('/passkeys/registration', {
+        method: 'POST',
+        body: JSON.stringify({ ceremony_id: ceremonyId, credential, name })
+    });
+}
+
+export async function beginPasskeyAuthentication() {
+    return await makeRequest('/passkeys/authentication/options', { method: 'POST' });
+}
+
+export async function finishPasskeyAuthentication(ceremonyId, credential) {
+    return await makeRequest('/passkeys/authentication', {
+        method: 'POST',
+        body: JSON.stringify({ ceremony_id: ceremonyId, credential })
+    });
+}
+
+export async function removePasskey(credentialId) {
+    return await makeRequest(`/passkeys/${encodeURIComponent(credentialId)}`, {
+        method: 'DELETE'
+    });
 }
 
 export async function sendEmail(recipient, subject, body, inReplyTo = null, references = null, attachments = []) {

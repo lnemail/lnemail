@@ -5,6 +5,10 @@ import { escapeHtml, getFileIcon, isTextFile, formatFileSize, formatDateDMY, for
 import { openEmail, renderEmailBodyContent } from './inbox.js';
 
 export function showStatus(message, type = 'info') {
+    // Routine success and progress updates are already visible in the UI.
+    // Reserve popups for failures and actionable warnings.
+    if (type !== 'error' && type !== 'warning') return;
+
     const statusContainer = document.getElementById('statusContainer');
     const statusDiv = document.createElement('div');
     statusDiv.className = `status-message ${type}`;
@@ -333,6 +337,8 @@ function renderEmptyInbox() {
 export function updateInboxCount() {
     const count = state.emails.filter(email => email.read === false).length;
     document.getElementById('inboxCount').textContent = count;
+    const markAllBtn = document.getElementById('markAllReadBtn');
+    if (markAllBtn) markAllBtn.disabled = count === 0;
 }
 
 /**

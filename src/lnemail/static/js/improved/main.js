@@ -25,9 +25,10 @@ import {
     setExpiredOverlay,
     updateAccountDisplay
 } from './ui.js';
-import { handleConnect, handleDisconnect, tryAutoConnect, performLoginHealthCheck, bindAccessTokenRecovery } from './auth.js';
+import { handleConnect, handleDisconnect, handlePasskeyConnect, tryAutoConnect, performLoginHealthCheck, bindAccessTokenRecovery } from './auth.js';
+import { passkeysSupported } from './passkeys.js';
 import { isValidEmail, formatFileSize, showCopyFeedback, copyToClipboard } from './utils.js';
-import { refreshInbox, startAutoRefresh, stopAutoRefresh } from './inbox.js';
+import { markInboxRead, refreshInbox, startAutoRefresh, stopAutoRefresh } from './inbox.js';
 import { tryAutoPayWebLN } from './webln.js';
 import { HEALTH_CHECK_INTERVAL, PAYMENT_POLL_INTERVAL, RENEWAL_PRICE_PER_YEAR } from './config.js';
 import { state } from './state.js';
@@ -500,6 +501,11 @@ function bindEvents() {
     }
     const disconnectBtn = document.getElementById('disconnectBtn');
     if (disconnectBtn) disconnectBtn.addEventListener('click', handleDisconnect);
+    const passkeyLoginBtn = document.getElementById('passkeyLoginBtn');
+    if (passkeyLoginBtn) {
+        passkeyLoginBtn.hidden = !passkeysSupported();
+        passkeyLoginBtn.addEventListener('click', handlePasskeyConnect);
+    }
     bindAccessTokenRecovery();
 
     // Login health check events
@@ -588,6 +594,16 @@ function bindEvents() {
     // Email list events
     const refreshSidebarBtn = document.getElementById('refreshSidebarBtn');
     if (refreshSidebarBtn) refreshSidebarBtn.addEventListener('click', handleRefreshClick);
+    const markAllReadBtn = document.getElementById('markAllReadBtn');
+    if (markAllReadBtn) markAllReadBtn.addEventListener('click', async () => {
+        markAllReadBtn.disabled = true;
+        try {
+            await markInboxRead();
+        } catch (error) {
+            showStatus(`Failed to mark emails as read: ${error.message}`, 'error');
+            markAllReadBtn.disabled = false;
+        }
+    });
     const backToInbox = document.getElementById('backToInbox');
     if (backToInbox) backToInbox.addEventListener('click', () => showView('inbox'));
     const replyBtn = document.getElementById('replyBtn');

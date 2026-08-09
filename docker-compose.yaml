@@ -549,6 +549,8 @@ services:
       - PORT=8000
       - DATABASE_URL=sqlite:////data/lnemail.db
       - MAIL_DOMAIN=lnemail.test
+      - WEBAUTHN_RP_ID=localhost
+      - WEBAUTHN_ORIGIN=http://localhost:8000
       - MAIL_DATA_PATH=/var/mail
       - MAIL_REQUESTS_DIR=/shared/requests
       - MAIL_RESPONSES_DIR=/shared/responses

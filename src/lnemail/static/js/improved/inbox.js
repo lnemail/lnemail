@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { AUTO_REFRESH_INTERVAL } from './config.js';
-import { fetchEmails, fetchEmailContent, fetchRecentSends } from './api.js';
+import { fetchEmails, fetchEmailContent, fetchRecentSends, markAllEmailsRead } from './api.js';
 import {
     showStatus,
     renderEmailList,
@@ -71,6 +71,14 @@ export function stopAutoRefresh() {
         state.autoRefreshTimer = null;
         // console.log('Auto-refresh stopped');
     }
+}
+
+export async function markInboxRead() {
+    if (!state.accessToken) return;
+    await markAllEmailsRead();
+    state.emails.forEach(email => { email.read = true; });
+    renderEmailList();
+    updateInboxCount();
 }
 
 export async function openEmail(emailId) {

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}LNemail Node - Inbox{% endblock %}
+{% block title %}Inbox - LNemail{% endblock %}
 {% block description %}Access your LNemail inbox. Web interface for reading, composing, and managing anonymous emails. Authenticate with your Bearer access token.{% endblock %}
 {% block og_title %}LNemail Inbox{% endblock %}
 {% block og_url %}https://lnemail.net/inbox{% endblock %}
@@ -290,6 +290,10 @@
   .recover-token-row input { flex: 1; }
   .recover-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
   .note { font-size: 11px; color: #64748b; margin-top: 6px; }
+  .passkey-section { border-top: 1px solid rgba(56,189,248,0.12); padding-top: 14px; }
+  .passkey-heading { color: #d8e3fb; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .passkey-list { display: flex; flex-direction: column; gap: 6px; color: #64748b; font-size: 12px; margin-bottom: 10px; }
+  .passkey-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid rgba(56,189,248,0.12); border-radius: 6px; color: #bdc8d1; }
 
   /* POC: Login */
   .login-health-status {
@@ -467,6 +471,10 @@
                         <button type="submit" id="connectBtn" class="btn-primary" disabled style="white-space:nowrap;">Connect</button>
                     </div>
                 </form>
+                <button type="button" id="passkeyLoginBtn" class="btn-secondary" style="width:100%;justify-content:center;">
+                    <span class="material-symbols-outlined" style="font-size:17px;">verified_user</span>
+                    Sign in with passkey
+                </button>
                 <div class="help-text">
                     <span class="material-symbols-outlined" style="font-size:15px;color:#38bdf8;">info</span>
                     Don't have an access token?
@@ -608,6 +616,14 @@
                         <button type="button" id="recoverCloseBtn" class="btn-secondary">Close</button>
                     </div>
                 </form>
+                <div class="passkey-section">
+                    <div class="passkey-heading">Passkeys</div>
+                    <div id="passkeyList" class="passkey-list"></div>
+                    <button type="button" id="addPasskeyBtn" class="btn-secondary">
+                        <span class="material-symbols-outlined" style="font-size:17px;">verified_user</span>
+                        Add passkey
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -690,6 +706,9 @@
                         </h2>
                     </div>
                     <div class="flex items-center gap-2">
+                        <button id="markAllReadBtn" class="p-1.5 text-slate-400 hover:text-cyber-blue transition-colors rounded disabled:opacity-30 disabled:cursor-not-allowed" disabled title="Mark all as read" aria-label="Mark all as read">
+                            <span class="material-symbols-outlined text-lg">check_circle</span>
+                        </button>
                         <button id="deleteSelectedBtn" class="p-1.5 text-slate-400 hover:text-rose-500 transition-colors rounded disabled:opacity-30 disabled:cursor-not-allowed" disabled title="Delete Selected">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>
                         </button>

@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { RENEWAL_WARNING_DAYS } from './config.js';
-import { checkAccountAuthorization, checkApiHealth } from './api.js';
+import { checkAccountAuthorization, checkApiHealth, fetchPasskeys, removePasskey } from './api.js';
 import {
     showStatus, showTokenModal, hideTokenModal, showMainApp, hideMainApp,
     updateAccountDisplay, clearComposeForm, updateLoginHealthStatus,
@@ -11,6 +11,7 @@ import {
 } from './ui.js';
 import { showCopyFeedback } from './utils.js';
 import { refreshInbox, startAutoRefresh, stopAutoRefresh } from './inbox.js';
+import { createPasskey, passkeysSupported, recoverTokenWithPasskey } from './passkeys.js';
 
 function getSavedToken() {
     try {
@@ -103,6 +104,30 @@ export async function handleConnect() {
     } finally {
         connectBtn.innerHTML = originalText;
         connectBtn.disabled = false;
+    }
+}
+
+export async function handlePasskeyConnect() {
+    const button = document.getElementById('passkeyLoginBtn');
+    if (!button || !passkeysSupported()) {
+        showStatus('Passkeys are not supported by this browser', 'error');
+        return;
+    }
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<span class="material-symbols-outlined animate-spin" style="font-size:16px;">progress_activity</span> Signing in...';
+    try {
+        const recovered = await recoverTokenWithPasskey();
+        document.getElementById('loginEmail').value = recovered.email_address;
+        document.getElementById('accessToken').value = recovered.access_token;
+        await handleConnect();
+    } catch (error) {
+        if (error.name !== 'NotAllowedError') {
+            showStatus(`Passkey sign-in failed: ${error.message}`, 'error');
+        }
+    } finally {
+        button.disabled = false;
+        button.innerHTML = originalText;
     }
 }
 
@@ -236,6 +261,50 @@ export function showAccessTokenRecovery() {
         toggle.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">visibility</span>';
     }
     modal.classList.add('active');
+    refreshPasskeyList();
+}
+
+async function refreshPasskeyList() {
+    const list = document.getElementById('passkeyList');
+    const addButton = document.getElementById('addPasskeyBtn');
+    if (!list || !addButton) return;
+    if (!passkeysSupported()) {
+        list.textContent = 'Passkeys are unavailable in this browser.';
+        addButton.hidden = true;
+        return;
+    }
+
+    try {
+        const response = await fetchPasskeys();
+        list.innerHTML = '';
+        response.passkeys.forEach(passkey => {
+            const row = document.createElement('div');
+            row.className = 'passkey-item';
+            const label = document.createElement('span');
+            label.textContent = passkey.name;
+            const removeButton = document.createElement('button');
+            removeButton.type = 'button';
+            removeButton.className = 'btn-danger btn-sm';
+            removeButton.title = 'Remove passkey';
+            removeButton.setAttribute('aria-label', `Remove ${passkey.name}`);
+            removeButton.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">close</span>';
+            removeButton.addEventListener('click', async () => {
+                try {
+                    await removePasskey(passkey.id);
+                    await refreshPasskeyList();
+                } catch (error) {
+                    showStatus(`Failed to remove passkey: ${error.message}`, 'error');
+                }
+            });
+            row.append(label, removeButton);
+            list.appendChild(row);
+        });
+        if (response.passkeys.length === 0) {
+            list.textContent = 'No passkeys registered.';
+        }
+    } catch (error) {
+        showStatus(`Failed to load passkeys: ${error.message}`, 'error');
+    }
 }
 
 export function hideAccessTokenRecovery() {
@@ -256,6 +325,7 @@ export function bindAccessTokenRecovery() {
     const copyBtn = document.getElementById('recoverTokenCopy');
     const form = document.getElementById('recoverCredentialsForm');
     const tokenInput = document.getElementById('recoverToken');
+    const addPasskeyBtn = document.getElementById('addPasskeyBtn');
 
     if (showBtn) {
         showBtn.addEventListener('click', showAccessTokenRecovery);
@@ -320,6 +390,25 @@ export function bindAccessTokenRecovery() {
                 setTimeout(() => {
                     if (wasMasked) tokenInput.type = 'password';
                 }, 1500);
+            }
+        });
+    }
+    if (addPasskeyBtn) {
+        addPasskeyBtn.hidden = !passkeysSupported();
+        addPasskeyBtn.addEventListener('click', async () => {
+            const originalText = addPasskeyBtn.innerHTML;
+            addPasskeyBtn.disabled = true;
+            addPasskeyBtn.innerHTML = '<span class="material-symbols-outlined animate-spin" style="font-size:16px;">progress_activity</span> Adding...';
+            try {
+                await createPasskey();
+                await refreshPasskeyList();
+            } catch (error) {
+                if (error.name !== 'NotAllowedError') {
+                    showStatus(`Failed to add passkey: ${error.message}`, 'error');
+                }
+            } finally {
+                addPasskeyBtn.disabled = false;
+                addPasskeyBtn.innerHTML = originalText;
             }
         });
     }
