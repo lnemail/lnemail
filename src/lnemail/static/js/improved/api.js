@@ -72,7 +72,8 @@ export async function checkAccountAuthorization() {
             expires_date: expiresAt,
             is_expired: isExpired,
             days_until_expiry: daysUntilExpiry,
-            renewal_eligible: renewalEligible
+            renewal_eligible: renewalEligible,
+            free_send_available: response.free_send_available === true
         };
 
         return true;

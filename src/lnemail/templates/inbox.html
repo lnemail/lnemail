@@ -492,8 +492,8 @@
     <div id="paymentModal" class="modal">
         <div class="modal-content payment-modal-content">
             <div class="modal-header">
-                <h2>Lightning Payment Required</h2>
-                <p>Scan the QR code below to pay for sending this email</p>
+                <h2 id="paymentModalTitle">Lightning Payment Required</h2>
+                <p id="paymentModalSubtitle">Scan the QR code below to pay for sending this email</p>
             </div>
             <div class="modal-body">
                 <div style="padding:12px;background:rgba(56,189,248,0.02);border-radius:8px;margin-bottom:12px;">
@@ -501,7 +501,7 @@
                     <div class="payment-detail-item"><span class="payment-label">Subject:</span><span id="paymentSubject" class="payment-value">-</span></div>
                     <div class="payment-detail-item"><span class="payment-label">Amount:</span><span id="paymentAmount" class="payment-value">-</span></div>
                 </div>
-                <div class="qr-code-container"><canvas id="qrCodeCanvas"></canvas></div>
+                <div class="qr-code-container" id="paymentQrWrap"><canvas id="qrCodeCanvas"></canvas></div>
                 <div class="payment-status">
                     <div class="payment-status-indicator">
                         <span class="material-symbols-outlined" id="paymentStatusIcon" style="color:#fbbf24;animation:spin 1s linear infinite;">progress_activity</span>
@@ -807,10 +807,19 @@
                                     <input type="file" id="attachmentInput" multiple style="display:none;">
                                 </div>
                                 <div id="attachmentList" class="flex flex-wrap items-center gap-2"></div>
+                                <label class="flex items-center gap-2 text-slate-400 font-mono text-[11px] cursor-pointer select-none" style="font-family:'JetBrains Mono',monospace;" title="Sent bodies are stored only in this browser. The server keeps no sent-mail archive.">
+                                    <input type="checkbox" id="keepSentCopy" checked class="accent-sky-400">
+                                    <span>Keep a copy of sent emails in this browser</span>
+                                </label>
                             </div>
-                            <button type="submit" id="composeSubmitBtn" class="w-full md:w-auto justify-center px-8 py-2 bg-cyber-blue/10 border border-cyber-blue/50 rounded text-cyber-blue font-mono text-sm uppercase tracking-widest hover:bg-cyber-blue/20 transition-all shadow-[0_0_15px_rgba(56,189,248,0.2)] flex items-center gap-2" style="font-family:'JetBrains Mono',monospace;color:#38bdf8;">
-                                <span>Send Message</span>
-                            </button>
+                            <div class="flex flex-col items-stretch md:items-end gap-2">
+                                <button type="submit" id="composeSubmitBtn" class="w-full md:w-auto justify-center px-8 py-2 bg-cyber-blue/10 border border-cyber-blue/50 rounded text-cyber-blue font-mono text-sm uppercase tracking-widest hover:bg-cyber-blue/20 transition-all shadow-[0_0_15px_rgba(56,189,248,0.2)] flex items-center gap-2" style="font-family:'JetBrains Mono',monospace;color:#38bdf8;">
+                                    <span>Send Message</span>
+                                </button>
+                                <p id="freeSendNote" class="text-emerald-400 font-mono text-[11px] text-center md:text-right" style="display:none;font-family:'JetBrains Mono',monospace;">
+                                    Your first email is free. Later emails cost {{ settings.EMAIL_SEND_PRICE }} sats each.
+                                </p>
+                            </div>
                         </div>
                     </div>
                     <!-- Recent Sends -->
@@ -824,10 +833,18 @@
 
                 <!-- Sent Emails View -->
                 <div id="sentView" class="view flex-1 flex-col p-6 overflow-auto">
-                    <div class="mb-4">
-                        <h2 class="text-xl font-semibold text-slate-100 flex items-center gap-2">
-                            <span class="material-symbols-outlined">send</span> Sent Emails
-                        </h2>
+                    <div class="mb-4 flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                        <div>
+                            <h2 class="text-xl font-semibold text-slate-100 flex items-center gap-2">
+                                <span class="material-symbols-outlined">send</span> Sent Emails
+                            </h2>
+                            <p class="text-slate-400 text-xs mt-1 max-w-2xl">
+                                Message bodies are kept only in this browser (if enabled when composing). The server keeps no sent-mail archive: delivery records are purged within 30 days.
+                            </p>
+                        </div>
+                        <button type="button" id="clearSentCopiesBtn" class="shrink-0 flex items-center gap-2 bg-slate-900 border border-slate-700/50 hover:bg-red-900/40 hover:text-red-200 text-slate-400 px-3 py-1.5 rounded transition-all uppercase text-[10px] font-bold" title="Delete the sent-email copies stored in this browser">
+                            <span class="material-symbols-outlined text-xs">delete</span> Delete local copies (<span id="sentCopiesCount">0</span>)
+                        </button>
                     </div>
                     <div id="sentEmailsList">
                         <div class="empty-state">

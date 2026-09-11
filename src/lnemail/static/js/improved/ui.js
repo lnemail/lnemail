@@ -3,6 +3,7 @@ import { ITEMS_PER_PAGE, RENEWAL_PRICE_PER_YEAR, RENEWAL_WARNING_DAYS } from './
 import { fetchEmailContent } from './api.js';
 import { escapeHtml, getFileIcon, isTextFile, formatFileSize, formatDateDMY, formatDateTime24 } from './utils.js';
 import { openEmail, renderEmailBodyContent } from './inbox.js';
+import { getSentCopy, countSentCopies } from './sentCopies.js';
 
 export function showStatus(message, type = 'info') {
     // Routine success and progress updates are already visible in the UI.
@@ -76,7 +77,16 @@ export function hideMainApp() {
     document.getElementById('mainApp').classList.remove('active');
 }
 
+/** Show the "first email is free" hint in the compose view when applicable. */
+export function updateFreeSendNote() {
+    const note = document.getElementById('freeSendNote');
+    if (!note) return;
+    const available = !!(state.accountInfo && state.accountInfo.free_send_available && !state.accountInfo.is_expired);
+    note.style.display = available ? '' : 'none';
+}
+
 export function updateAccountDisplay() {
+    updateFreeSendNote();
     if (state.accountInfo) {
         document.getElementById('accountEmail').textContent = state.accountInfo.email_address;
 
@@ -579,9 +589,13 @@ export function clearComposeForm() {
  * send/renewal wrappers.
  */
 export function applyReissueAvailability(available, ids = ['newSendInvoiceWrap', 'newRenewalInvoiceWrap']) {
+    state.reissueAvailable = !!available;
     ids.forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.style.display = available ? '' : 'none';
+        if (!el) return;
+        // A free send has no invoice to re-issue (see setPaymentModalFreeMode).
+        const hidden = !available || el.dataset.freeSend === '1';
+        el.style.display = hidden ? 'none' : '';
     });
 }
 
@@ -722,11 +736,42 @@ export function hidePaymentModal() {
     document.getElementById('paymentModal').classList.remove('active');
 }
 
+/**
+ * Switch the send modal between the regular invoice layout and the
+ * "free first email" layout, which has nothing to pay and therefore no
+ * QR code, invoice copy button or re-issue link.
+ */
+function setPaymentModalFreeMode(isFree) {
+    const title = document.getElementById('paymentModalTitle');
+    const subtitle = document.getElementById('paymentModalSubtitle');
+    if (title) title.textContent = isFree ? 'Sending Your Free Email' : 'Lightning Payment Required';
+    if (subtitle) subtitle.textContent = isFree
+        ? 'Your first email is on us. No payment needed.'
+        : 'Scan the QR code below to pay for sending this email';
+
+    const qrWrap = document.getElementById('paymentQrWrap');
+    if (qrWrap) qrWrap.style.display = isFree ? 'none' : '';
+    const copyBtn = document.getElementById('copyInvoiceBtn');
+    if (copyBtn) copyBtn.style.display = isFree ? 'none' : '';
+    const reissue = document.getElementById('newSendInvoiceWrap');
+    if (reissue) {
+        reissue.dataset.freeSend = isFree ? '1' : '';
+        reissue.style.display = (isFree || !state.reissueAvailable) ? 'none' : '';
+    }
+}
+
 export function updatePaymentModal(invoiceData) {
     document.getElementById('paymentRecipient').textContent = invoiceData.recipient;
     document.getElementById('paymentSubject').textContent = invoiceData.subject;
-    document.getElementById('paymentAmount').textContent = `${invoiceData.price_sats} sats`;
     document.getElementById('paymentHashValue').textContent = invoiceData.payment_hash;
+
+    const isFree = !invoiceData.price_sats;
+    setPaymentModalFreeMode(isFree);
+    document.getElementById('paymentAmount').textContent = isFree ? 'Free' : `${invoiceData.price_sats} sats`;
+    if (isFree) {
+        updatePaymentStatus('success', 'Sending email...');
+        return;
+    }
 
     // Set loading state for QR code
     const qrContainer = document.querySelector('.qr-code-container');
@@ -908,17 +953,19 @@ export function updatePaymentModalWithDelivery(statusResponse) {
         return;
     }
 
-    // Payment is paid, check delivery status
+    // Payment is paid (or the send was free), check delivery status
     if (statusResponse.payment_status === 'paid') {
+        const isFree = !!(state.currentPayment && !state.currentPayment.price_sats);
+        const paidPrefix = isFree ? '' : 'Payment confirmed! ';
         if (statusResponse.delivery_status === 'sent') {
-            updatePaymentStatus('success', 'Payment confirmed! Email delivered.');
+            updatePaymentStatus('success', `${paidPrefix}Email delivered.`);
         } else if (statusResponse.delivery_status === 'failed') {
             const errorMsg = statusResponse.delivery_error ? `Delivery failed: ${statusResponse.delivery_error}` : 'Delivery failed';
             updatePaymentStatus('error', errorMsg);
         } else {
             // Delivery pending
             const retryCount = statusResponse.retry_count || 0;
-            const msg = retryCount > 0 ? `Sending email (Retry ${retryCount})...` : 'Payment confirmed! Sending email...';
+            const msg = retryCount > 0 ? `Sending email (Retry ${retryCount})...` : `${paidPrefix}Sending email...`;
             // We use 'success' style for the payment confirmation, but maybe with a spinner for delivery?
             updatePaymentStatus('success', msg);
 
@@ -974,9 +1021,20 @@ export function renderRecentSends() {
     container.innerHTML = html;
 }
 
+/** Refresh the "Delete local copies (N)" button in the sent view. */
+export function updateSentCopiesControls() {
+    const btn = document.getElementById('clearSentCopiesBtn');
+    const count = document.getElementById('sentCopiesCount');
+    const accountEmail = state.accountInfo ? state.accountInfo.email_address : null;
+    const n = accountEmail ? countSentCopies(accountEmail) : 0;
+    if (count) count.textContent = String(n);
+    if (btn) btn.disabled = n === 0;
+}
+
 export function renderSentEmails() {
     const container = document.getElementById('sentEmailsList');
     if (!container) return;
+    updateSentCopiesControls();
 
     if (!state.recentSends || state.recentSends.length === 0) {
         container.innerHTML = `
@@ -988,6 +1046,8 @@ export function renderSentEmails() {
         return;
     }
 
+    const accountEmail = state.accountInfo ? state.accountInfo.email_address : null;
+
     const rows = state.recentSends.map(send => {
         const date = new Date(send.created_at);
         const isToday = date.toDateString() === new Date().toDateString();
@@ -996,16 +1056,35 @@ export function renderSentEmails() {
             ? `Today at ${timePart}`
             : `${formatDateDMY(date)} at ${timePart}`;
         const fullDate = formatDateTime24(date);
+        const copy = accountEmail ? getSentCopy(accountEmail, send.payment_hash) : null;
+        const hash = escapeHtml(send.payment_hash);
+
+        // Rows with a local copy expand to show the body; the rest only
+        // have the metadata the server keeps.
+        const rowAttrs = copy
+            ? `class="sent-row hover:bg-sky-900/10 transition-colors cursor-pointer" data-copy-hash="${hash}" title="Show the copy saved in this browser"`
+            : 'class="sent-row hover:bg-sky-900/10 transition-colors"';
+        const copyIcon = copy
+            ? '<span class="material-symbols-outlined text-sky-400 align-middle" style="font-size:16px;" title="Copy saved in this browser">description</span>'
+            : '<span class="text-[10px] text-slate-500" title="No copy saved in this browser">no copy</span>';
+        const bodyRow = copy ? `
+            <tr class="sent-body-row" data-copy-body="${hash}" style="display:none;">
+                <td colspan="4" class="px-6 py-4 bg-tech-black/60">
+                    <div class="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Local copy${copy.attachments && copy.attachments.length ? ` (attachments: ${escapeHtml(copy.attachments.join(', '))})` : ''}</div>
+                    <pre class="sent-body text-sm text-slate-200 whitespace-pre-wrap break-words" style="font-family:'JetBrains Mono',monospace;margin:0;">${escapeHtml(copy.body)}</pre>
+                </td>
+            </tr>` : '';
 
         return `
-            <tr class="hover:bg-sky-900/10 transition-colors group">
+            <tr ${rowAttrs}>
                 <td class="px-6 py-4 text-sm text-sky-100">${escapeHtml(send.recipient)}</td>
                 <td class="px-6 py-4 text-sm text-white">${escapeHtml(send.subject)}</td>
                 <td class="px-6 py-4">
                     <div class="text-sm text-sky-200">${dateDisplay}</div>
                     <div class="text-[10px] text-slate-400">${fullDate} GMT</div>
                 </td>
-            </tr>`;
+                <td class="px-4 py-4 text-center">${copyIcon}</td>
+            </tr>${bodyRow}`;
     }).join('');
 
     container.innerHTML = `
@@ -1016,11 +1095,21 @@ export function renderSentEmails() {
                         <th class="px-6 py-3 font-bold">Destination</th>
                         <th class="px-6 py-3 font-bold">Subject</th>
                         <th class="px-6 py-3 font-bold">Date</th>
+                        <th class="px-4 py-3 font-bold text-center">Body</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-sky-900/20">${rows}</tbody>
             </table>
         </div>`;
+}
+
+/** Toggle the local-copy body row for a sent email (event delegation target). */
+export function toggleSentCopyBody(paymentHash) {
+    const container = document.getElementById('sentEmailsList');
+    if (!container) return;
+    const bodyRow = container.querySelector(`[data-copy-body="${CSS.escape(paymentHash)}"]`);
+    if (!bodyRow) return;
+    bodyRow.style.display = bodyRow.style.display === 'none' ? '' : 'none';
 }
 
 export function initMobileMenu() {

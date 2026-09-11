@@ -20,6 +20,7 @@ from playwright.sync_api import Page, expect
 from .helpers import (
     compose_and_send,
     login_with_token,
+    open_compose_view,
     open_email,
     open_inbox_view,
     signup_and_pay,
@@ -34,6 +35,10 @@ def test_send_to_self_read_and_reply(page: Page, pay_invoice: Any) -> None:
     # /inbox + token entry is what a returning user does.
     login_with_token(page, account.token)
 
+    # A fresh account advertises its free first send in the compose view.
+    open_compose_view(page)
+    expect(page.locator("#freeSendNote")).to_be_visible()
+
     timestamp = int(time.time())
     local_part, domain = account.email.rsplit("@", 1)
     tagged_recipient = f"{local_part}+e2e-{timestamp}@{domain}"
@@ -46,6 +51,24 @@ def test_send_to_self_read_and_reply(page: Page, pay_invoice: Any) -> None:
         subject=subject,
         body=body_text,
     )
+    # The free send is consumed; the hint disappears.
+    open_compose_view(page)
+    expect(page.locator("#freeSendNote")).not_to_be_visible()
+
+    # The body is kept only in this browser: the Sent view can show it and
+    # the user can wipe the local copies.
+    page.locator('[data-view="sent"]').first.click()
+    expect(page.locator("#sentView")).to_be_visible()
+    sent_row = page.locator("#sentEmailsList [data-copy-hash]").first
+    expect(sent_row).to_contain_text(subject)
+    sent_row.click()
+    expect(page.locator("#sentEmailsList .sent-body").first).to_contain_text(
+        "Hello from the e2e suite"
+    )
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.locator("#clearSentCopiesBtn").click()
+    expect(page.locator("#sentEmailsList [data-copy-hash]")).to_have_count(0)
+    expect(page.locator("#sentCopiesCount")).to_have_text("0")
 
     # Dovecot routes the tagged address to the primary mailbox while LNemail
     # preserves the original delivery address in both inbox views.
@@ -62,7 +85,7 @@ def test_send_to_self_read_and_reply(page: Page, pay_invoice: Any) -> None:
     expect(page.locator("#emailBody")).to_contain_text("Hello from the e2e suite")
 
     # Reply: the UI prefills recipient + Re: subject, we add a body and
-    # submit a new send (which requires another Lightning payment).
+    # submit a new send. The free send is used up, so this one is paid.
     page.locator("#replyBtn").click()
     expect(page.locator("#composeView")).to_be_visible()
     expect(page.locator("#recipient")).to_have_value(account.email)
@@ -75,8 +98,9 @@ def test_send_to_self_read_and_reply(page: Page, pay_invoice: Any) -> None:
         lambda r: r.url.endswith("/api/v1/email/send") and r.request.method == "POST"
     ) as resp_info:
         page.locator("#composeSubmitBtn").click()
-    bolt11 = resp_info.value.json()["payment_request"]
-    pay_invoice(bolt11)
+    reply_payload = resp_info.value.json()
+    assert reply_payload["price_sats"] > 0, reply_payload
+    pay_invoice(reply_payload["payment_request"])
 
     expect(page.locator("#paymentStatusText")).to_contain_text(
         "delivered", ignore_case=True, timeout=30_000

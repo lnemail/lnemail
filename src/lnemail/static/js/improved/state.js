@@ -16,5 +16,7 @@ export const state = {
     currentRenewal: null,
     renewalPollTimer: null,
     recentSends: [],
-    recentSendsRefreshTimer: null
+    recentSendsRefreshTimer: null,
+    // Whether the backend can re-issue an invoice from another provider
+    reissueAvailable: false
 };

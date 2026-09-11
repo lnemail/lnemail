@@ -23,12 +23,21 @@ import {
     showRenewalBanner,
     hideRenewalBanner,
     setExpiredOverlay,
-    updateAccountDisplay
+    updateAccountDisplay,
+    renderSentEmails,
+    toggleSentCopyBody
 } from './ui.js';
+import {
+    keepCopiesEnabled,
+    setKeepCopiesEnabled,
+    saveSentCopy,
+    rekeySentCopy,
+    clearSentCopies,
+} from './sentCopies.js';
 import { handleConnect, handleDisconnect, handlePasskeyConnect, tryAutoConnect, performLoginHealthCheck, bindAccessTokenRecovery } from './auth.js';
 import { passkeysSupported } from './passkeys.js';
 import { isValidEmail, formatFileSize, showCopyFeedback, copyToClipboard } from './utils.js';
-import { markInboxRead, refreshInbox, startAutoRefresh, stopAutoRefresh } from './inbox.js';
+import { markInboxRead, refreshInbox, refreshRecentSends, startAutoRefresh, stopAutoRefresh } from './inbox.js';
 import { tryAutoPayWebLN } from './webln.js';
 import { HEALTH_CHECK_INTERVAL, PAYMENT_POLL_INTERVAL, RENEWAL_PRICE_PER_YEAR } from './config.js';
 import { state } from './state.js';
@@ -228,6 +237,7 @@ async function handleSendEmail(e) {
 
     try {
         const invoiceResponse = await sendEmail(recipient, subject, body, inReplyTo, references, attachments);
+        const isFree = !invoiceResponse.price_sats;
 
         state.currentPayment = {
             payment_hash: invoiceResponse.payment_hash,
@@ -240,15 +250,32 @@ async function handleSendEmail(e) {
             originalFormData: { recipient, subject, body }
         };
 
+        // The server only keeps this body until delivery bookkeeping is
+        // purged; a browser-local copy is the user's own sent-mail archive.
+        if (keepCopiesEnabled() && state.accountInfo) {
+            saveSentCopy(state.accountInfo.email_address, invoiceResponse.payment_hash, {
+                recipient,
+                subject,
+                body,
+                attachments: attachments.map(att => att.filename),
+            });
+        }
+
+        if (isFree && state.accountInfo) {
+            state.accountInfo.free_send_available = false;
+            updateAccountDisplay();
+        }
+
         updatePaymentModal(invoiceResponse);
         showPaymentModal();
 
         startPaymentPolling();
 
-        // Silently attempt WebLN auto-pay; QR code is the fallback
-        tryAutoPayWebLN(invoiceResponse.payment_request);
-
-        showStatus('Lightning invoice created! Please scan the QR code to pay.', 'info');
+        if (!isFree) {
+            // Silently attempt WebLN auto-pay; QR code is the fallback
+            tryAutoPayWebLN(invoiceResponse.payment_request);
+            showStatus('Lightning invoice created! Please scan the QR code to pay.', 'info');
+        }
 
     } catch (error) {
         showStatus(`Failed to create invoice: ${error.message}`, 'error');
@@ -406,6 +433,9 @@ async function handleNewSendInvoice(e) {
         if (!response || !response.payment_request) {
             throw new Error('No invoice returned');
         }
+        if (state.accountInfo) {
+            rekeySentCopy(state.accountInfo.email_address, state.currentPayment.payment_hash, response.payment_hash);
+        }
         state.currentPayment = {
             ...state.currentPayment,
             payment_hash: response.payment_hash,
@@ -421,6 +451,15 @@ async function handleNewSendInvoice(e) {
     } finally {
         if (link) link.textContent = 'Get a new one';
     }
+}
+
+function handleClearSentCopies() {
+    if (!state.accountInfo) return;
+    if (!confirm('Delete every sent-email copy stored in this browser for this account? This cannot be undone.')) {
+        return;
+    }
+    clearSentCopies(state.accountInfo.email_address);
+    renderSentEmails();
 }
 
 async function handleDeleteSelected() {
@@ -564,6 +603,8 @@ function bindEvents() {
                 item.style.boxShadow = '0 0 15px rgba(56,189,248,0.1)';
             }
             showView(viewName);
+            // The sent list is otherwise only refreshed with the inbox.
+            if (viewName === 'sent') refreshRecentSends();
         });
     });
 
@@ -578,6 +619,20 @@ function bindEvents() {
     if (clearForm) clearForm.addEventListener('click', () => {
         clearComposeForm();
         clearAttachments();
+    });
+
+    // Browser-local copies of sent emails
+    const keepSentCopy = document.getElementById('keepSentCopy');
+    if (keepSentCopy) {
+        keepSentCopy.checked = keepCopiesEnabled();
+        keepSentCopy.addEventListener('change', () => setKeepCopiesEnabled(keepSentCopy.checked));
+    }
+    const clearSentCopiesBtn = document.getElementById('clearSentCopiesBtn');
+    if (clearSentCopiesBtn) clearSentCopiesBtn.addEventListener('click', handleClearSentCopies);
+    const sentEmailsList = document.getElementById('sentEmailsList');
+    if (sentEmailsList) sentEmailsList.addEventListener('click', (e) => {
+        const row = e.target.closest('[data-copy-hash]');
+        if (row) toggleSentCopyBody(row.dataset.copyHash);
     });
 
     // Attachment events
