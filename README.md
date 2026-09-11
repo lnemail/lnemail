@@ -80,7 +80,8 @@ Fast anonymous email accounts powered by Bitcoin Lightning Network payments. Get
 7. **Send Email**
    - `POST /api/v1/email/send`
    - Requires access token authentication
-   - Generates Lightning invoice for email sending
+   - The account's first email is free (queued immediately, `price_sats: 0`, no `payment_request`)
+   - Every later email returns a Lightning invoice to pay
 
 8. **Check Send Payment Status**
    - `GET /api/v1/email/send/status/{payment_hash}`
@@ -122,11 +123,12 @@ WEBAUTHN_ORIGIN=https://lnemail.net
 
 ## Service Capabilities
 
-- **Send & Receive**: Full email functionality with Lightning payments for sending
+- **Send & Receive**: Full email functionality; the first email of every account is free, later ones need a Lightning payment
 - **Web & API Access**: Emails accessible through web interface and REST API
 - **Plus Addressing**: Receive `local-part+tag@lnemail.net` in the base account inbox
 - **Plain Text Focus**: HTML content is stripped for security; emails are displayed as plain text
-- **Lightning Payments**: Small Lightning payments required for each outgoing email
+- **Lightning Payments**: Small Lightning payments required for each outgoing email after the first free one
+- **Sent Copies Stay Local**: The server keeps no sent-mail archive; the web inbox can keep copies of sent bodies in the browser's local storage, with a one-click delete
 
 ## Technical Implementation
 

@@ -115,9 +115,15 @@ class EmailSendRequest(BaseModel):
 
 
 class EmailSendInvoiceResponse(BaseModel):
-    """Response schema for initiating an email send, returning an invoice."""
+    """Response schema for initiating an email send, returning an invoice.
 
-    payment_request: str
+    The first email of every account is free: in that case ``price_sats`` is
+    0, ``payment_request`` is ``None`` and the email is queued for delivery
+    immediately. ``payment_hash`` is still returned so the client can poll
+    ``/email/send/status/{payment_hash}`` for delivery progress.
+    """
+
+    payment_request: str | None
     payment_hash: str
     price_sats: int
     sender_email: str
@@ -181,6 +187,8 @@ class AccountResponse(BaseModel):
     is_expired: bool = False
     days_until_expiry: int = 0
     renewal_eligible: bool = False
+    # True until the account has used its one free outgoing email.
+    free_send_available: bool = False
 
 
 class RenewalRequest(BaseModel):

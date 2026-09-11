@@ -324,7 +324,12 @@ def _load_processable_send(
         )
         return None
 
-    if not payment_backend.check_invoice(payment_hash):
+    # Free sends are created as PAID without an invoice, and paid sends are
+    # only marked PAID after a successful check, so an already-PAID record
+    # never needs another provider lookup (this also covers delivery retries).
+    if pending_email.status != PaymentStatus.PAID and not payment_backend.check_invoice(
+        payment_hash
+    ):
         _handle_unpaid_send(session, pending_email, payment_hash)
         return None
 

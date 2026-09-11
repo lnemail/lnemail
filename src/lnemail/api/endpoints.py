@@ -7,12 +7,14 @@ for all the LNemail API endpoints.
 
 import base64
 import json
+import secrets
 from datetime import timedelta
 from email.utils import formatdate
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy import update
 from sqlmodel import Session, select, desc
 from loguru import logger
 
@@ -424,6 +426,30 @@ async def check_payment(
         )
 
 
+def _claim_free_send(db: Session, account: EmailAccount) -> bool:
+    """Atomically consume the account's one free outgoing email.
+
+    Returns True if this call claimed it. The conditional UPDATE guarantees
+    that concurrent requests cannot both get the free send. The claim is
+    committed together with the pending email by the caller.
+    """
+    if account.free_send_used_at is not None:
+        return False
+    claimed_at = utcnow()
+    result = db.execute(
+        update(EmailAccount)
+        .where(
+            EmailAccount.id == account.id,  # type: ignore[arg-type]
+            EmailAccount.free_send_used_at.is_(None),  # type: ignore[union-attr]
+        )
+        .values(free_send_used_at=claimed_at)
+    )
+    if getattr(result, "rowcount", 0) != 1:
+        return False
+    account.free_send_used_at = claimed_at
+    return True
+
+
 @router.post(
     "/email/send",
     response_model=EmailSendInvoiceResponse,
@@ -441,8 +467,12 @@ async def send_email(
 ) -> EmailSendInvoiceResponse:
     """Initiate sending an email from the authenticated account.
 
-    Generates a Lightning invoice that the user must pay to send the email.
-    The email itself will be sent in a background task after the invoice is paid.
+    The first email of every account is free: it is queued for delivery
+    right away and the response carries ``price_sats=0`` and no
+    ``payment_request``. Every later email requires paying a Lightning
+    invoice; the email is sent in a background task once the invoice is
+    paid. In both cases ``/email/send/status/{payment_hash}`` reports
+    delivery progress.
 
     Args:
         send_request: Details of the email to send (recipient, subject, body).
@@ -473,9 +503,6 @@ async def send_email(
                 )
 
         sender_email = account.email_address
-        memo = f"Send email from {sender_email} to {send_request.recipient}"
-
-        invoice = payment_backend.create_invoice(settings.EMAIL_SEND_PRICE, memo)
 
         # Serialize attachments to JSON for storage
         attachments_json: str | None = None
@@ -489,14 +516,28 @@ async def send_email(
             recipient=send_request.recipient,
             subject=send_request.subject,
             body=send_request.body,
-            payment_hash=invoice["payment_hash"],
-            payment_request=invoice["payment_request"],
+            payment_hash="",
+            payment_request="",
             price_sats=settings.EMAIL_SEND_PRICE,
             status=PaymentStatus.PENDING,
             in_reply_to=send_request.in_reply_to,
             references=send_request.references,
             attachments_json=attachments_json,
         )
+
+        if _claim_free_send(db, account):
+            # No invoice: mark as paid so the worker delivers immediately.
+            # The synthetic hash only serves as the status-polling key.
+            pending_email.payment_hash = f"free_{secrets.token_hex(16)}"
+            pending_email.price_sats = 0
+            pending_email.status = PaymentStatus.PAID
+            provider = None
+        else:
+            memo = f"Send email from {sender_email} to {send_request.recipient}"
+            invoice = payment_backend.create_invoice(settings.EMAIL_SEND_PRICE, memo)
+            pending_email.payment_hash = invoice["payment_hash"]
+            pending_email.payment_request = invoice["payment_request"]
+            provider = invoice.get("provider")
 
         db.add(pending_email)
         db.commit()
@@ -505,18 +546,18 @@ async def send_email(
         # Schedule background task to process email send after payment
         queue.enqueue(
             process_send_email_payment,
-            invoice["payment_hash"],
+            pending_email.payment_hash,
             job_timeout=600,  # 10 minute timeout for payment confirmation
         )
 
         return EmailSendInvoiceResponse(
-            payment_request=invoice["payment_request"],
-            payment_hash=invoice["payment_hash"],
-            price_sats=settings.EMAIL_SEND_PRICE,
+            payment_request=pending_email.payment_request or None,
+            payment_hash=pending_email.payment_hash,
+            price_sats=pending_email.price_sats,
             sender_email=sender_email,
             recipient=send_request.recipient,
             subject=send_request.subject,
-            provider=invoice.get("provider"),
+            provider=provider,
         )
 
     except HTTPException:
@@ -728,6 +769,7 @@ async def get_account(
         is_expired=is_expired,
         days_until_expiry=days_until_expiry,
         renewal_eligible=renewal_eligible,
+        free_send_available=account.free_send_used_at is None,
     )
 
 

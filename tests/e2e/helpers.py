@@ -125,7 +125,11 @@ def compose_and_send(
     subject: str,
     body: str,
 ) -> None:
-    """Open the compose view, fill it, pay the send invoice, wait for delivery."""
+    """Open the compose view, fill it, pay the send invoice, wait for delivery.
+
+    The first send of a fresh account is free: the response then carries
+    ``price_sats == 0`` and no invoice, and the modal skips the QR code.
+    """
     open_compose_view(page)
 
     page.locator("#recipient").fill(recipient)
@@ -137,12 +141,16 @@ def compose_and_send(
     ) as resp_info:
         page.locator("#composeSubmitBtn").click()
     payload = resp_info.value.json()
-    bolt11 = payload["payment_request"]
-    assert bolt11, payload
 
     expect(page.locator("#paymentModal")).to_be_visible()
 
-    pay_invoice(bolt11)
+    if payload["price_sats"] == 0:
+        assert payload["payment_request"] is None, payload
+        expect(page.locator("#paymentQrWrap")).not_to_be_visible()
+    else:
+        bolt11 = payload["payment_request"]
+        assert bolt11, payload
+        pay_invoice(bolt11)
 
     expect(page.locator("#paymentStatusText")).to_contain_text(
         "delivered", ignore_case=True, timeout=PAYMENT_TIMEOUT_MS

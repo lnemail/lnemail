@@ -60,8 +60,12 @@ Login:
 
 Send mail:
 
-- authenticated compose flow creates send invoice
+- first email per account is free (`EmailAccount.free_send_used_at`); the
+  pending record is created as `PAID` with a `free_` hash and no invoice
+- later emails: authenticated compose flow creates send invoice
 - worker sends after payment confirmation
+- sent bodies are not archived server-side; the web inbox keeps optional
+  copies in `localStorage` (`static/js/improved/sentCopies.js`)
 
 ## Dev commands
 

@@ -54,6 +54,10 @@ class EmailAccount(SQLModel, table=True):
         sa_column=Column(LargeBinary, nullable=True, unique=True),
     )
     expiry_warning_read_for: datetime | None = Field(default=None)
+    # Every account may send its first email without paying. NULL means the
+    # free send is still available (accounts created before this column
+    # existed get one too); set when the free send is claimed.
+    free_send_used_at: datetime | None = Field(default=None)
 
     @classmethod
     def generate_random_email(cls, domain: str = "lnemail.net") -> str:

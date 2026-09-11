@@ -19,6 +19,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
 from lnemail.core.models import EmailAccount, PaymentStatus
+from lnemail.core.timeutils import utcnow
 from lnemail.db import get_db
 
 
@@ -92,13 +93,18 @@ def fixture_db(engine: Any) -> Generator[Session, None, None]:
 
 @pytest.fixture(name="test_account")
 def fixture_test_account(db: Session) -> EmailAccount:
-    """Create and persist a paid test account."""
+    """Create and persist a paid test account.
+
+    The free first send is already consumed so that send tests exercise the
+    invoice path by default; ``tests/test_free_send.py`` covers the free one.
+    """
     account = EmailAccount(
         email_address="testuser@lnemail.net",
         access_token="test-token-12345",
         email_password="testpassword",
         payment_hash="testhash123",
         payment_status=PaymentStatus.PAID,
+        free_send_used_at=utcnow(),
     )
     db.add(account)
     db.commit()

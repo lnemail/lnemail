@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}LNemail - Anonymous Email Accounts Powered by Bitcoin Lightning{% endblock %}
-{% block description %}Create anonymous email accounts instantly with Bitcoin Lightning Network. Pay 1000 sats for a 1-year account, 100 sats per outgoing email. No signup, no personal data. Full REST API with Bearer token auth. Send and receive emails privately.{% endblock %}
+{% block description %}Create anonymous email accounts instantly with Bitcoin Lightning Network. Pay 1000 sats for a 1-year account; your first email is free, then 100 sats per outgoing email. No signup, no personal data. Full REST API with Bearer token auth. Send and receive emails privately.{% endblock %}
 {% block keywords %}bitcoin lightning email, anonymous email, lightning network disposable email, bitcoin email service, instant anonymous email, lightning payments email, private bitcoin email, anonymous email bitcoin, disposable email API{% endblock %}
 {% block og_url %}https://lnemail.net/{% endblock %}
 {% block extra_head %}{% endblock %}
@@ -39,7 +39,7 @@
                 "@type": "HowToStep",
                 "position": 4,
                 "name": "Send and Receive Emails",
-                "text": "Access your inbox through the web interface or REST API using your Bearer token. Send emails by paying 100 satoshis per message via Lightning."
+                "text": "Access your inbox through the web interface or REST API using your Bearer token. Your first email is free; after that, send emails by paying 100 satoshis per message via Lightning."
             }
         ]
     }
@@ -217,7 +217,7 @@
     <h2 class="text-3xl md:text-5xl font-bold text-center mb-8 text-on-surface">Service Capabilities</h2>
     <div class="glass-card rounded-xl p-8 max-w-3xl mx-auto">
         <ul class="flex flex-col gap-4 text-on-surface-variant">
-            <li class="flex items-start gap-3"><span class="material-symbols-outlined text-primary mt-0.5">check_circle</span><span><strong class="text-on-surface">Send &amp; Receive:</strong> Full email functionality. Sending emails costs 100 sats per sent email to prevent spam.</span></li>
+            <li class="flex items-start gap-3"><span class="material-symbols-outlined text-primary mt-0.5">check_circle</span><span><strong class="text-on-surface">Send &amp; Receive:</strong> Full email functionality. Your first email is free; after that sending costs 100 sats per email to prevent spam.</span></li>
             <li class="flex items-start gap-3"><span class="material-symbols-outlined text-primary mt-0.5">check_circle</span><span><strong class="text-on-surface">Web &amp; API Access:</strong> Emails accessible through our web interface and REST API.</span></li>
             <li class="flex items-start gap-3"><span class="material-symbols-outlined text-primary mt-0.5">check_circle</span><span><strong class="text-on-surface">Plain Text Focus:</strong> Emails are stripped of trackers for security and contents can be displayed as plaintext.</span></li>
         </ul>
