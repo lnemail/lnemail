@@ -31,10 +31,7 @@ def test_original_recipient_headers_are_ordered_fallbacks() -> None:
     message["Envelope-To"] = "account+envelope@lnemail.net"
     message["To"] = "visible@example.com"
 
-    assert (
-        _service()._extract_recipient(message)
-        == "account+x-original@lnemail.net"
-    )
+    assert _service()._extract_recipient(message) == "account+x-original@lnemail.net"
 
 
 def test_multiple_to_headers_are_retained_when_delivery_headers_are_missing() -> None:
@@ -53,8 +50,7 @@ def test_encoded_to_header_is_decoded() -> None:
     message["To"] = "=?utf-8?q?Support_Team?= <support@example.com>"
 
     assert (
-        _service()._extract_recipient(message)
-        == "Support Team <support@example.com>"
+        _service()._extract_recipient(message) == "Support Team <support@example.com>"
     )
 
 
